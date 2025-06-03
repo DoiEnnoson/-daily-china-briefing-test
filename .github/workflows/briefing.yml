@@ -1,1 +1,25 @@
+name: Daily China Briefing
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'  # Jeden Tag um 08:00 Uhr MESZ (06:00 UTC)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository klonen
+        uses: actions/checkout@v3
+
+      - name: Python installieren
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Briefing-Skript ausführen
+        run: python briefing.py
+        env:
+          CONFIG: ${{ secrets.CONFIG }}
 
