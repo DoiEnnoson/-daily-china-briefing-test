@@ -239,7 +239,7 @@ def fetch_recent_x_posts(account, name, url):
 # === Briefing generieren ===
 def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
-    briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
+    briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein Test fuer das China-Briefing.\n"]
 
     briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
     briefing.extend(fetch_index_data())
