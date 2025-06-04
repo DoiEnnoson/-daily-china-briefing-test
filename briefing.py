@@ -167,44 +167,6 @@ def fetch_news(feed_url, max_items=20, top_n=5):
     scored.sort(reverse=True, key=lambda x: x[0])
     return [item[1] for item in scored[:top_n]] or ["Keine aktuellen China-Artikel gefunden."]
 
-# === Substack-Feeds ohne Scoring anzeigen ===
-def fetch_substack_feed(feed_url, max_items=3):
-    """Robuster Substack-Parser mit Fallback auf HTML, falls RSS versagt."""
-    items = []
-
-    # Versuch 1: feedparser
-    try:
-        feed = feedparser.parse(feed_url)
-        for entry in feed.entries[:max_items]:
-            title = entry.get("title", "").strip()
-            link = entry.get("link", "").strip()
-            if title and link:
-                items.append(f'• <a href="{link}">{title}</a>')
-    except Exception as e:
-        items.append(f"❌ Fehler beim RSS-Lesen: {e}")
-
-    # Wenn feedparser nichts geliefert hat → Fallback auf HTML
-    if not items:
-        try:
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(feed_url.replace("/feed", ""), headers=headers, timeout=10)
-            r.raise_for_status()
-            soup = BeautifulSoup(r.text, "html.parser")
-            posts = soup.select("div.post-preview a[href^='https://']")
-            seen = set()
-            for a in posts:
-                title = a.text.strip()
-                link = a["href"].strip()
-                if title and link and link not in seen:
-                    items.append(f'• <a href="{link}">{title}</a>')
-                    seen.add(link)
-                if len(items) >= max_items:
-                    break
-        except Exception as e:
-            items.append(f"❌ Fehler beim HTML-Fallback: {e}")
-
-    return items or ["Keine Einträge gefunden."]
-
 # === SCMP & Yicai Ranking-Wrapper ===
 def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
     """Wendet denselben Bewertungsfilter wie fetch_news an, speziell für SCMP & Yicai."""
@@ -277,7 +239,7 @@ def fetch_recent_x_posts(account, name, url):
 # === Briefing generieren ===
 def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
-    briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein Test fuer das China-Briefing.\n"]
+    briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
 
     briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
     briefing.extend(fetch_index_data())
@@ -313,8 +275,7 @@ def generate_briefing():
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
     for source, url in feeds_substack.items():
         briefing.append(f"\n### {source}")
-        briefing.extend(fetch_substack_feed(url))
-
+        briefing.extend(fetch_news(url))
 
     briefing.append("\n## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
@@ -337,7 +298,7 @@ print("🧠 Erzeuge Briefing...")
 briefing_content = generate_briefing()
 
 msg = MIMEText(briefing_content, "html", "utf-8")
-msg["Subject"] = "📰 Test für Briefing"
+msg["Subject"] = "📰 Dein tägliches China-Briefing"
 msg["From"] = config_dict["EMAIL_USER"]
 msg["To"] = config_dict["EMAIL_TO"]
 
