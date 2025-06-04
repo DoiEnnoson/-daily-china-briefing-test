@@ -298,7 +298,7 @@ print("🧠 Erzeuge Briefing...")
 briefing_content = generate_briefing()
 
 msg = MIMEText(briefing_content, "html", "utf-8")
-msg["Subject"] = "📰 Dein tägliches China-Briefing"
+msg["Subject"] = "📰 Test für Briefing"
 msg["From"] = config_dict["EMAIL_USER"]
 msg["To"] = config_dict["EMAIL_TO"]
 
