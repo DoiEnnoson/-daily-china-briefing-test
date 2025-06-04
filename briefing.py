@@ -169,15 +169,39 @@ def fetch_news(feed_url, max_items=20, top_n=5):
 
 # === Substack-Feeds ohne Scoring anzeigen ===
 def fetch_substack_feed(feed_url, max_items=3):
-    """Zeigt die letzten Artikel eines Substack-Feeds ohne Bewertung."""
-    feed = feedparser.parse(feed_url)
+    """Robuster Substack-Parser mit Fallback auf HTML, falls RSS versagt."""
     items = []
 
-    for entry in feed.entries[:max_items]:
-        title = entry.get("title", "").strip()
-        link = entry.get("link", "").strip()
-        if title and link:
-            items.append(f'• <a href="{link}">{title}</a>')
+    # Versuch 1: feedparser
+    try:
+        feed = feedparser.parse(feed_url)
+        for entry in feed.entries[:max_items]:
+            title = entry.get("title", "").strip()
+            link = entry.get("link", "").strip()
+            if title and link:
+                items.append(f'• <a href="{link}">{title}</a>')
+    except Exception as e:
+        items.append(f"❌ Fehler beim RSS-Lesen: {e}")
+
+    # Wenn feedparser nichts geliefert hat → Fallback auf HTML
+    if not items:
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(feed_url.replace("/feed", ""), headers=headers, timeout=10)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            posts = soup.select("div.post-preview a[href^='https://']")
+            seen = set()
+            for a in posts:
+                title = a.text.strip()
+                link = a["href"].strip()
+                if title and link and link not in seen:
+                    items.append(f'• <a href="{link}">{title}</a>')
+                    seen.add(link)
+                if len(items) >= max_items:
+                    break
+        except Exception as e:
+            items.append(f"❌ Fehler beim HTML-Fallback: {e}")
 
     return items or ["Keine Einträge gefunden."]
 
