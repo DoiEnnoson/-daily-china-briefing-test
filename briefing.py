@@ -289,7 +289,8 @@ def generate_briefing():
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
     for source, url in feeds_substack.items():
         briefing.append(f"\n### {source}")
-        briefing.extend(fetch_news(url))
+        briefing.extend(fetch_substack_feed(url))
+
 
     briefing.append("\n## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
