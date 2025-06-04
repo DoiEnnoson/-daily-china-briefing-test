@@ -167,6 +167,20 @@ def fetch_news(feed_url, max_items=20, top_n=5):
     scored.sort(reverse=True, key=lambda x: x[0])
     return [item[1] for item in scored[:top_n]] or ["Keine aktuellen China-Artikel gefunden."]
 
+# === Substack-Feeds ohne Scoring anzeigen ===
+def fetch_substack_feed(feed_url, max_items=3):
+    """Zeigt die letzten Artikel eines Substack-Feeds ohne Bewertung."""
+    feed = feedparser.parse(feed_url)
+    items = []
+
+    for entry in feed.entries[:max_items]:
+        title = entry.get("title", "").strip()
+        link = entry.get("link", "").strip()
+        if title and link:
+            items.append(f'• <a href="{link}">{title}</a>')
+
+    return items or ["Keine Einträge gefunden."]
+
 # === SCMP & Yicai Ranking-Wrapper ===
 def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
     """Wendet denselben Bewertungsfilter wie fetch_news an, speziell für SCMP & Yicai."""
