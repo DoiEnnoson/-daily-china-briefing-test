@@ -1,8 +1,6 @@
 name: Daily China Briefing
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # Täglich um 6:00 UTC → 8:00 deutscher Zeit
   workflow_dispatch:
 
 jobs:
