@@ -297,20 +297,59 @@ def generate_briefing():
     for acc in x_accounts:
         briefing.extend(fetch_recent_x_posts(acc["account"], acc["name"], acc["url"]))
 
-    briefing.append("\n## 🇺🇸 Internationale Medien (US/UK/Asien)")
-    for source, url in feeds.items():
-        briefing.append(f"\n### {source}")
-        briefing.extend(fetch_news(url))
+    # === 🌍 Google News – Nach Sprache & Quelle sortiert ===
+    briefing.append("\n## 🌍 Google News – Nach Sprache & Quelle sortiert")
 
-    briefing.append("\n## 🇩🇪 Deutschsprachige Medien")
-    for source, url in feeds_german.items():
-        briefing.append(f"\n### {source}")
-        briefing.extend(fetch_news(url))
+    all_articles = {
+        "EN": defaultdict(list),
+        "DE": defaultdict(list),
+        "FR": defaultdict(list),
+        "ASIA": defaultdict(list),
+        "OTHER": defaultdict(list)
+    }
 
-    briefing.append("\n## 🧠 Think Tanks & Forschungsinstitute")
-    for source, url in feeds_thinktanks.items():
-        briefing.append(f"\n### {source}")
-        briefing.extend(fetch_news(url))
+    for lang, url in feeds_google_news.items():
+        feed = feedparser.parse(url)
+        for entry in feed.entries:
+            title = entry.get("title", "").strip()
+            summary = entry.get("summary", "").strip()
+            link = entry.get("link", "").strip()
+
+            if not title or not link:
+                continue
+
+            score = score_article(title, summary)
+            if score <= 0:
+                continue
+
+            source = extract_source(title)
+            category = source_categories.get(source, lang if lang in ["EN", "DE", "FR"] else "OTHER")
+
+            if source in ["SCMP", "Nikkei Asia", "Yicai"]:
+                category = "ASIA"
+
+            all_articles[category][source].append((score, f'• <a href="{link}">{title}</a>'))
+
+    category_titles = {
+        "EN": "🇺🇸 Englischsprachige Medien",
+        "DE": "🇩🇪 Deutschsprachige Medien",
+        "FR": "🇫🇷 Französische Medien",
+        "ASIA": "🌏 Asiatische Medien",
+        "OTHER": "🧪 Sonstige Quellen"
+    }
+
+    for cat_key, sources in all_articles.items():
+        if not sources:
+            continue
+        briefing.append(f"\n## {category_titles.get(cat_key, cat_key)}")
+
+        for source_name, articles in sources.items():
+            top_articles = sorted(articles, reverse=True)[:5]
+            briefing.append(f"\n### {source_name}")
+            briefing.extend([a[1] for a in top_articles])
+
+    # === (Optional) alte Quellen-Sektionen weiterhin anzeigen ===
+
 
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
     for source, url in feeds_substack.items():
