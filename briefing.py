@@ -1,12 +1,12 @@
 import os
 import smtplib
 import feedparser
+from collections import defaultdict
 import requests
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 
-# === 🧠 Wirtschaftskalendar ===
 
 # === 🧠 Wirtschaftskalendar (Dummy) ===
 
