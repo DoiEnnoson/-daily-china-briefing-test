@@ -204,6 +204,14 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
     """Wendet denselben Bewertungsfilter wie fetch_news an, speziell für SCMP & Yicai."""
     return fetch_news(feed_url, max_items=max_items, top_n=top_n)
 
+# === Google News Extraction ===
+
+def extract_source(title):
+    if ":" in title:
+        source_candidate = title.split(":")[0].strip()
+        return source_candidate
+    return "Unbekannt"
+
 
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
