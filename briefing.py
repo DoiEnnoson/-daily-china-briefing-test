@@ -59,6 +59,12 @@ source_categories = {
     "Yicai": "ASIA"
 }
 
+# === Google-News: Feed-Definition ===
+feeds_google_news = {
+    "EN": "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en",
+    "DE": "https://news.google.com/rss/search?q=china+when:1d&hl=de&gl=DE&ceid=DE:de",
+    "FR": "https://news.google.com/rss/search?q=china+when:1d&hl=fr&gl=FR&ceid=FR:fr"
+}
 
 # === US-/UK-Medien ===
 feeds = {
