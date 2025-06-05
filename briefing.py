@@ -334,7 +334,16 @@ def generate_briefing():
             if source in ["SCMP", "Nikkei Asia", "Yicai"]:
                 category = "ASIA"
 
-            all_articles[category][source].append((score, f'• <a href="{link}">{title}</a>'))
+            # Titel bereinigen (entferne Quelle am Anfang oder Ende)
+            clean_title = title
+            if f"– {source}" in title:
+                clean_title = title.split(f"– {source}")[0].strip()
+            elif f"- {source}" in title:
+                clean_title = title.split(f"- {source}")[0].strip()
+            if clean_title.lower().endswith(source.lower()):
+                clean_title = clean_title[:-(len(source))].strip("-:—– ").strip()
+
+            all_articles[category][source].append((score, f'• {clean_title}'))
 
     category_titles = {
         "EN": "🇺🇸 Englischsprachige Medien",
@@ -349,12 +358,13 @@ def generate_briefing():
             continue
         briefing.append(f"\n## {category_titles.get(cat_key, cat_key)}")
 
-        for source_name, articles in sources.items():
-            top_articles = sorted(articles, reverse=True)[:5]
+        for source_name, articles in sorted(sources.items()):
+            if not articles:
+                continue
             briefing.append(f"\n### {source_name}")
+            top_articles = sorted(articles, reverse=True)[:5]
             briefing.extend([a[1] for a in top_articles])
 
-    # === (Optional) alte Quellen-Sektionen weiterhin anzeigen ===
 
 
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
