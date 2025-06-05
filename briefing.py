@@ -213,9 +213,25 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
 # === Google News Extraction ===
 
 def extract_source(title):
+   
+    # bekannte Quellen-Keywords → Mapping auf "saubere" Namen
+    known_sources = [
+        "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
+        "The Guardian", "New York Post", "Yahoo Finance", "AP News",
+        "Global Times", "MSNBC", "JURIST", "Fox News", "CSIS",
+        "South China Morning Post", "China Briefing", "NBC", "WSJ", "CNN"
+    ]
+
+    for source in known_sources:
+        if source.lower() in title.lower():
+            return source
+
+    # Fallback: Trenne am ersten ":" oder "–" – aber NUR wenn keine Quelle gefunden wurde
     if ":" in title:
-        source_candidate = title.split(":")[0].strip()
-        return source_candidate
+        return title.split(":")[0].strip()
+    if "–" in title:
+        return title.split("–")[0].strip()
+
     return "Unbekannt"
 
 
