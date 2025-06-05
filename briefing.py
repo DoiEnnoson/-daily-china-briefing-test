@@ -343,7 +343,7 @@ def generate_briefing():
             if clean_title.lower().endswith(source.lower()):
                 clean_title = clean_title[:-(len(source))].strip("-:—– ").strip()
 
-            all_articles[category][source].append((score, f'• {clean_title}'))
+            all_articles[category][source].append((score, f'• <a href="{link}">{clean_title}</a>'))
 
     category_titles = {
         "EN": "🇺🇸 Englischsprachige Medien",
