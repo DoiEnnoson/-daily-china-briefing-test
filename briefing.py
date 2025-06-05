@@ -212,27 +212,31 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
 
 # === Google News Extraction ===
 
-def extract_source(title):
-   
-    # bekannte Quellen-Keywords → Mapping auf "saubere" Namen
+ddef extract_source(title):
     known_sources = [
-        "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal",
-        "The Guardian", "New York Post", "Yahoo Finance", "AP News",
-        "Global Times", "MSNBC", "JURIST", "Fox News", "CSIS",
-        "South China Morning Post", "China Briefing", "NBC", "WSJ", "CNN"
+        "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal", "WSJ",
+        "The Guardian", "New York Post", "Yahoo Finance", "Yahoo News", "AP News",
+        "CNN", "NBC", "MSNBC", "Fox News", "South China Morning Post", "SCMP",
+        "JURIST", "Global Times", "CSIS", "Al Jazeera", "ION Analytics", "ABC News",
+        "Deseret News", "Nasdaq", "Pork Business", "Focus Taiwan", "Hawaii News Now",
+        "France 24", "Le Monde", "Zonebourse", "China.org.cn", "Telepolis", 
+        "Spiegel", "NZZ", "Handelsblatt", "FAZ", "Zeit Online", "T-Online", 
+        "Finanzen.net", "Wallstreet Online", "MSN", "BörsenNEWS.de", "Börse Online",
+        "ComputerBase", "Vietnam.vn", "OneFootball", "ARD Mediathek"
     ]
 
     for source in known_sources:
         if source.lower() in title.lower():
             return source
 
-    # Fallback: Trenne am ersten ":" oder "–" – aber NUR wenn keine Quelle gefunden wurde
-    if ":" in title:
-        return title.split(":")[0].strip()
-    if "–" in title:
-        return title.split("–")[0].strip()
+    # Fallback: entferne " – Quelle" am Ende
+    if " – " in title:
+        return title.split(" – ")[-1].strip()
+    if "-" in title and len(title.split("-")[-1]) < 40:
+        return title.split("-")[-1].strip()
 
     return "Unbekannt"
+
 
 
 # === NBS-Daten abrufen ===
