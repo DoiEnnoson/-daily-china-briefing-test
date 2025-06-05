@@ -28,6 +28,38 @@ if not config:
 pairs = config.split(";")
 config_dict = dict(pair.split("=", 1) for pair in pairs)
 
+# === Google Mapping  ===
+source_categories = {
+    # EN/US/UK
+    "Wall Street Journal": "EN",
+    "Financial Times": "EN",
+    "Reuters": "EN",
+    "The Guardian": "EN",
+    "New York Times": "EN",
+    "Bloomberg": "EN",
+    "Politico": "EN",
+    
+    # Deutschsprachig
+    "FAZ": "DE",
+    "Welt": "DE",
+    "Tagesspiegel": "DE",
+    "NZZ": "DE",
+    "Finanzmarktwelt": "DE",
+    "Der Standard": "DE",
+    "Frankfurter Rundschau": "DE",
+
+    # Französisch
+    "Le Monde": "FR",
+    "Les Echos": "FR",
+    "Le Figaro": "FR",
+
+    # Asiatisch
+    "SCMP": "ASIA",
+    "Nikkei Asia": "ASIA",
+    "Yicai": "ASIA"
+}
+
+
 # === US-/UK-Medien ===
 feeds = {
     "Wall Street Journal": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
