@@ -66,29 +66,6 @@ feeds_google_news = {
     "FR": "https://news.google.com/rss/search?q=china+when:1d&hl=fr&gl=FR&ceid=FR:fr"
 }
 
-# === US-/UK-Medien ===
-feeds = {
-    "Wall Street Journal": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
-    "New York Post": "https://nypost.com/feed/",
-    # "Bloomberg": "https://www.bloomberg.com/feed/podcast/next_china.xml",  # ← optional auskommentiert
-    "Financial Times": "https://www.ft.com/?format=rss",
-    "Reuters": "https://www.reutersagency.com/feed/?best-topics=china&post_type=best",
-    "The Guardian": "https://www.theguardian.com/world/china/rss",
-    "Nikkei Asia": "https://asia.nikkei.com/rss/feed/nar",
-    "Yahoo News": "https://www.yahoo.com/news/rss/",
-    "Yahoo Finance": "https://finance.yahoo.com/news/rss/",
-    "AP News": "https://apnews.com/rss"
-}
-# === Deutschsprachige Medien ===
-feeds_german = {
-    "Finanzmarktwelt": "https://www.finanzmarktwelt.de/rss",
-    "Welt": "https://www.welt.de/feeds/section/wirtschaft.rss",
-    "FAZ": "https://www.faz.net/rss/aktuell/",
-    "Frankfurter Rundschau": "https://www.fr.de/rss.xml",
-    "Tagesspiegel": "https://www.tagesspiegel.de/rss.xml",
-    "Der Standard": "https://www.derstandard.at/rss"
-}
-
 # === Think Tanks & Institute ===
 feeds_thinktanks = {
     "MERICS": "https://merics.org/en/rss.xml",
