@@ -212,7 +212,7 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
 
 # === Google News Extraction ===
 
-ddef extract_source(title):
+def extract_source(title):
     known_sources = [
         "Bloomberg", "Reuters", "Financial Times", "Wall Street Journal", "WSJ",
         "The Guardian", "New York Post", "Yahoo Finance", "Yahoo News", "AP News",
