@@ -6,6 +6,8 @@ import requests
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
+import imaplib
+import email
 
 
 # === 🧠 Wirtschaftskalendar (Dummy) ===
