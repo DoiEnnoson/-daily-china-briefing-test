@@ -116,7 +116,6 @@ feeds_topchina = {
     "Google News – China": "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en"
 }
 
-
 # === SCMP & Yicai ===
 feeds_scmp_yicai = {
     "SCMP": "https://www.scmp.com/rss/91/feed",
@@ -224,6 +223,69 @@ def extract_source(title):
         return title.split("-")[-1].strip()
 
     return "Unbekannt"
+
+
+# === Substack Mail-Konfiguration laden ===
+substack_mail = os.getenv("SUBSTACK_MAIL")
+if not substack_mail:
+    raise ValueError("SUBSTACK_MAIL environment variable not found!")
+
+mail_pairs = substack_mail.split(";")
+mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
+
+
+# === Substack via Gmail abrufen ===
+def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results=5):
+    """Liest Substack-Mails aus Gmail und extrahiert Titel, Teaser, Link."""
+    import imaplib
+    import email
+    from bs4 import BeautifulSoup
+
+    imap = imaplib.IMAP4_SSL("imap.gmail.com")
+    imap.login(email_user, email_password)
+    imap.select(folder)
+
+    typ, data = imap.search(None, '(UNSEEN FROM "China Business Spotlight")')
+    if typ != "OK":
+        return ["❌ Fehler beim Suchen nach Substack-Mails."]
+
+    posts = []
+    email_ids = data[0].split()[-max_results:]
+    for eid in reversed(email_ids):
+        typ, msg_data = imap.fetch(eid, "(RFC822)")
+        if typ != "OK":
+            continue
+
+        msg = email.message_from_bytes(msg_data[0][1])
+        html = None
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    html = part.get_payload(decode=True).decode()
+                    break
+        elif msg.get_content_type() == "text/html":
+            html = msg.get_payload(decode=True).decode()
+
+        if not html:
+            continue
+
+        soup = BeautifulSoup(html, "html.parser")
+        title_tag = soup.find("h1")
+        teaser_tag = soup.find("p")
+        link_tag = soup.find("a", href=True)
+
+        if title_tag and link_tag:
+            title = title_tag.text.strip()
+            teaser = teaser_tag.text.strip() if teaser_tag else ""
+            link = link_tag["href"].strip()
+            line = f'• <a href="{link}">{title}</a>'
+            if teaser:
+                line += f' – {teaser}'
+            posts.append(line)
+
+    imap.logout()
+    return posts if posts else ["Keine neuen Substack-Mails gefunden."]
 
 
 
