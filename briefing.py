@@ -10,6 +10,15 @@ import imaplib
 import email
 
 
+# === Substack Mail-Konfiguration laden ===
+substack_mail = os.getenv("SUBSTACK_MAIL")
+if not substack_mail:
+    raise ValueError("SUBSTACK_MAIL environment variable not found!")
+
+mail_pairs = substack_mail.split(";")
+mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
+
+
 # === 🧠 Wirtschaftskalendar (Dummy) ===
 
 def fetch_china_economic_events():
