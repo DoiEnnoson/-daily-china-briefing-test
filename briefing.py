@@ -235,8 +235,8 @@ mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
 
 
 # === Substack via Gmail abrufen ===
-def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results=5):
-    """Liest Substack-Mails aus Gmail und extrahiert Titel, Teaser, Link."""
+def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results=1):
+    """Liest Substack-Mails aus Gmail, extrahiert Titel + echten Teaser + Link."""
     import imaplib
     import email
     from bs4 import BeautifulSoup
@@ -271,21 +271,34 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             continue
 
         soup = BeautifulSoup(html, "html.parser")
-        title_tag = soup.find("h1")
-        teaser_tag = soup.find("p")
-        link_tag = soup.find("a", href=True)
 
-        if title_tag and link_tag:
-            title = title_tag.text.strip()
-            teaser = teaser_tag.text.strip() if teaser_tag else ""
-            link = link_tag["href"].strip()
-            line = f'• <a href="{link}">{title}</a>'
-            if teaser:
-                line += f' – {teaser}'
-            posts.append(line)
+        # Titel
+        title_tag = soup.find("h1")
+        title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
+
+        # Link (erstes <a> mit "https" im href)
+        link_tag = soup.find("a", href=lambda x: x and "https://" in x)
+        link = link_tag["href"].strip() if link_tag else "#"
+
+        # Teaser: Versuche, echten Artikeltext unter dem Titel zu finden
+        teaser = ""
+        if title_tag:
+            content_candidates = title_tag.find_all_next(string=True)
+            for text in content_candidates:
+                stripped = text.strip()
+                if 30 < len(stripped) < 300 and "dear reader" not in stripped.lower():
+                    teaser = stripped
+                    break
+
+        # Ergebnis zusammenbauen
+        line = f'• <a href="{link}">{title}</a>'
+        if teaser:
+            line += f" – {teaser}"
+        posts.append(line)
 
     imap.logout()
     return posts if posts else ["Keine neuen Substack-Mails gefunden."]
+
 
 
 
