@@ -401,8 +401,39 @@ def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
     briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
 
-    briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
+    briefing.append("\n## 📊 Börsenindizes & Währungen China (08:00 Uhr MESZ)")
     briefing.extend(fetch_index_data())
+
+    # Wechselkurse ergänzen
+    currency_data = fetch_currency_data()
+    briefing.append("")  # Leerzeile zur Trennung
+
+    # HKD Peg (CPR)
+    if isinstance(currency_data.get("HKDUSD"), tuple):
+        val, arrow, pct = currency_data["HKDUSD"]
+        briefing.append(f"• CPR (HKD/USD): {val:.4f} {arrow} ({pct:+.2f} %)")
+    else:
+        briefing.append(currency_data.get("HKDUSD"))
+
+    # USDCNY
+    if isinstance(currency_data.get("USDCNY"), tuple):
+        val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
+        briefing.append(f"• USD/CNY (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
+    else:
+        briefing.append(currency_data.get("USDCNY"))
+
+    # USDCNH
+    if isinstance(currency_data.get("USDCNH"), tuple):
+        val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
+        briefing.append(f"• USD/CNH (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
+    else:
+        briefing.append(currency_data.get("USDCNH"))
+
+    # Spread CNH - CNY
+    if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
+        spread = val_cnh - val_cny
+        briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
+
 
     # === Top 5 China-Stories laut Google News ===
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
