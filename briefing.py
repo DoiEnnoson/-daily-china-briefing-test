@@ -396,68 +396,59 @@ x_accounts = [
 def fetch_recent_x_posts(account, name, url):
     return [f"• {name} (@{account}) → {url}"]
 
-# === Briefing generieren ===
 def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
     briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
 
+    # === 📊 Börsendaten
     briefing.append("\n## 📊 Börsenindizes & Währungen China (08:00 Uhr MESZ)")
     briefing.extend(fetch_index_data())
 
-        # Wechselkurse ergänzen
     currency_data = fetch_currency_data()
-    briefing.append("")  # Leerzeile zur Trennung
+    briefing.append("")
 
-    # HKD Peg (CPR) – Kehrwert beachten!
+    # HKD Peg (CPR)
     if isinstance(currency_data.get("HKDUSD"), tuple):
         val, arrow, pct = currency_data["HKDUSD"]
         val_inv = 1 / val
-        pct_inv = -pct  # Richtungsumkehr
+        pct_inv = -pct
         arrow_inv = "→" if abs(pct_inv) < 0.01 else "↑" if pct_inv > 0 else "↓"
         briefing.append(f"• CPR (HKD/USD): {val_inv:.4f} {arrow_inv} ({pct_inv:+.2f} %)")
     else:
         briefing.append(currency_data.get("HKDUSD"))
 
-    # USDCNY (Onshore)
     if isinstance(currency_data.get("USDCNY"), tuple):
         val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
         briefing.append(f"• USD/CNY (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
     else:
         briefing.append(currency_data.get("USDCNY"))
 
-    # USDCNH (Offshore)
     if isinstance(currency_data.get("USDCNH"), tuple):
         val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
         briefing.append(f"• USD/CNH (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
     else:
         briefing.append(currency_data.get("USDCNH"))
 
-    # Spread CNH - CNY (nur wenn beide Werte verfügbar)
-    if (
-        isinstance(currency_data.get("USDCNY"), tuple) and
-        isinstance(currency_data.get("USDCNH"), tuple)
-    ):
-        val_cny = currency_data["USDCNY"][0]
-        val_cnh = currency_data["USDCNH"][0]
+    if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
         spread = val_cnh - val_cny
         briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
 
-    return briefing
-
-    # === Top 5 China-Stories laut Google News ===
+    # === 🏆 Top 5 China-Stories laut Google News
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
         briefing.append(f"\n### {source}")
         briefing.extend(fetch_news(url, max_items=30, top_n=5))
 
+    # === 📈 NBS
     briefing.append("\n## 📈 NBS – Nationale Statistikdaten")
     briefing.extend(fetch_latest_nbs_data())
 
+    # === 📡 X
     briefing.append("\n## 📡 Stimmen & Perspektiven von X")
     for acc in x_accounts:
         briefing.extend(fetch_recent_x_posts(acc["account"], acc["name"], acc["url"]))
 
-    # === 🌍 Google News – Nach Sprache & Quelle sortiert ===
+    # === 🌍 Google News sortiert
     briefing.append("\n## 🌍 Google News – Nach Sprache & Quelle sortiert")
 
     all_articles = {
@@ -488,7 +479,6 @@ def generate_briefing():
             if source in ["SCMP", "Nikkei Asia", "Yicai"]:
                 category = "ASIA"
 
-            # Titel bereinigen (entferne Quelle am Anfang oder Ende)
             clean_title = title
             if f"– {source}" in title:
                 clean_title = title.split(f"– {source}")[0].strip()
@@ -511,7 +501,6 @@ def generate_briefing():
         if not sources:
             continue
         briefing.append(f"\n## {category_titles.get(cat_key, cat_key)}")
-
         for source_name, articles in sorted(sources.items()):
             if not articles:
                 continue
@@ -519,25 +508,27 @@ def generate_briefing():
             top_articles = sorted(articles, reverse=True)[:5]
             briefing.extend([a[1] for a in top_articles])
 
+    # === Substack
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
     briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.")
 
-
+    # === SCMP & Yicai
     briefing.append("\n## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
     briefing.append("\n## Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-        # === Testlauf für Mail-Briefing China Business Spotlight ===
+    # === Substack-Mail-Import
     briefing.append("\n## 🧪 Test: China Business Spotlight per Mail")
     briefing.extend(fetch_substack_from_email(
         email_user=mail_config["GMAIL_USER"],
         email_password=mail_config["GMAIL_PASS"]
     ))
 
-
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
+
+    # === FINAL RETURN: Als HTML formatieren
     return f"""\
 <html>
   <body>
@@ -547,21 +538,3 @@ def generate_briefing():
   </body>
 </html>"""
 
-# === E-Mail senden ===
-print("🧠 Erzeuge Briefing...")
-briefing_content = generate_briefing()
-
-msg = MIMEText(briefing_content, "html", "utf-8")
-msg["Subject"] = "📰 Dein tägliches China-Briefing"
-msg["From"] = config_dict["EMAIL_USER"]
-msg["To"] = config_dict["EMAIL_TO"]
-
-print("📤 Sende E-Mail...")
-try:
-    with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
-        server.starttls()
-        server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
-        server.send_message(msg)
-    print("✅ E-Mail wurde gesendet!")
-except Exception as e:
-    print("❌ Fehler beim Senden der E-Mail:", str(e))
