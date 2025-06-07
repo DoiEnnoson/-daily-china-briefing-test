@@ -3,7 +3,7 @@ import smtplib
 import feedparser
 from collections import defaultdict
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
