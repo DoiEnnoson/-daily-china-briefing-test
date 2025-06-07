@@ -400,12 +400,25 @@ def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
     briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
 
-    briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
+    # === Börsenindizes & Wechselkurse mit Feiertags-Logik ===
+briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
+
+if is_weekend or is_holiday_china:
+    briefing.append("📈 Heute kein Handelstag an den chinesischen Börsen.")
+else:
     briefing.extend(fetch_index_data())
 
-    # === Wechselkurse ===
+if is_weekend or is_holiday_hk:
+    briefing.append("📈 Heute kein Handelstag an der Börse Hongkong.")
+# Wenn du fetch_index_data() auch für HK nutzt, dann trenn die HK-Indizes ggf. separat auf
+
+# === Wechselkurse ===
+briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
+
+if is_weekend or is_holiday_china or is_holiday_hk:
+    briefing.append("📉 Heute keine aktuellen Wechselkurse.")
+else:
     currency_data = fetch_currency_data()
-    briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
 
     # HKD Peg (CPR) – Kehrwert beachten!
     if isinstance(currency_data.get("HKDUSD"), tuple):
@@ -440,6 +453,7 @@ def generate_briefing():
         val_cnh = currency_data["USDCNH"][0]
         spread = val_cnh - val_cny
         briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
+
 
     # === Top 5 China-Stories laut Google News ===
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
