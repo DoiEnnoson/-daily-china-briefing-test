@@ -1,13 +1,46 @@
 import os
+import json
+from datetime import date
 import smtplib
 import feedparser
 from collections import defaultdict
 import requests
-from datetime import datetime, timedelta, date
 from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
 import email
+
+# Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
+HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
+
+def load_holidays(filepath):
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return set(item["date"] for item in data.get("holidays", []))
+    except Exception as e:
+        print(f"Fehler beim Laden der Feiertage aus {filepath}: {e}")
+        return set()
+
+def is_holiday(today_str, holidays_set):
+    return today_str in holidays_set
+
+def main():
+    today = date.today()
+    today_str = today.isoformat()
+
+    china_holidays = load_holidays(CHINA_HOLIDAY_FILE)
+    hk_holidays = load_holidays(HK_HOLIDAY_FILE)
+
+    if is_holiday(today_str, china_holidays):
+        print(f"Heute ({today_str}) ist ein Feiertag in China. Kein Börsen- oder Kurs-Update.")
+        return
+
+    if is_holiday(today_str, hk_holidays):
+        print(f"Heute ({today_str}) ist ein Feiertag in Hongkong. Kein Börsen- oder Kurs-Update.")
+        return
 
 
 # === Substack Mail-Konfiguration laden ===
