@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datet
+from datetime import date, datetime
 import smtplib
 import feedparser
 from collections import defaultdict
@@ -9,10 +9,6 @@ from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
 import email
-
-import os
-import json
-from datetime import date
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
