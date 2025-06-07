@@ -321,7 +321,7 @@ def fetch_latest_nbs_data():
     except Exception as e:
         return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
 
-# === Börsendaten abrufen ===
+# === Börsendaten & Wechselkurse abrufen ===
 def fetch_index_data():
     indices = {
         "Hang Seng Index (HSI)": "^HSI",
@@ -352,6 +352,36 @@ def fetch_index_data():
         except Exception as e:
             results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
     return results
+
+def fetch_currency_data():
+    currencies = {
+        "USDCNY": "USDCNY=X",
+        "USDCNH": "USDCNH=X",
+        "HKDUSD": "HKDUSD=X",
+    }
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    results = {}
+    for name, symbol in currencies.items():
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+            if len(closes) < 2 or not all(closes[-2:]):
+                results[name] = f"❌ {name}: Keine gültigen Daten verfügbar."
+                continue
+            prev_close = closes[-2]
+            last_close = closes[-1]
+            change = last_close - prev_close
+            pct = (change / prev_close) * 100
+            arrow = "→" if abs(pct) < 0.01 else "↑" if change > 0 else "↓"
+            results[name] = (last_close, arrow, pct)
+        except Exception as e:
+            results[name] = f"❌ {name}: Fehler beim Abrufen ({e})"
+    return results
+
 
 # === Stimmen von X ===
 x_accounts = [
