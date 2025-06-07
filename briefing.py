@@ -426,19 +426,19 @@ def generate_briefing():
     # === Börsenindizes & Wechselkurse mit Feiertags-Logik ===
     briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
 
-    if is_weekend or is_holiday_china:
+    if is_weekend_day or is_holiday_china:
         briefing.append("📈 Heute kein Handelstag an den chinesischen Börsen.")
     else:
         briefing.extend(fetch_index_data())
 
-    if is_weekend or is_holiday_hk:
+    if is_weekend_day or is_holiday_hk:
         briefing.append("📈 Heute kein Handelstag an der Börse Hongkong.")
     # Wenn du fetch_index_data() auch für HK nutzt, dann trenn die HK-Indizes ggf. separat auf
 
     # === Wechselkurse ===
     briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
 
-    if is_weekend or is_holiday_china or is_holiday_hk:
+    if is_weekend_day or is_holiday_china or is_holiday_hk:
         briefing.append("📉 Heute keine aktuellen Wechselkurse.")
     else:
         currency_data = fetch_currency_data()
