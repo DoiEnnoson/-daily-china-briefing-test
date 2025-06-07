@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datet
 import smtplib
 import feedparser
 from collections import defaultdict
@@ -9,6 +9,10 @@ from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
 import email
+
+import os
+import json
+from datetime import date
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +23,7 @@ def load_holidays(filepath):
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+            # Falls die JSON Struktur so ist: {"holidays": [{"date": "YYYY-MM-DD"}, ...]}
             return set(item["date"] for item in data.get("holidays", []))
     except Exception as e:
         print(f"Fehler beim Laden der Feiertage aus {filepath}: {e}")
@@ -27,29 +32,18 @@ def load_holidays(filepath):
 def is_holiday(today_str, holidays_set):
     return today_str in holidays_set
 
-def main():
-    today = date.today()
-    today_str = today.isoformat()
+def is_weekend():
+    # 5=Samstag, 6=Sonntag
+    return date.today().weekday() >= 5
 
-    china_holidays = load_holidays(CHINA_HOLIDAY_FILE)
-    hk_holidays = load_holidays(HK_HOLIDAY_FILE)
+# Werte vorladen (global)
+today_str = date.today().isoformat()
+china_holidays = load_holidays(CHINA_HOLIDAY_FILE)
+hk_holidays = load_holidays(HK_HOLIDAY_FILE)
+is_holiday_china = is_holiday(today_str, china_holidays)
+is_holiday_hk = is_holiday(today_str, hk_holidays)
+is_weekend_day = is_weekend()
 
-    if is_holiday(today_str, china_holidays):
-        print(f"Heute ({today_str}) ist ein Feiertag in China. Kein Börsen- oder Kurs-Update.")
-        return
-
-    if is_holiday(today_str, hk_holidays):
-        print(f"Heute ({today_str}) ist ein Feiertag in Hongkong. Kein Börsen- oder Kurs-Update.")
-        return
-
-
-# === Substack Mail-Konfiguration laden ===
-substack_mail = os.getenv("SUBSTACK_MAIL")
-if not substack_mail:
-    raise ValueError("SUBSTACK_MAIL environment variable not found!")
-
-mail_pairs = substack_mail.split(";")
-mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
 
 
 # === 🧠 Wirtschaftskalendar (Dummy) ===
