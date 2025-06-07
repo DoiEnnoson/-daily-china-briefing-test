@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import date
+from datetime import datetime
 import smtplib
 import feedparser
 from collections import defaultdict
