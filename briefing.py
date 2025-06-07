@@ -90,7 +90,7 @@ feeds_thinktanks = {
     "Lowy Institute": "https://www.lowyinstitute.org/the-interpreter/rss.xml"
 }
 
-# === Substack-Feeds ===
+# === Substack-Feeds: Bleibt noch als als Ruecfalloption - Substacks werden per Mail abgerufen ===
 feeds_substack = {
     "Sinocism – Bill Bishop": "https://sinocism.com/feed",
     "ChinaTalk – Jordan Schneider": "https://chinatalk.substack.com/feed",
