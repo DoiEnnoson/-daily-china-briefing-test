@@ -403,6 +403,9 @@ def generate_briefing():
     briefing.append("\n## 📊 Börsenindizes China (08:00 Uhr MESZ)")
     briefing.extend(fetch_index_data())
 
+    # 🧪 TEST: Wechselkurse abrufen, aber noch nicht anzeigen
+    currency_data = fetch_currency_data()
+
     # === Top 5 China-Stories laut Google News ===
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
