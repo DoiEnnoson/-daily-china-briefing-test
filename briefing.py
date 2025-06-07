@@ -537,13 +537,13 @@ if (
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
     return f"""\
-<html>
-  <body>
-    <pre style="font-family: system-ui, sans-serif">
+    <html>
+        <body>
+            <pre style="font-family: system-ui, sans-serif">
 {chr(10).join(briefing)}
-    </pre>
-  </body>
-</html>"""
+            </pre>
+        </body>
+    </html>"""
 
 # === E-Mail senden ===
 print("🧠 Erzeuge Briefing...")
