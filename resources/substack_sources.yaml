@@ -1,1 +1,145 @@
+- order: 1
+  name: "Read China"
+  sender: "yuzhehe@substack.com"
+  check_relevance: false
+
+- order: 2
+  name: "Sinica Podcast"
+  sender: "sinica+trivium-china@substack.com"
+  check_relevance: false
+
+- order: 3
+  name: "The China Week"
+  sender: "thechinaweek@substack.com"
+  check_relevance: false
+
+- order: 4
+  name: "Tech Buzz China Insider"
+  sender: "techbuzzchina@substack.com"
+  check_relevance: false
+
+- order: 5
+  name: "Sinical China"
+  sender: "sinicalchina@substack.com"
+  check_relevance: false
+
+- order: 6
+  name: "Inside China"
+  sender: "fredgao@substack.com"
+  check_relevance: false
+
+- order: 7
+  name: "Trade War"
+  sender: "dexter@substack.com"
+  check_relevance: false
+
+- order: 8
+  name: "ChinAI"
+  sender: "chinai@substack.com"
+  check_relevance: false
+
+- order: 9
+  name: "The Great Wall Street - Investing in China"
+  sender: "investinginchina@substack.com"
+  check_relevance: false
+
+- order: 10
+  name: "Interconnected!"
+  sender: "interconnect@substack.com"
+  check_relevance: false
+
+- order: 11
+  name: "ASEAN Wonk Newsletter"
+  sender: "aseanwonk@substack.com"
+  check_relevance: false
+
+- order: 12
+  name: "The East is Read"
+  sender: "eastisread@substack.com"
+  check_relevance: false
+
+- order: 13
+  name: "Hong Kong Money Never Sleeps"
+  sender: "moneyhk@substack.com"
+  check_relevance: false
+
+- order: 14
+  name: "Tracking People's Daily"
+  sender: "trackingpeoplesdaily@substack.com"
+  check_relevance: false
+
+- order: 15
+  name: "Baiguan"
+  sender: "baiguan@substack.com"
+  check_relevance: false
+
+- order: 16
+  name: "Bamboo Works"
+  sender: "bambooworks@substack.com"
+  check_relevance: false
+
+- order: 17
+  name: "China Up Close"
+  sender: "lijingjing@substack.com"
+  check_relevance: false
+
+- order: 18
+  name: "CHINA POLICY"
+  sender: "chinapolicy@substack.com"
+  check_relevance: false
+
+- order: 19
+  name: "Bert’s Newsletter"
+  sender: "bertsnewsletter@substack.com"
+  check_relevance: false
+
+- order: 20
+  name: "ChinaTalk"
+  sender: "chinatalk@substack.com"
+  check_relevance: false
+
+- order: 21
+  name: "Interconnects"
+  sender: "robotic@substack.com"
+  check_relevance: false
+
+- order: 22
+  name: "China Articles"
+  sender: "chinaarticles@substack.com"
+  check_relevance: false
+
+- order: 23
+  name: "Rare Earth Observer"
+  sender: "treo@substack.com"
+  check_relevance: true
+
+- order: 24
+  name: "Sinocism"
+  sender: "bill@sinocism.com"
+  check_relevance: false
+
+- order: 25
+  name: "Beijing Scroll"
+  sender: "beijingscroll@substack.com"
+  check_relevance: false
+
+- order: 26
+  name: "Ginger River Review (GRR)"
+  sender: "gingerriver@substack.com"
+  check_relevance: false
+
+- order: 27
+  name: "CrossPacificWatchers"
+  sender: "crosspacificwatchers@substack.com"
+  check_relevance: false
+
+- order: 28
+  name: "Pekingnology/CCG"
+  sender: "pekingnology@substack.com"
+  check_relevance: false
+
+- order: 29
+  name: "China Business Spotlight"
+  sender: "chinabusinessspotlight@substack.com"
+  check_relevance: false
 
