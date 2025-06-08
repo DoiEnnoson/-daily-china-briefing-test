@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import imaplib
 import email
 
+
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
@@ -258,69 +259,80 @@ mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
 
 
 # === Substack via Gmail abrufen ===
-def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results=1):
-    """Liest Substack-Mails aus Gmail, extrahiert Titel + echten Teaser + Link."""
+def fetch_substack_posts_for_briefing(yaml_path):
+    """Liest neue Substack-Mails aus Gmail anhand der YAML-Senderliste."""
     import imaplib
     import email
     from bs4 import BeautifulSoup
+    import os
+    import yaml
 
-    imap = imaplib.IMAP4_SSL("imap.gmail.com")
-    imap.login(email_user, email_password)
-    imap.select(folder)
+    def load_substack_sources(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
 
-    typ, data = imap.search(None, '(UNSEEN FROM "China Business Spotlight")')
-    if typ != "OK":
-        return ["❌ Fehler beim Suchen nach Substack-Mails."]
+    def fetch_latest_unseen(email_user, email_pass, sender, max_results=1):
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        imap.login(email_user, email_pass)
+        imap.select("INBOX")
+        typ, data = imap.search(None, f'(UNSEEN FROM "{sender}")')
+        if typ != "OK" or not data or not data[0]:
+            imap.logout()
+            return []
 
-    posts = []
-    email_ids = data[0].split()[-max_results:]
-    for eid in reversed(email_ids):
-        typ, msg_data = imap.fetch(eid, "(RFC822)")
-        if typ != "OK":
-            continue
+        email_ids = data[0].split()[-max_results:]
+        posts = []
+        for eid in reversed(email_ids):
+            typ, msg_data = imap.fetch(eid, "(RFC822)")
+            if typ != "OK":
+                continue
+            msg = email.message_from_bytes(msg_data[0][1])
+            html = None
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        html = part.get_payload(decode=True).decode(errors="ignore")
+                        break
+            elif msg.get_content_type() == "text/html":
+                html = msg.get_payload(decode=True).decode(errors="ignore")
+            if not html:
+                continue
 
-        msg = email.message_from_bytes(msg_data[0][1])
-        html = None
+            soup = BeautifulSoup(html, "html.parser")
+            title_tag = soup.find("h1")
+            title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
+            link_tag = soup.find("a", href=lambda x: x and "https://" in x)
+            link = link_tag["href"].strip() if link_tag else "#"
 
-        if msg.is_multipart():
-            for part in msg.walk():
-                if part.get_content_type() == "text/html":
-                    html = part.get_payload(decode=True).decode()
-                    break
-        elif msg.get_content_type() == "text/html":
-            html = msg.get_payload(decode=True).decode()
+            teaser = ""
+            if title_tag:
+                for text in title_tag.find_all_next(string=True):
+                    t = text.strip()
+                    if 30 < len(t) < 300 and "dear reader" not in t.lower():
+                        teaser = t
+                        break
 
-        if not html:
-            continue
+            line = f'• <a href="{link}">{title}</a>'
+            if teaser:
+                line += f" – {teaser}"
+            posts.append(line)
 
-        soup = BeautifulSoup(html, "html.parser")
+        imap.logout()
+        return posts
 
-        # Titel
-        title_tag = soup.find("h1")
-        title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
+    email_user = os.getenv("GMAIL_USER")
+    email_pass = os.getenv("GMAIL_PASS")
+    if not email_user or not email_pass:
+        return ["❌ Gmail-Zugangsdaten fehlen."]
 
-        # Link (erstes <a> mit "https" im href)
-        link_tag = soup.find("a", href=lambda x: x and "https://" in x)
-        link = link_tag["href"].strip() if link_tag else "#"
+    sources = load_substack_sources(yaml_path)
+    result_lines = []
+    for entry in sorted(sources, key=lambda x: x["order"]):
+        sender = entry["sender"]
+        posts = fetch_latest_unseen(email_user, email_pass, sender)
+        result_lines.extend(posts)
 
-        # Teaser: Versuche, echten Artikeltext unter dem Titel zu finden
-        teaser = ""
-        if title_tag:
-            content_candidates = title_tag.find_all_next(string=True)
-            for text in content_candidates:
-                stripped = text.strip()
-                if 30 < len(stripped) < 300 and "dear reader" not in stripped.lower():
-                    teaser = stripped
-                    break
-
-        # Ergebnis zusammenbauen
-        line = f'• <a href="{link}">{title}</a>'
-        if teaser:
-            line += f" – {teaser}"
-        posts.append(line)
-
-    imap.logout()
-    return posts if posts else ["Keine neuen Substack-Mails gefunden."]
+    return result_lines if result_lines else ["Keine neuen Substack-Mails gefunden."]
 
 
 
@@ -560,12 +572,11 @@ def generate_briefing():
     briefing.append("\n## Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-    # === Testlauf für Mail-Briefing China Business Spotlight ===
-    briefing.append("\n## 🧪 Test: China Business Spotlight per Mail")
-    briefing.extend(fetch_substack_from_email(
-        email_user=mail_config["GMAIL_USER"],
-        email_password=mail_config["GMAIL_PASS"]
-    ))
+    briefing.append("## 📬 China-Fokus: Substack-Briefings")
+    briefing.append("Testbetrieb mit kuratierten Substack-News. Feedback willkommen!")
+
+    for line in fetch_substack_posts_for_briefing("substack_sources.yaml"):
+        briefing.append(line)
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
