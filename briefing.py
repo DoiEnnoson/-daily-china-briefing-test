@@ -560,20 +560,20 @@ def generate_briefing():
             briefing.extend([a[1] for a in top_articles])
 
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
-    briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.")
-
-    briefing.append("\n## SCMP – Top-Themen")
+    briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.\n")
+    
+    briefing.append("## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
     briefing.append("\n## Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-        # === Testlauf für Mail-Briefing Substack ===
     substack_sources = load_substack_sources()
     substack_output = parse_substack_articles(emails, substack_sources)
 
-    output += "## 🧪 Test: Substacks\n\n"
-    output += substack_output + "\n"
+    briefing.append("\n## 🧪 Test: Substacks\n")
+    briefing.append(substack_output + "\n")
+
     
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
