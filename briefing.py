@@ -25,17 +25,22 @@ try:
         key = key.strip()
         val = val.strip()
         parts[key] = val
-    print(f"[DEBUG] Parsed parts: {parts}")
     MAIL_USER = parts.get('MAIL_USER')
     MAIL_PASS = parts.get('MAIL_PASS')
+    print(f"[DEBUG] Parsed parts: {parts}")
+    print(f"[DEBUG] MAIL_USER: {MAIL_USER}")
+    print(f"[DEBUG] MAIL_PASS: {'***' if MAIL_PASS else None}")
 except Exception as e:
     raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
 
 if not MAIL_USER or not MAIL_PASS:
     raise RuntimeError(
-        f"MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.\n"
-        f"MAIL_USER: {MAIL_USER}\nMAIL_PASS: {MAIL_PASS}\nparts: {parts}"
+        f"\n[ERROR] MAIL_USER oder MAIL_PASS konnte nicht extrahiert werden!\n"
+        f"[DEBUG] MAIL_USER: {MAIL_USER}\n"
+        f"[DEBUG] MAIL_PASS: {'***' if MAIL_PASS else None}\n"
+        f"[DEBUG] Alle parts: {parts}"
     )
+
 
 
 
