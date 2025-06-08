@@ -10,6 +10,23 @@ from bs4 import BeautifulSoup
 import imaplib
 import email
 
+import os
+# --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
+secret = os.getenv('SUBSTACK_MAIL')
+
+if not secret:
+    raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
+
+try:
+    parts = dict(item.split('=') for item in secret.split('&'))
+    MAIL_USER = parts.get('user')
+    MAIL_PASS = parts.get('pass')
+except Exception as e:
+    raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
+
+if not MAIL_USER or not MAIL_PASS:
+    raise RuntimeError("MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.")
+
 
 import csv
 from pathlib import Path
