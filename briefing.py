@@ -11,12 +11,11 @@ from bs4 import BeautifulSoup
 import imaplib
 import email
 
-# Wichtig: src-Ordner zum Suchpfad hinzufügen
+# src-Ordner zum Suchpfad hinzufügen
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
-from utils.substack import load_substack_sources
-from sections.substack_section import parse_substack_articles
-
+from substack import load_substack_sources
+from substack_section import parse_substack_articles
 
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
