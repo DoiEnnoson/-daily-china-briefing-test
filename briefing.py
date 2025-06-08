@@ -11,16 +11,13 @@ import imaplib
 import email
 
 import os
-# --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
-secret = os.getenv('SUBSTACK_MAIL')
-
-if not secret:
-    raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
-
 try:
-    parts = dict(item.split('=') for item in secret.split('&'))
-    MAIL_USER = parts.get('user')
-    MAIL_PASS = parts.get('pass')
+    parts = {}
+    for item in secret.split('&'):
+        key, val = item.split('=', 1)
+        parts[key] = val
+    MAIL_USER = parts.get('MAIL_USER')
+    MAIL_PASS = parts.get('MAIL_PASS')
 except Exception as e:
     raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
 
