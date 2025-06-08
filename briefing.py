@@ -12,7 +12,7 @@ import email
 
 # --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
 secret = os.getenv('SUBSTACK_MAIL')
-print(f"SUBSTACK_MAIL: {secret}")  # Zum Debuggen, danach wieder löschen
+print(f"SUBSTACK_MAIL: {secret}")  # Zum Debuggen, danach löschen
 
 if not secret:
     raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
@@ -22,6 +22,7 @@ try:
     for item in secret.split('&'):
         key, val = item.split('=', 1)
         parts[key] = val
+    print(f"parts: {parts}")  # Debug-Ausgabe des Dictionary
     MAIL_USER = parts.get('MAIL_USER')
     MAIL_PASS = parts.get('MAIL_PASS')
 except Exception as e:
