@@ -43,8 +43,6 @@ if not MAIL_USER or not MAIL_PASS:
 
 
 
-
-
 import csv
 from pathlib import Path
 
