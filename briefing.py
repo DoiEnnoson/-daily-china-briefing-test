@@ -305,9 +305,25 @@ mail_pairs = substack_mail.split(";")
 mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
 
 
-# === Substack via Gmail abrufen ===
+import os
+
+# Mail-Login aus Umgebungsvariable holen
+secret = os.getenv('SUBSTACK_MAIL')
+if not secret:
+    raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
+
+try:
+    parts = dict(item.split('=') for item in secret.split('&'))
+    MAIL_USER = parts.get('user')
+    MAIL_PASS = parts.get('pass')
+except Exception as e:
+    raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
+
+if not MAIL_USER or not MAIL_PASS:
+    raise RuntimeError("MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.")
+
+# Funktion, um Substack-Mails aus Gmail abzurufen und als HTML-Links mit Teaser zurückzugeben
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results=1):
-    """Liest Substack-Mails aus Gmail, extrahiert Titel + echten Teaser + Link."""
     import imaplib
     import email
     from bs4 import BeautifulSoup
@@ -351,7 +367,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         link_tag = soup.find("a", href=lambda x: x and "https://" in x)
         link = link_tag["href"].strip() if link_tag else "#"
 
-        # Teaser: Versuche, echten Artikeltext unter dem Titel zu finden
+        # Teaser: Versuch, echten Artikeltext unter dem Titel zu finden
         teaser = ""
         if title_tag:
             content_candidates = title_tag.find_all_next(string=True)
@@ -369,6 +385,31 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
     imap.logout()
     return posts if posts else ["Keine neuen Substack-Mails gefunden."]
+
+
+# Optional: Zum lokalen Testen
+if __name__ == "__main__":
+    import os
+
+    secret = os.getenv('SUBSTACK_MAIL')
+    if not secret:
+        raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
+
+    try:
+        parts = dict(item.split('=') for item in secret.split('&'))
+        MAIL_USER = parts.get('user')
+        MAIL_PASS = parts.get('pass')
+    except Exception as e:
+        raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
+
+    if not MAIL_USER or not MAIL_PASS:
+        raise RuntimeError("MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.")
+
+    mails = fetch_substack_from_email(MAIL_USER, MAIL_PASS, max_results=3)
+    print("Gefundene Substack-Beiträge:")
+    for m in mails:
+        print(m)
+
 
 
 
