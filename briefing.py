@@ -12,6 +12,7 @@ import email
 
 # --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
 secret = os.getenv('SUBSTACK_MAIL')
+print(f"SUBSTACK_MAIL: {secret}")  # Zum Debuggen, danach wieder löschen
 
 if not secret:
     raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
@@ -28,6 +29,7 @@ except Exception as e:
 
 if not MAIL_USER or not MAIL_PASS:
     raise RuntimeError("MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.")
+
 
 
 import csv
