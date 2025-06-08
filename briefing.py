@@ -563,12 +563,13 @@ def generate_briefing():
     briefing.append("\n## Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-    # === Testlauf für Mail-Briefing China Business Spotlight ===
-    briefing.append("\n## 🧪 Test: China Business Spotlight per Mail")
-    briefing.extend(fetch_substack_from_email(
-        email_user=mail_config["GMAIL_USER"],
-        email_password=mail_config["GMAIL_PASS"]
-    ))
+        # === Testlauf für Mail-Briefing Substack ===
+    substack_sources = load_substack_sources()
+    substack_output = parse_substack_articles(emails, substack_sources)
+
+    output += "## 🧪 Test: Substacks\n\n"
+    output += substack_output + "\n"
+    
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
