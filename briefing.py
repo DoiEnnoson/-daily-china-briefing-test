@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 from datetime import date, datetime
 import smtplib
@@ -10,13 +9,6 @@ from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
 import email
-
-# src-Ordner zum Suchpfad hinzufügen
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
-
-from substack import load_substack_sources
-from substack_section import parse_substack_articles
-
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -560,21 +552,20 @@ def generate_briefing():
             briefing.extend([a[1] for a in top_articles])
 
     briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
-    briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.\n")
-    
-    briefing.append("## SCMP – Top-Themen")
+    briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.")
+
+    briefing.append("\n## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
     briefing.append("\n## Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-    substack_sources = load_substack_sources()
-    substack_output = parse_substack_articles(emails, substack_sources)
-
-    briefing.append("\n## 🧪 Test: Substacks\n")
-    briefing.append(substack_output + "\n")
-
-    
+    # === Testlauf für Mail-Briefing China Business Spotlight ===
+    briefing.append("\n## 🧪 Test: China Business Spotlight per Mail")
+    briefing.extend(fetch_substack_from_email(
+        email_user=mail_config["GMAIL_USER"],
+        email_password=mail_config["GMAIL_PASS"]
+    ))
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
