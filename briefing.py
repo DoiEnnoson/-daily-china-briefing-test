@@ -327,7 +327,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
-    url = "https://www.stats.gov.cn/sj/zxfb/"
+    url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
