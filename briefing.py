@@ -10,7 +10,12 @@ from bs4 import BeautifulSoup
 import imaplib
 import email
 
-import os
+# --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
+secret = os.getenv('SUBSTACK_MAIL')
+
+if not secret:
+    raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
+
 try:
     parts = {}
     for item in secret.split('&'):
