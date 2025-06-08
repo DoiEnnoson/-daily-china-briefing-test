@@ -9,6 +9,9 @@ from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 import imaplib
 import email
+from src.utils.substack import load_substack_sources
+from src.sections.substack_section import parse_substack_articles
+
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
