@@ -12,7 +12,7 @@ import email
 
 # --- Mail Login aus Umgebungsvariable SUBSTACK_MAIL laden ---
 secret = os.getenv('SUBSTACK_MAIL')
-print(f"SUBSTACK_MAIL: {secret}")  # Zum Debuggen, danach löschen
+print(f"\n[DEBUG] SUBSTACK_MAIL: {secret}")  # Debug: volle Ausgabe
 
 if not secret:
     raise RuntimeError("Umgebungsvariable SUBSTACK_MAIL ist nicht gesetzt!")
@@ -20,16 +20,23 @@ if not secret:
 try:
     parts = {}
     for item in secret.split('&'):
+        print(f"[DEBUG] Parsing item: {item}")
         key, val = item.split('=', 1)
+        key = key.strip()
+        val = val.strip()
         parts[key] = val
-    print(f"parts: {parts}")  # Debug-Ausgabe des Dictionary
+    print(f"[DEBUG] Parsed parts: {parts}")
     MAIL_USER = parts.get('MAIL_USER')
     MAIL_PASS = parts.get('MAIL_PASS')
 except Exception as e:
     raise RuntimeError(f"Fehler beim Parsen von SUBSTACK_MAIL: {e}")
 
 if not MAIL_USER or not MAIL_PASS:
-    raise RuntimeError("MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.")
+    raise RuntimeError(
+        f"MAIL_USER oder MAIL_PASS konnte nicht aus SUBSTACK_MAIL extrahiert werden.\n"
+        f"MAIL_USER: {MAIL_USER}\nMAIL_PASS: {MAIL_PASS}\nparts: {parts}"
+    )
+
 
 
 
