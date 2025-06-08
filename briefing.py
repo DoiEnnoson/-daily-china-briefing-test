@@ -10,6 +10,37 @@ from bs4 import BeautifulSoup
 import imaplib
 import email
 
+
+import csv
+from pathlib import Path
+
+# Funktion: Liest die Substack-Quellen aus der CSV-Datei ein
+def load_substack_sources():
+    """
+    Lädt die Absenderadressen und Sub-Namen aus config/substack_sources.csv.
+    Erwartetes CSV-Format pro Zeile: "email,Sub-Name"
+    Gibt eine Liste von Dictionaries zurück: [{'email': ..., 'name': ...}, ...]
+    """
+    sources = []
+    csv_path = Path(__file__).parent / 'config' / 'substack_sources.csv'
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            if len(row) < 2:
+                continue  # Zeile überspringen, wenn nicht korrekt
+            email = row[0].strip()
+            name = row[1].strip()
+            sources.append({'email': email, 'name': name})
+    return sources
+
+# Testlauf: alle Sub-Namen und E-Mails ausgeben (Dummy-Daten für später)
+if __name__ == "__main__":
+    subs = load_substack_sources()
+    for sub in subs:
+        print(f"Sub-Name: {sub['name']}, Absender: {sub['email']}")
+
+
+
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
@@ -596,3 +627,9 @@ try:
     print("✅ E-Mail wurde gesendet!")
 except Exception as e:
     print("❌ Fehler beim Senden der E-Mail:", str(e))
+
+if __name__ == "__main__":
+    subs = load_substack_sources()
+    for sub in subs:
+        print(f"Sub-Name: {sub['name']}, Absender: {sub['email']}")
+
