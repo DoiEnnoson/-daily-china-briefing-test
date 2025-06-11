@@ -1,6 +1,8 @@
 import os
 import imaplib
 import email
+import smtplib
+from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 from datetime import datetime
 
@@ -89,6 +91,23 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
     return posts if posts else ["Keine neuen Substack-Mails gefunden."]
 
+def send_email(sender, password, recipient, subject, body, smtp_host, smtp_port):
+    """Sendet eine HTML-E-Mail über SMTP."""
+    try:
+        msg = MIMEText(body, "html")
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = recipient
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(sender, password)
+            server.send_message(msg)
+        print("📧 E-Mail erfolgreich gesendet!")
+    except Exception as e:
+        print(f"❌ Fehler beim Senden der E-Mail: {str(e)}")
+        raise
+
 def generate_briefing():
     date_str = datetime.now().strftime("%d. %B %Y")
     briefing = [f"Hallo Hado, das ist dein Substack-Test\n\n🗓️ {date_str}\n"]
@@ -97,7 +116,14 @@ def generate_briefing():
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
         briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
-        return briefing
+        return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
 
     try:
         mail_pairs = substack_mail.split(";")
@@ -106,7 +132,14 @@ def generate_briefing():
         email_password = mail_config["GMAIL_PASS"]
     except (KeyError, ValueError) as e:
         briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
-        return briefing
+        return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
 
     briefing.append("\n## 📬 China Business Spotlight")
     briefing.extend(fetch_substack_from_email(email_user, email_password))
@@ -124,9 +157,31 @@ def generate_briefing():
 
 def main():
     print("🧠 Erzeuge Briefing...")
+
+    # Config für E-Mail-Versand laden
+    config = os.getenv("CONFIG")
+    if not config:
+        print("❌ Fehler: CONFIG Umgebungsvariable nicht gefunden!")
+        return
+
+    try:
+        config_pairs = config.split(";")
+        config_dict = dict(pair.split("=", 1) for pair in config_pairs)
+        email_user = config_dict["EMAIL_USER"]
+        email_password = config_dict["EMAIL_PASSWORD"]
+        email_to = config_dict["EMAIL_TO"]
+        smtp_host = config_dict["EMAIL_HOST"]
+        smtp_port = int(config_dict["EMAIL_PORT"])
+    except (KeyError, ValueError) as e:
+        print(f"❌ Fehler beim Parsen von CONFIG: {str(e)}")
+        return
+
+    # Briefing generieren
     briefing_content = generate_briefing()
-    print("\n📬 Ausgabe:")
-    print(briefing_content)
+
+    # E-Mail senden
+    subject = f"Substack-Test Briefing - {datetime.now().strftime('%d. %B %Y')}"
+    send_email(email_user, email_password, email_to, subject, briefing_content, smtp_host, smtp_port)
 
 if __name__ == "__main__":
     main()
