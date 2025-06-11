@@ -114,6 +114,7 @@ def generate_briefing():
 
     # Substack-Mails abrufen
     substack_mail = os.getenv("SUBSTACK_MAIL")
+    print(f"Debug - SUBSTACK_MAIL: {substack_mail}")  # Debugging
     if not substack_mail:
         briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
         return f"""\
@@ -127,7 +128,9 @@ def generate_briefing():
 
     try:
         mail_pairs = substack_mail.split(";")
+        print(f"Debug - mail_pairs: {mail_pairs}")  # Debugging
         mail_config = dict(pair.split("=", 1) for pair in mail_pairs)
+        print(f"Debug - mail_config keys: {list(mail_config.keys())}")  # Debugging
         email_user = mail_config["GMAIL_USER"]
         email_password = mail_config["GMAIL_PASS"]
     except (KeyError, ValueError) as e:
@@ -160,13 +163,16 @@ def main():
 
     # Config für E-Mail-Versand laden
     config = os.getenv("CONFIG")
+    print(f"Debug - CONFIG: {config}")  # Debugging
     if not config:
         print("❌ Fehler: CONFIG Umgebungsvariable nicht gefunden!")
         return
 
     try:
         config_pairs = config.split(";")
+        print(f"Debug - config_pairs: {config_pairs}")  # Debugging
         config_dict = dict(pair.split("=", 1) for pair in config_pairs)
+        print(f"Debug - config_dict keys: {list(config_dict.keys())}")  # Debugging
         email_user = config_dict["EMAIL_USER"]
         email_password = config_dict["EMAIL_PASSWORD"]
         email_to = config_dict["EMAIL_TO"]
