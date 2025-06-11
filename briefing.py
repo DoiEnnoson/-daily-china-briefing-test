@@ -105,5 +105,151 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                 teaser = stripped
                                 break
 
-                    # Ergebnis formatieren
-                    line = f'• <a href="{link}">{title}</a> (von {sender
+                    # Ergebnis formatieren (KORRIGIERTE ZEILE)
+                    line = f'• <a href="{link}">{title}</a> (von {sender_name})'
+                    if teaser:
+                        line += f" – {teaser}"
+                    posts.append(line)
+
+            except Exception as e:
+                posts.append(f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}")
+
+        imap.logout()
+
+    except Exception as e:
+        posts.append(f"❌ Fehler beim Verbinden mit Gmail: {str(e)}")
+
+    return posts if posts else ["Keine neuen Substack-Mails gefunden."]
+
+def send_email(sender, password, recipient, subject, body, smtp_host, smtp_port):
+    """Sendet eine HTML-E-Mail über SMTP."""
+    try:
+        msg = MIMEText(body, "html")
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = recipient
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(sender, password)
+            server.send_message(msg)
+        print("📧 E-Mail erfolgreich gesendet!")
+    except Exception as e:
+        print(f"❌ Fehler beim Senden der E-Mail: {str(e)}")
+        raise
+
+def generate_briefing():
+    date_str = datetime.now().strftime("%d. %B %Y")
+    briefing = [f"Hallo Hado, das ist dein Substack-Test\n\n🗓️ {date_str}\n"]
+
+    # Substack-Mails abrufen
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    print(f"Debug - SUBSTACK_MAIL: {substack_mail}")
+    if not substack_mail:
+        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
+        return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
+
+    try:
+        mail_pairs = substack_mail.split(";")
+        print(f"Debug - mail_pairs: {mail_pairs}")
+        mail_config = {}
+        for pair in mail_pairs:
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                mail_config[key] = value
+            else:
+                print(f"Debug - Ungültiges Paar übersprungen: {pair}")
+        print(f"Debug - mail_config keys: {list(mail_config.keys())}")
+        
+        if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
+            missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
+            briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK_MAIL: {', '.join(missing_keys)}")
+            return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
+
+        email_user = mail_config["GMAIL_USER"]
+        email_password = mail_config["GMAIL_PASS"]
+    except ValueError as e:
+        briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
+
+    briefing.append("\n## 📬 Substack-Updates")
+    briefing.extend(fetch_substack_from_email(email_user, email_password))
+
+    briefing.append("\nDer Test war erfolgreich 🌟")
+    
+    return f"""\
+<html>
+  <body>
+    <pre style="font-family: system-ui, sans-serif">
+{chr(10).join(briefing)}
+    </pre>
+  </body>
+</html>"""
+
+def main():
+    print("🧠 Erzeuge Briefing...")
+
+    # Config für E-Mail-Versand laden
+    config = os.getenv("CONFIG")
+    print(f"Debug - CONFIG: {config}")
+    if not config:
+        print("❌ Fehler: CONFIG Umgebungsvariable nicht gefunden!")
+        return
+
+    try:
+        config_pairs = config.split(";")
+        print(f"Debug - config_pairs: {config_pairs}")
+        config_dict = {}
+        for pair in config_pairs:
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                config_dict[key] = value
+            else:
+                print(f"Debug - Ungültiges Paar übersprungen: {pair}")
+        print(f"Debug - config_dict keys: {list(config_dict.keys())}")
+        
+        required_keys = ["EMAIL_USER", "EMAIL_PASSWORD", "EMAIL_TO", "EMAIL_HOST", "EMAIL_PORT"]
+        missing_keys = [k for k in required_keys if k not in config_dict]
+        if missing_keys:
+            print(f"❌ Fehler: Fehlende Schlüssel in CONFIG: {', '.join(missing_keys)}")
+            return
+
+        email_user = config_dict["EMAIL_USER"]
+        email_password = config_dict["EMAIL_PASSWORD"]
+        email_to = config_dict["EMAIL_TO"]
+        smtp_host = config_dict["EMAIL_HOST"]
+        smtp_port = int(config_dict["EMAIL_PORT"])
+    except (KeyError, ValueError) as e:
+        print(f"❌ Fehler beim Parsen von CONFIG: {str(e)}")
+        return
+
+    # Briefing generieren
+    briefing_content = generate_briefing()
+
+    # E-Mail senden
+    subject = f"Substack-Test Briefing - {datetime.now().strftime('%d. %B %Y')}"
+    send_email(email_user, email_password, email_to, subject, briefing_content, smtp_host, smtp_port)
+
+if __name__ == "__main__":
+    main()
