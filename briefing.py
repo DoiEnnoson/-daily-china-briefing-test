@@ -190,10 +190,10 @@ def generate_briefing():
     for post in posts:
         sender_name = post[0]
         if len(post) == 2:  # Fehlermeldung
-            briefing.append(f"\n### {sender_name}\n{post[1]}\n")
+            briefing.append(f"\n### {sender_name}\n{post[1]}")
         else:  # Beitrag
             title, link, teaser = post[1], post[2], post[3]
-            briefing.append(f"\n### {sender_name}\n<strong><a href=\"{link}\">{title}</a></strong>\n{teaser}\n")
+            briefing.append(f"\n### {sender_name}\n<strong><a href=\"{link}\">{title}</a></strong>\n{teaser}")
 
     briefing.append("\nDer Test war erfolgreich 🌟")
     
