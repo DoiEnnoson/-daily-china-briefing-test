@@ -39,7 +39,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         "gingerriver@substack.com": "Ginger River Review (GRR)",
         "pekingnology@substack.com": "Pekingnology/CCG",
         "chinabusinessspotlight@substack.com": "China Business Spotlight",
-        # Füge "Bert’s Newsletter" hinzu, wenn du die E-Mail-Adresse hast
+        # Füge "Bert’s Newsletter" oder "CrossPacificWatchers" hinzu, wenn E-Mail-Adressen verfügbar
     }
     
     try:
@@ -55,19 +55,19 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 print(f"Debug - Suche nach: {search_query}")
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
-                    posts.append(f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email}).")
+                    posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email})."))
                     continue
 
                 email_ids = data[0].split()[-max_results_per_sender:]
                 if not email_ids:
-                    posts.append(f"📭 Keine neuen Mails von {sender_name} gefunden.")
+                    posts.append((sender_name, f"📭 Keine neuen Mails von {sender_name} gefunden."))
                     continue
 
                 # Verarbeite jede Mail
                 for eid in reversed(email_ids):
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
-                        posts.append(f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}.")
+                        posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}."))
                         continue
 
                     msg = email.message_from_bytes(msg_data[0][1])
@@ -82,44 +82,41 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                         html = msg.get_payload(decode=True).decode()
 
                     if not html:
-                        posts.append(f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.")
+                        posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}."))
                         continue
 
                     soup = BeautifulSoup(html, "html.parser")
 
-                    # Titel
-                    title_tag = soup.find("h1")
+                    # Titel (Fallback auf h2 oder p, wenn h1 fehlt)
+                    title_tag = soup.find("h1") or soup.find("h2") or soup.find("p")
                     title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
 
                     # Link
                     link_tag = soup.find("a", href=lambda x: x and "https://" in x)
                     link = link_tag["href"].strip() if link_tag else "#"
 
-                    # Teaser
+                    # Teaser (längere Texte bevorzugen)
                     teaser = ""
                     if title_tag:
                         content_candidates = title_tag.find_all_next(string=True)
                         for text in content_candidates:
                             stripped = text.strip()
-                            if 30 < len(stripped) < 300 and "dear reader" not in stripped.lower():
+                            if 50 < len(stripped) < 500 and "dear reader" not in stripped.lower() and "subscribe" not in stripped.lower():
                                 teaser = stripped
                                 break
 
-                    # Ergebnis formatieren (KORRIGIERTE ZEILE)
-                    line = f'• <a href="{link}">{title}</a> (von {sender_name})'
-                    if teaser:
-                        line += f" – {teaser}"
-                    posts.append(line)
+                    # Ergebnis formatieren
+                    posts.append((sender_name, title, link, teaser))
 
             except Exception as e:
-                posts.append(f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}")
+                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}"))
 
         imap.logout()
 
     except Exception as e:
-        posts.append(f"❌ Fehler beim Verbinden mit Gmail: {str(e)}")
+        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}"))
 
-    return posts if posts else ["Keine neuen Substack-Mails gefunden."]
+    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.")]
 
 def send_email(sender, password, recipient, subject, body, smtp_host, smtp_port):
     """Sendet eine HTML-E-Mail über SMTP."""
@@ -194,7 +191,15 @@ def generate_briefing():
 </html>"""
 
     briefing.append("\n## 📬 Substack-Updates")
-    briefing.extend(fetch_substack_from_email(email_user, email_password))
+    posts = fetch_substack_from_email(email_user, email_password)
+    
+    for post in posts:
+        sender_name = post[0]
+        if len(post) == 2:  # Fehlermeldung
+            briefing.append(f"\n### {sender_name}\n{post[1]}\n")
+        else:  # Beitrag
+            title, link, teaser = post[1], post[2], post[3]
+            briefing.append(f"\n### {sender_name}\n<strong><a href=\"{link}\">{title}</a></strong>\n{teaser}\n")
 
     briefing.append("\nDer Test war erfolgreich 🌟")
     
