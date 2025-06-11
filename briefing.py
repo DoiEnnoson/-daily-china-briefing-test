@@ -5,42 +5,24 @@ import smtplib
 from email.mime.text import MIMEText
 from bs4 import BeautifulSoup
 from datetime import datetime
+import json
 
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=1):
     """Liest Substack-Mails von mehreren Absendern aus einer Gmail-Adresse."""
     posts = []
     
-    # Liste der Substack-Absender (E-Mail-Adresse: Substack-Name)
-    substack_senders = {
-        "yuzhehe@substack.com": "Read China",
-        "sinica+trivium-china@substack.com": "Sinica Podcast",
-        "thechinaweek@substack.com": "The China Week",
-        "techbuzzchina@substack.com": "Tech Buzz China Insider",
-        "sinicalchina@substack.com": "Sinical China",
-        "fredgao@substack.com": "Inside China",
-        "dexter@substack.com": "Trade War",
-        "chinai@substack.com": "ChinAI",
-        "investinginchina@substack.com": "The Great Wall Street - Investing in China",
-        "interconnect@substack.com": "Interconnected!",
-        "aseanwonk@substack.com": "ASEAN Wonk Newsletter",
-        "eastisread@substack.com": "The East is Read",
-        "moneyhk@substack.com": "Hong Kong Money Never Sleeps",
-        "trackingpeoplesdaily@substack.com": "Tracking People's Daily",
-        "baiguan@substack.com": "Baiguan",
-        "bambooworks@substack.com": "Bamboo Works",
-        "lijingjing@substack.com": "China Up Close",
-        "chinapolicy@substack.com": "CHINA POLICY",
-        "chinatalk@substack.com": "ChinaTalk",
-        "robotic@substack.com": "Interconnects",
-        "chinaarticles@substack.com": "China Articles",
-        "treo@substack.com": "Rare Earth Observer",
-        "bill@sinocism.com": "Sinocism",
-        "beijingscroll@substack.com": "Beijing Scroll",
-        "gingerriver@substack.com": "Ginger River Review (GRR)",
-        "pekingnology@substack.com": "Pekingnology/CCG",
-        "chinabusinessspotlight@substack.com": "China Business Spotlight",
-        # Füge "Bert’s Newsletter" oder "CrossPacificWatchers" hinzu, wenn E-Mail-Adressen verfügbar
-    }
+    # Substack-Liste aus JSON laden
+    try:
+        with open("substacks.json", "r") as f:
+            substack_senders = json.load(f)
+        # Nach order sortieren
+        substack_senders = sorted(substack_senders, key=lambda x: x["order"])
+    except FileNotFoundError:
+        print("❌ Fehler: substacks.json nicht gefunden!")
+        return [("Allgemein", "❌ Fehler: substacks.json nicht gefunden.")]
+    except json.JSONDecodeError:
+        print("❌ Fehler: substacks.json ungültig!")
+        return [("Allgemein", "❌ Fehler: substacks.json ungültig.")]
     
     try:
         # Verbindung zu Gmail herstellen
@@ -49,7 +31,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         imap.select(folder)
 
         # Für jeden Absender suchen
-        for sender_email, sender_name in substack_senders.items():
+        for sender in substack_senders:
+            sender_email = sender.get("email")
+            sender_name = sender.get("name")
+            if not sender_email:
+                posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben."))
+                continue
+
             try:
                 search_query = f'(UNSEEN FROM "{sender_email}")'
                 print(f"Debug - Suche nach: {search_query}")
@@ -87,7 +75,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
                     soup = BeautifulSoup(html, "html.parser")
 
-                    # Titel (strengere Suche: nur h1 oder h2)
+                    # Titel (nur h1 oder h2)
                     title_tag = soup.find("h1") or soup.find("h2")
                     title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
 
