@@ -87,21 +87,27 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
                     soup = BeautifulSoup(html, "html.parser")
 
-                    # Titel (Fallback auf h2 oder p, wenn h1 fehlt)
-                    title_tag = soup.find("h1") or soup.find("h2") or soup.find("p")
+                    # Titel (strengere Suche: nur h1 oder h2)
+                    title_tag = soup.find("h1") or soup.find("h2")
                     title = title_tag.text.strip() if title_tag else "Unbenannter Beitrag"
 
-                    # Link
-                    link_tag = soup.find("a", href=lambda x: x and "https://" in x)
+                    # Link (priorisieren: /post/ oder app-link/post)
+                    link_tag = soup.find("a", href=lambda x: x and ("app-link/post" in x or "/post/" in x))
+                    if not link_tag:
+                        link_tag = soup.find("a", href=lambda x: x and "https://" in x)  # Fallback
                     link = link_tag["href"].strip() if link_tag else "#"
 
-                    # Teaser (längere Texte bevorzugen)
+                    # Teaser (nach Titel überspringen, längere Absätze)
                     teaser = ""
                     if title_tag:
                         content_candidates = title_tag.find_all_next(string=True)
+                        found_title = False
                         for text in content_candidates:
                             stripped = text.strip()
-                            if 50 < len(stripped) < 500 and "dear reader" not in stripped.lower() and "subscribe" not in stripped.lower():
+                            if not found_title and stripped and stripped in title:
+                                found_title = True
+                                continue
+                            if found_title and 50 < len(stripped) < 500 and "dear reader" not in stripped.lower() and "subscribe" not in stripped.lower():
                                 teaser = stripped
                                 break
 
