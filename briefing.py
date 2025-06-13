@@ -348,21 +348,26 @@ def render_markdown(posts):
     if not posts:
         return ["Keine neuen Substack-Artikel gefunden."]
     
-    # Gruppiere Beiträge nach sender_name
+    # Gruppiere Beiträge nach sender_name und speichere den order-Wert
     grouped_posts = defaultdict(list)
+    sender_orders = {}
     for post in posts:
         sender_name = post[0]
+        sender_order = post[4] if len(post) > 4 else 999  # sender_order ist an Position 4
         grouped_posts[sender_name].append(post)
+        sender_orders[sender_name] = min(sender_orders.get(sender_name, 999), sender_order)
+    
+    # Sortiere Substacks nach sender_order
+    sorted_senders = sorted(grouped_posts.keys(), key=lambda x: sender_orders.get(x, 999))
     
     markdown = []
-    for sender_name, sender_posts in sorted(grouped_posts.items()):
+    for sender_name in sorted_senders:
         markdown.append(f"### {sender_name}")
-        for post in sender_posts:
+        for post in grouped_posts[sender_name]:
             if len(post) == 2:  # Fehlerfall (z. B. "📭 Keine Mails")
                 markdown.append(f"{post[1]}\n")
             else:  # Normaler Beitrag
                 title, link, teaser = post[1], post[2], post[3]
-                # Titel als anklickbarer Link formatieren
                 markdown.append(f"• <a href=\"{link}\">{title}</a>")
                 if teaser:
                     markdown.append(f"{teaser}")
