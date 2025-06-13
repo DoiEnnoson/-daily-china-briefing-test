@@ -205,7 +205,7 @@ def fetch_substack_from_email(email_user, email_password, folder="pass", max_res
     posts = []
     
     try:
-        with open("subtacks.json", "r") as f:
+        with open("substacks.json", "r") as f:
             substack_senders = json.load(file)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
         # Prüfe auf doppelte E-Mail-Adressen
@@ -342,6 +342,7 @@ def fetch_substack_from_email(email_user, email_password, folder="pass", max_res
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999)]
+
 
 # === Neue Funktion: render_markdown (für Substack-Ausgabe) ===
 def render_markdown(posts):
