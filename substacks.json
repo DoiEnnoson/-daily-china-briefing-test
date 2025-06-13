@@ -1,6 +1,6 @@
 [
     {"email": "yuzhehe@substack.com", "name": "Read China", "order": 1},
-    {"email": "sinica+trivium-china@substack.com", "name": "Sinica Podcast", "order": 2},
+    {"email": "sinica@substack.com", "name": "Sinica Podcast", "order": 2},
     {"email": "thechinaweek@substack.com", "name": "The China Week", "order": 3},
     {"email": "techbuzzchina@substack.com", "name": "Tech Buzz China Insider", "order": 4},
     {"email": "sinicalchina@substack.com", "name": "Sinical China", "order": 5},
@@ -15,7 +15,7 @@
     {"email": "trackingpeoplesdaily@substack.com", "name": "Tracking People's Daily", "order": 14},
     {"email": "baiguan@substack.com", "name": "Baiguan", "order": 15},
     {"email": "bambooworks@substack.com", "name": "Bamboo Works", "order": 16},
-    {"email": "lijingjing@asia.com", "name": "China Up Close", "order": 17},
+    {"email": "lijingjing+talk-it-out@substack.com", "name": "Talk It Out by Li Jingjing", "order": 17},
     {"email": "chinapolicy@substack.com", "name": "CHINA POLICY", "order": 18},
     {"email": "chinatalk@substack.com", "name": "ChinaTalk", "order": 19},
     {"email": "robotic@substack.com", "name": "Interconnects", "order": 20},
@@ -26,6 +26,6 @@
     {"email": "gingerriver@substack.com", "name": "Ginger River Review (GRR)", "order": 25},
     {"email": "pekingnology@substack.com", "name": "Pekingnology/CCG", "order": 26},
     {"email": "chinabusinessspotlight@substack.com", "name": "China Business Spotlight", "order": 27},
-    {"email": "", "name": "CrossPacificWatchers", "order": 28},
+    {"email": "crosspacificwatchers@substack.com", "name": "CrossPacificWatchers", "order": 28},
     {"email": "", "name": "Bert’s Newsletter", "order": 29}
 ]
