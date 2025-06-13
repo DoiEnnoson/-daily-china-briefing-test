@@ -200,13 +200,13 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
-def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
+def fetch_substack_from_email(email_user, email_password, folder="pass", max_results_per_sender=5):
     """Liest Substack-Mails von mehreren Absendern aus Gmail, robuste Version."""
     posts = []
     
     try:
-        with open("substacks.json", "r") as f:
-            substack_senders = json.load(f)
+        with open("subtacks.json", "r") as f:
+            substack_senders = json.load(file)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
         # Prüfe auf doppelte E-Mail-Adressen
         email_counts = defaultdict(int)
@@ -217,10 +217,10 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             print(f"⚠️ Warnung: Doppelte E-Mail-Adressen in substacks.json: {duplicates}")
     except FileNotFoundError:
         print("❌ Fehler: substacks.json nicht gefunden!")
-        return [("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "")]
+        return [("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999)]
     except json.JSONDecodeError:
         print("❌ Fehler: substacks.json ungültig!")
-        return [("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "")]
+        return [("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999)]
     
     # Retry-Logik für Gmail-Verbindung
     for attempt in range(3):
@@ -232,7 +232,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         except Exception as e:
             print(f"❌ Verbindung zu Gmail fehlgeschlagen (Versuch {attempt+1}/3): {str(e)}")
             if attempt == 2:
-                return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "")]
+                return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999)]
             time.sleep(2)
     
     try:
@@ -241,8 +241,9 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
+            sender_order = sender.get("order", 999)  # Fallback für fehlenden order-Wert
             if not sender_email:
-                posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben.", "#", ""))
+                posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben.", "#", "", sender_order))
                 continue
             try:
                 # Suche: Alle Mails seit since_date von Absender
@@ -251,19 +252,19 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
                     print(f"Debug - IMAP-Suchfehler für {sender_name} ({sender_email}): {data}")
-                    posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email}).", "#", ""))
+                    posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email}).", "#", "", sender_order))
                     continue
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden.", "#", ""))
+                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden.", "#", "", sender_order))
                     continue
                 # Temporäre Liste für Beiträge dieses Senders
                 sender_posts = []
                 for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
-                        sender_posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}.", "#", ""))
+                        sender_posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}.", "#", "", sender_order, None))
                         continue
                     msg = email.message_from_bytes(msg_data[0][1])
                     date_str = msg["Date"]
@@ -285,7 +286,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     elif msg.get_content_type() == "text/html":
                         html = msg.get_payload(decode=True).decode(errors="ignore")
                     if not html:
-                        sender_posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.", "#", ""))
+                        sender_posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.", "#", "", sender_order, mail_date))
                         continue
                     soup = BeautifulSoup(html, "lxml")
                     # Erweiterte Titel-Suche
@@ -330,17 +331,17 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                     break
                         teaser = " ".join(teaser_parts).strip()[:300]
                     print(f"Debug - Teaser für {sender_name}: {teaser}")
-                    sender_posts.append((sender_name, title, link, teaser, mail_date))
+                    sender_posts.append((sender_name, title, link, teaser, sender_order, mail_date))
                 # Sortiere Beiträge nach Datum (neuester zuerst)
-                sender_posts.sort(key=lambda x: x[4] or datetime(1970, 1, 1), reverse=True)
-                # Füge sortierte Beiträge zu posts hinzu (ohne mail_date)
-                posts.extend((p[0], p[1], p[2], p[3]) for p in sender_posts)
+                sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
+                # Füge sortierte Beiträge zu posts hinzu
+                posts.extend(sender_posts)
             except Exception as e:
-                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}", "#", ""))
+                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}", "#", "", sender_order))
         imap.logout()
     except Exception as e:
-        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", ""))
-    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "")]
+        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
+    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999)]
 
 # === Neue Funktion: render_markdown (für Substack-Ausgabe) ===
 def render_markdown(posts):
