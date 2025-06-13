@@ -224,6 +224,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
+        # Prüfe auf doppelte E-Mail-Adressen
+        email_counts = defaultdict(int)
+        for sender in substack_senders:
+            email_counts[sender.get("email")] += 1
+        duplicates = [email for email, count in email_counts.items() if count > 1 and email]
+        if duplicates:
+            print(f"⚠️ Warnung: Doppelte E-Mail-Adressen in substacks.json: {duplicates}")
     except FileNotFoundError:
         print("❌ Fehler: substacks.json nicht gefunden!")
         return [("Allgemein", "❌ Fehler: substacks.json nicht gefunden.")]
@@ -245,8 +252,8 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
-        # Datumsfilter: Letzte 5 Tage (für Test, später auf 1 zurücksetzen)
-        since_date = (datetime.now() - timedelta(days=5)).strftime("%d-%b-%Y")
+        # Datumsfilter: Letzter Tag (für Live-Umgebung)
+        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
@@ -257,14 +264,14 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 # Suche: Alle Mails seit since_date von Absender
                 search_query = f'(FROM "{sender_email}" SINCE {since_date})'
                 print(f"Debug - Suche nach: {search_query}")
-                typ, data = imap.search(None, search_query)  # UTF-8 entfernt
+                typ, data = imap.search(None, search_query)
                 if typ != "OK":
                     posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email})."))
                     continue
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 5 Tagen gefunden."))
+                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 24 Stunden gefunden."))
                     continue
                 for eid in reversed(email_ids):
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -277,7 +284,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     if date_str:
                         try:
                             mail_date = parsedate_to_datetime(date_str)
-                            if mail_date < datetime.now() - timedelta(days=5):
+                            if mail_date < datetime.now() - timedelta(days=1):
                                 print(f"Debug - Mail {eid} von {sender_name} zu alt: {date_str}")
                                 continue
                         except (TypeError, ValueError) as e:
