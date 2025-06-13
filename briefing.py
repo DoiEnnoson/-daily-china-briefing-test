@@ -241,7 +241,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     
     try:
         # Datumsfilter: Letzte 24 Stunden
-        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+        since_date = (datetime.now() - timedelta(days=5)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
