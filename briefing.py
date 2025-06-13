@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta  # timedelta hinzugefügt
 import smtplib
 import feedparser
 from collections import defaultdict
@@ -241,7 +241,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     
     try:
         # Datumsfilter: Letzte 24 Stunden
-        since_date = (datetime.now() - timedelta(days=5)).strftime("%d-%b-%Y")
+        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
@@ -338,7 +338,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}"))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.")]
-
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
     url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
