@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import date, datetime, timedelta  # timedelta hinzugefügt
+from datetime import date, datetime, timedelta
 import smtplib
 import feedparser
 from collections import defaultdict
@@ -237,10 +237,10 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             print(f"❌ Verbindung zu Gmail fehlgeschlagen (Versuch {attempt+1}/3): {str(e)}")
             if attempt == 2:
                 return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}")]
-            time.sleep(2)  # Warte 2 Sekunden vor Retry
+            time.sleep(2)
     
     try:
-        # Datumsfilter: Letzte 24 Stunden
+        # Datumsfilter: Letzte 5 Tage (für Test, später auf 1 zurücksetzen)
         since_date = (datetime.now() - timedelta(days=5)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
@@ -249,16 +249,17 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben."))
                 continue
             try:
-                # Suche: Alle Mails seit gestern von Absender
+                # Suche: Alle Mails seit since_date von Absender
                 search_query = f'(FROM "{sender_email}" SINCE {since_date})'
                 print(f"Debug - Suche nach: {search_query}")
-                typ, data = imap.search(None, search_query)
+                typ, data = imap.search(None, "UTF-8", search_query)
                 if typ != "OK":
                     posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email})."))
                     continue
                 email_ids = data[0].split()[-max_results_per_sender:]
+                print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 24 Stunden gefunden."))
+                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 5 Tagen gefunden."))
                     continue
                 for eid in reversed(email_ids):
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -271,19 +272,22 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     if date_str:
                         try:
                             mail_date = parsedate_to_datetime(date_str)
-                            if mail_date < datetime.now() - timedelta(days=1):
+                            if mail_date < datetime.now() - timedelta(days=5):
                                 print(f"Debug - Mail {eid} von {sender_name} zu alt: {date_str}")
                                 continue
-                        except Exception:
-                            print(f"Debug - Ungültiges Datum in Mail {eid}: {date_str}")
+                        except (TypeError, ValueError) as e:
+                            print(f"Debug - Ungültiges Datum in Mail {eid} von {sender_name}: {date_str}, Fehler: {str(e)}")
+                            # Fallback: Mail trotzdem verarbeiten
+                    else:
+                        print(f"Debug - Kein Datum in Mail {eid} von {sender_name}")
                     html = None
                     if msg.is_multipart():
                         for part in msg.walk():
                             if part.get_content_type() == "text/html":
-                                html = part.get_payload(decode=True).decode()
+                                html = part.get_payload(decode=True).decode(errors="ignore")
                                 break
                     elif msg.get_content_type() == "text/html":
-                        html = msg.get_payload(decode=True).decode()
+                        html = msg.get_payload(decode=True).decode(errors="ignore")
                     if not html:
                         posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}."))
                         continue
@@ -296,7 +300,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                 soup.find("div", class_=lambda x: x and "title" in x.lower()) or
                                 soup.find("span", class_=lambda x: x and "title" in x.lower()))
                     if not title_tag:
-                        # Fallback: Erster <a> mit /post/ oder Betreff
                         link_tag = soup.find("a", href=lambda x: x and "/post/" in x)
                         if link_tag and link_tag.text.strip():
                             title = link_tag.text.strip()
@@ -338,6 +341,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}"))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.")]
+
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
     url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
