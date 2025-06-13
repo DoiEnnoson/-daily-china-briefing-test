@@ -6,11 +6,16 @@ import feedparser
 from collections import defaultdict
 import requests
 from email.mime.text import MIMEText
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 import imaplib
 import email
 import time
 from email.utils import parsedate_to_datetime
+import warnings
+
+# Unterdrücke XMLParsedAsHTMLWarning
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
 
 # Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -252,7 +257,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 # Suche: Alle Mails seit since_date von Absender
                 search_query = f'(FROM "{sender_email}" SINCE {since_date})'
                 print(f"Debug - Suche nach: {search_query}")
-                typ, data = imap.search(None, "UTF-8", search_query)
+                typ, data = imap.search(None, search_query)  # UTF-8 entfernt
                 if typ != "OK":
                     posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email})."))
                     continue
@@ -277,7 +282,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                 continue
                         except (TypeError, ValueError) as e:
                             print(f"Debug - Ungültiges Datum in Mail {eid} von {sender_name}: {date_str}, Fehler: {str(e)}")
-                            # Fallback: Mail trotzdem verarbeiten
                     else:
                         print(f"Debug - Kein Datum in Mail {eid} von {sender_name}")
                     html = None
