@@ -191,7 +191,15 @@ def fetch_news(feed_url, max_items=20, top_n=5):
 def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
     return fetch_news(feed_url, max_items=max_items, top_n=top_n)
 
-# === Google News Extraction ===
+# === Neue Funktion: extract_source (für Google News) ===
+def extract_source(title):
+    """Extrahiert den Quellennamen aus dem Titel (z. B. '– Reuters')."""
+    for source in source_categories:
+        if f"– {source}" in title or f"- {source}" in title or title.lower().endswith(source.lower()):
+            return source
+    return "Unknown Source"
+
+# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     """Liest Substack-Mails von mehreren Absendern aus Gmail, robuste Version."""
     posts = []
@@ -333,7 +341,34 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", ""))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "")]
+
+# === Neue Funktion: render_markdown (für Substack-Ausgabe) ===
+def render_markdown(posts):
+    """Erzeugt Markdown für Substack-Beiträge, mit einer Überschrift pro Substack."""
+    if not posts:
+        return ["Keine neuen Substack-Artikel gefunden."]
     
+    # Gruppiere Beiträge nach sender_name
+    grouped_posts = defaultdict(list)
+    for post in posts:
+        sender_name = post[0]
+        grouped_posts[sender_name].append(post)
+    
+    markdown = []
+    for sender_name, sender_posts in sorted(grouped_posts.items()):
+        markdown.append(f"### {sender_name}")
+        for post in sender_posts:
+            if len(post) == 2:  # Fehlerfall (z. B. "📭 Keine Mails")
+                markdown.append(f"{post[1]}\n")
+            else:  # Normaler Beitrag
+                title, link, teaser = post[1], post[2], post[3]
+                markdown.append(f"{title}")
+                if teaser:
+                    markdown.append(f"{teaser}")
+                markdown.append("")
+    
+    return markdown
+
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
     url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
@@ -541,10 +576,6 @@ def generate_briefing():
             top_articles = sorted(articles, reverse=True)[:5]
             briefing.extend([a[1] for a in top_articles])
 
-    # Alter Substack-Abschnitt (wird entfernt)
-    # briefing.append("\n## 📬 China-Fokus: Substack-Briefings")
-    # briefing.append("Aktuell im Testbetrieb: China Business Spotlight per Mail. Weitere Substack-Feeds folgen.")
-
     # SCMP
     briefing.append("\n## SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
@@ -573,19 +604,9 @@ def generate_briefing():
                 email_user = mail_config["GMAIL_USER"]
                 email_password = mail_config["GMAIL_PASS"]
                 posts = fetch_substack_from_email(email_user, email_password)
-                for post in posts:
-                    sender_name = post[0]
-                    if len(post) == 2:
-                        briefing.append(f"\n### {sender_name}\n{post[1]}")
-                    else:
-                        title, link, teaser = post[1], post[2], post[3]
-                        briefing.append(f"\n### {sender_name}\n<strong><a href=\"{link}\">{title}</a></strong>\n{teaser}")
+                briefing.extend(render_markdown(posts))
         except ValueError as e:
             briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
-
-    # Alter Test-Abschnitt (entfernt)
-    # briefing.append("\n## 🧪 Test: China Business Spotlight per Mail")
-    # briefing.extend(fetch_substack_from_email(email_user=mail_config["GMAIL_USER"], email_password=mail_config["GMAIL_PASS"]))
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
