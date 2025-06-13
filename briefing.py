@@ -272,13 +272,16 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 if not email_ids:
                     posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden."))
                     continue
-                for eid in reversed(email_ids):
+                # Temporäre Liste für Beiträge dieses Senders
+                sender_posts = []
+                for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
-                        posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}."))
+                        sender_posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}.", "#", ""))
                         continue
                     msg = email.message_from_bytes(msg_data[0][1])
                     date_str = msg["Date"]
+                    mail_date = None
                     if date_str:
                         try:
                             mail_date = parsedate_to_datetime(date_str)
@@ -296,7 +299,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     elif msg.get_content_type() == "text/html":
                         html = msg.get_payload(decode=True).decode(errors="ignore")
                     if not html:
-                        posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}."))
+                        sender_posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.", "#", ""))
                         continue
                     soup = BeautifulSoup(html, "html.parser")
                     # Erweiterte Titel-Suche
@@ -341,13 +344,17 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                     break
                         teaser = " ".join(teaser_parts).strip()[:300]
                     print(f"Debug - Teaser für {sender_name}: {teaser}")
-                    posts.append((sender_name, title, link, teaser))
+                    sender_posts.append((sender_name, title, link, teaser, mail_date))
+                # Sortiere Beiträge nach Datum (neuester zuerst)
+                sender_posts.sort(key=lambda x: x[4] or datetime.min, reverse=True)
+                # Füge sortierte Beiträge zu posts hinzu (ohne mail_date)
+                posts.extend((p[0], p[1], p[2], p[3]) for p in sender_posts)
             except Exception as e:
-                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}"))
+                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}", "#", ""))
         imap.logout()
     except Exception as e:
-        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}"))
-    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.")]
+        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", ""))
+    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "")]
 
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
