@@ -3,7 +3,7 @@ name: Daily China Briefing
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *' # optional: täglich um 06:00 UTC
+    - cron: '0 5 * * *' # täglich um 06:00 UTC
 
 jobs:
   build:
@@ -21,11 +21,10 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser requests beautifulsoup4 imapclient
+          pip install feedparser requests beautifulsoup4 lxml
 
       - name: Briefing-Skript ausführen
         run: python briefing.py
         env:
           CONFIG: ${{ secrets.CONFIG }}
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
-
