@@ -103,27 +103,6 @@ feeds_thinktanks = {
     "Lowy Institute": "https://www.lowyinstitute.org/the-interpreter/rss.xml"
 }
 
-# === Substack-Feeds (als Fallback, nicht genutzt) ===
-feeds_substack = {
-    "Sinocism – Bill Bishop": "https://sinocism.com/feed",
-    "ChinaTalk – Jordan Schneider": "https://chinatalk.substack.com/feed",
-    "Pekingology": "https://pekingnology.substack.com/feed",
-    "The Rare Earth Observer": "https://treo.substack.com/feed",
-    "Baiguan": "https://www.baiguan.news/feed",
-    "Bert’s Newsletter": "https://berthofman.substack.com/feed",
-    "Hong Kong Money Never Sleeps": "https://moneyhk.substack.com/feed",
-    "Tracking People’s Daily": "https://trackingpeoplesdaily.substack.com/feed",
-    "Interconnected": "https://interconnect.substack.com/feed",
-    "Ginger River Review": "https://www.gingerriver.com/feed",
-    "The East is Read": "https://www.eastisread.com/feed",
-    "Inside China – Fred Gao": "https://www.fredgao.com/feed",
-    "China Business Spotlight": "https://chinabusinessspotlight.substack.com/feed",
-    "ChinAI Newsletter": "https://chinai.substack.com/feed",
-    "Tech Buzz China Insider": "https://techbuzzchina.substack.com/feed",
-    "Sinical China": "https://www.sinicalchina.com/feed",
-    "Observing China": "https://www.observingchina.org.uk/feed"
-}
-
 # === Google News China Top-Stories ===
 feeds_topchina = {
     "Google News – China": "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en"
