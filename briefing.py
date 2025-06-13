@@ -12,9 +12,7 @@ import email
 import time
 from email.utils import parsedate_to_datetime
 import warnings
-import pytz
 
-# Unterdrücke XMLParsedAsHTMLWarning
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
@@ -254,7 +252,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     
     try:
         # Datumsfilter: Letzte 2 Tage (für Live-Umgebung)
-        since_date = (datetime.now(pytz.UTC) - timedelta(days=2)).strftime("%d-%b-%Y")
+        since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
