@@ -12,6 +12,7 @@ import email
 import time
 from email.utils import parsedate_to_datetime
 import warnings
+import pytz
 
 # Unterdrücke XMLParsedAsHTMLWarning
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
@@ -252,8 +253,8 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
-        # Datumsfilter: Letzter Tag (für Live-Umgebung)
-        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+        # Datumsfilter: Letzte 2 Tage (für Live-Umgebung)
+        since_date = (datetime.now(pytz.UTC) - timedelta(days=2)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
@@ -266,27 +267,36 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 print(f"Debug - Suche nach: {search_query}")
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
+                    print(f"Debug - IMAP-Suchfehler für {sender_name} ({sender_email}): {data}")
                     posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email})."))
                     continue
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 24 Stunden gefunden."))
-                    continue
+                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 2 Tagen gefunden."))
+                    # Fallback-Suche: Alle Mails, wenn SINCE leer
+                    try:
+                        typ, data = imap.search(None, f'(FROM "{sender_email}")')
+                        if typ == "OK" and data[0]:
+                            email_ids = data[0].split()[-max_results_per_sender:]
+                            print(f"Debug - Fallback-Suche für {sender_name}: {email_ids}")
+                        else:
+                            continue
+                    except Exception as e:
+                        print(f"Debug - Fallback-Suche fehlgeschlagen für {sender_name}: {str(e)}")
+                        continue
                 for eid in reversed(email_ids):
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
                         posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}."))
                         continue
                     msg = email.message_from_bytes(msg_data[0][1])
-                    # Prüfe Mail-Datum
+                    # Datumsprüfung überspringen (SINCE filtert schon)
                     date_str = msg["Date"]
                     if date_str:
                         try:
                             mail_date = parsedate_to_datetime(date_str)
-                            if mail_date < datetime.now() - timedelta(days=1):
-                                print(f"Debug - Mail {eid} von {sender_name} zu alt: {date_str}")
-                                continue
+                            print(f"Debug - Datum für Mail {eid} von {sender_name}: {mail_date}")
                         except (TypeError, ValueError) as e:
                             print(f"Debug - Ungültiges Datum in Mail {eid} von {sender_name}: {date_str}, Fehler: {str(e)}")
                     else:
