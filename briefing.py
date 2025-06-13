@@ -345,37 +345,32 @@ def fetch_substack_from_email(email_user, email_password, folder="pass", max_res
 
 
 # === Neue Funktion: render_markdown (für Substack-Ausgabe) ===
-def render_markdown(posts):
-    """Erzeugt Markdown für Substack-Beiträge, mit einer Überschrift pro Substack."""
-    if not posts:
-        return ["Keine neuen Substack-Artikel gefunden."]
+def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
+    """Liest Substack-Mails von mehreren Absendern aus Gmail, robuste Version."""
+    posts = []
     
-    # Gruppiere Beiträge nach sender_name und speichere den order-Wert
-    grouped_posts = defaultdict(list)
-    sender_orders = {}
-    for post in posts:
-        sender_name = post[0]
-        sender_order = post[4] if len(post) > 4 else 999  # sender_order ist an Position 4
-        grouped_posts[sender_name].append(post)
-        sender_orders[sender_name] = min(sender_orders.get(sender_name, 999), sender_order)
-    
-    # Sortiere Substacks nach sender_order
-    sorted_senders = sorted(grouped_posts.keys(), key=lambda x: sender_orders.get(x, 999))
-    
-    markdown = []
-    for sender_name in sorted_senders:
-        markdown.append(f"### {sender_name}")
-        for post in grouped_posts[sender_name]:
-            if len(post) == 2:  # Fehlerfall (z. B. "📭 Keine Mails")
-                markdown.append(f"{post[1]}\n")
-            else:  # Normaler Beitrag
-                title, link, teaser = post[1], post[2], post[3]
-                markdown.append(f"• <a href=\"{link}\">{title}</a>")
-                if teaser:
-                    markdown.append(f"{teaser}")
-                markdown.append("")
-    
-    return markdown
+    try:
+        print(f"Debug - Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
+        print(f"Debug - Existiert substacks.json?: {os.path.exists('substacks.json')}")
+        with open("substacks.json", "r") as f:
+            substack_senders = json.load(f)  # Korrektur: file -> f
+        substack_senders = sorted(substack_senders, key=lambda x: x["order"])
+        # Prüfe auf doppelte E-Mail-Adressen
+        email_counts = defaultdict(int)
+        for sender in substack_senders:
+            email_counts[sender.get("email")] += 1
+        duplicates = [email for email, count in email_counts.items() if count > 1 and email]
+        if duplicates:
+            print(f"⚠️ Warnung: Doppelte E-Mail-Adressen in substacks.json: {duplicates}")
+    except FileNotFoundError:
+        print("❌ Fehler: substacks.json nicht gefunden! Verwende leere Liste.")
+        substack_senders = []
+        posts.append(("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999))
+    except json.JSONDecodeError:
+        print("❌ Fehler: substacks.json ungültig!")
+        substack_senders = []
+        posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999))
+
 
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
