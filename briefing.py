@@ -215,7 +215,7 @@ def extract_source(title):
     return "Unbekannt"
 
 # === Substack via Gmail abrufen ===
-def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=1):
+def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     """Liest Substack-Mails von mehreren Absendern aus Gmail, robuste Version."""
     posts = []
     
@@ -251,8 +251,8 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
-        # Datumsfilter: Letzte 2 Tage (für Live-Umgebung)
-        since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
+        # Datumsfilter: Letzte 3 Tage
+        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
@@ -271,25 +271,14 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 2 Tagen gefunden."))
-                    # Fallback-Suche: Alle Mails, wenn SINCE leer
-                    try:
-                        typ, data = imap.search(None, f'(FROM "{sender_email}")')
-                        if typ == "OK" and data[0]:
-                            email_ids = data[0].split()[-max_results_per_sender:]
-                            print(f"Debug - Fallback-Suche für {sender_name}: {email_ids}")
-                        else:
-                            continue
-                    except Exception as e:
-                        print(f"Debug - Fallback-Suche fehlgeschlagen für {sender_name}: {str(e)}")
-                        continue
+                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden."))
+                    continue
                 for eid in reversed(email_ids):
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
                         posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}."))
                         continue
                     msg = email.message_from_bytes(msg_data[0][1])
-                    # Datumsprüfung überspringen (SINCE filtert schon)
                     date_str = msg["Date"]
                     if date_str:
                         try:
