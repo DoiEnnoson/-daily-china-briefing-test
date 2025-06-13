@@ -362,7 +362,8 @@ def render_markdown(posts):
                 markdown.append(f"{post[1]}\n")
             else:  # Normaler Beitrag
                 title, link, teaser = post[1], post[2], post[3]
-                markdown.append(f"{title}")
+                # Titel als anklickbarer Link formatieren
+                markdown.append(f"• <a href=\"{link}\">{title}</a>")
                 if teaser:
                     markdown.append(f"{teaser}")
                 markdown.append("")
