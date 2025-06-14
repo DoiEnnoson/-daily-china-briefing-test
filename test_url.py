@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import re
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 import time
 
 def fetch_original_url(google_url):
@@ -32,12 +31,14 @@ def fetch_original_url(google_url):
         driver = webdriver.Chrome(options=chrome_options)
         try:
             driver.get(google_url)
-            time.sleep(3)  # Warte auf Weiterleitung
+            time.sleep(2)  # Kürzere Wartezeit für GitHub Actions
             final_url = driver.current_url
             print(f"Selenium finale URL: {final_url}")
             if final_url != google_url and not final_url.startswith('https://news.google.com'):
                 print(f"Original-URL gefunden: {final_url}")
                 return final_url
+            else:
+                print(f"Selenium hat keine Original-URL gefunden, URL ist: {final_url}")
         finally:
             driver.quit()
 
