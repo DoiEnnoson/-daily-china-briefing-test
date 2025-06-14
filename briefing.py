@@ -12,6 +12,8 @@ import email
 import time
 from email.utils import parsedate_to_datetime
 import warnings
+import urllib.parse
+from requests.exceptions import RequestException
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
