@@ -23,8 +23,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install feedparser requests beautifulsoup4 lxml
 
-      - name: Briefing-Skript ausführen
-        run: python briefing.py
-        env:
-          CONFIG: ${{ secrets.CONFIG }}
-          SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
+      - name: Test URL Skript ausführen
+        run: python test_url.py
