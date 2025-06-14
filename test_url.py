@@ -2,6 +2,7 @@ import urllib.parse
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
+import re
 
 def fetch_original_url(google_url):
     """Extrahiert die Original-URL aus einer Google News Weiterleitungs-URL."""
@@ -21,33 +22,26 @@ def fetch_original_url(google_url):
         print(f"Status-Code: {response.status_code}")
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            # Suche nach einem <a>-Tag mit class="VDXfz" (typisch für Google News)
+            # Suche nach <meta http-equiv="refresh">
+            meta_refresh = soup.find('meta', attrs={'http-equiv': re.compile('refresh', re.I)})
+            if meta_refresh and 'content' in meta_refresh.attrs:
+                content = meta_refresh['content']
+                # Extrahiere URL aus content="0;url=https://..."
+                match = re.search(r'url=(https?://[^\s"]+)', content)
+                if match:
+                    original_url = match.group(1)
+                    print(f"Meta-Refresh-URL gefunden: {original_url}")
+                    return original_url
+                else:
+                    print(f"Meta-Refresh gefunden, aber keine URL: {content}")
+            else:
+                print("Kein Meta-Refresh-Tag gefunden")
+            # Suche nach <a class="VDXfz">
             redirect_link = soup.find('a', class_='VDXfz')
             if redirect_link:
                 original_url = redirect_link['href']
-                print(f"Weiterleitungs-URL gefunden: {original_url}")
+                print(f"Weiterleitungs-URL (VDXfz) gefunden: {original_url}")
                 return original_url
-            else:
-                # Debugging: Gib die ersten 500 Zeichen des HTML aus
-                print("Kein Weiterleitungslink gefunden. Erste 500 Zeichen des HTML:")
-                print(str(soup)[:500])
-        else:
-            print(f"Seite konnte nicht geladen werden, Status-Code: {response.status_code}")
-        print(f"Fallback: Verwende response.url: {response.url}")
-        return response.url
-    except RequestException as e:
-        print(f"Fehler beim Abrufen der Original-URL für {google_url}: {e}")
-        return google_url
-
-# Liste von Test-URLs (korrigiert)
-test_urls = [
-    "https://news.google.com/rss/articles/CBMingFBVV95cUxQeC1wcG5ZXzNCVlgwY1N2U2ZMWHFpZDJDUXdBaEc3TUdBdjdiQkx3aXpoTkhHcFNpRndKVk5RNDlzOG4yRnFrNUdpVWlwMWh6dXJsYk1xOWRKOXUxdEtNT25GR2M5QUNqRzQzS0N3U2c4Nkc4aU0tbUVabTZPTlFFVW91aGFOMkpQbzI0VmJnNnBTczVISnA0N3l0Sk9jUQ?oc=5&hl=en-US&gl=US&ceid=US:en",
-    "https://news.google.com/rss/articles/CBMi5wFBVV95cUxOWEEyempoOFZMaVNOeWFxdDViSnFjM0hxUU5telRHR3hCV3JyTUNtY2FGTHVZczVNR3BmU3BRRkVsMld5T1ZEZUNCVFRhcktGZmp5Q25zZm8zQzhqeG5EV20zMFpHUGdLUno1SW53ZWowVnZCVWJlakFGbXZiLXNHVzNZSnZ1NEs1Y1UtWFVEV2o5U2o3djFJQ1M2QVZPek1pNERVVjNJbmZkZlRsYk5Zd0hCdmQ0ZlJ2clVJWGEtZFB0dHhxN1c4WXNKV0w1WFNDX3pqeXMteW1wRWdqTlYyTkV2dk45akk?oc=5",
-    "https://news.google.com/rss/articles/CBMizwFBVV95cUxPaUduUVBqZ1hsa0s3Y2FRTjZzR3Zua2JHTG5CZjNRQkxLc2hzWHBYbWJHLWt0b0ZUM1Z3Qk90R0VwZU9tdFZXWjdTNjMtM3BJdU1ad0d2eERvM29RejFiUWw4Tzk0enpMVTUwQlo0UnZXR29EVTljSlR1LU1UUmF1QUdZai1DX1BBZ2NOMlc0ZGJfMHR4dnE4Yk5pRnFncU9RVzFYTEo2Wlh5WmJHa3dhUEJzR05pNGFNQWxEeWJmWXhNX3JXTWhSaklUYkVZNDQ?oc=5",
-    "https://news.google.com/rss/articles/CBMi1AFBVV95cUxNWFZfRWJoN0ptaHc5bkN4dnlBbEM0WWdMdTVhQklhTmtQOGY5WkRua1YydFNxMkR5RnVjTkRYNk0yaU9LdXg3WVpVbUtfdWRSWVZEUDA0eGtaS0xvVE9NX19LUVNSQXpjVFRfUDEwam5HaGdGOFJPWXYtSHo0enBWZUhEU2FRTVlMV3FfajlzaTRFQTRwclAyamYyLUFsdmtZWmxlZzg2ZDRENlFXbXFiVDdOZXo3cDE1OGRUMG54eWpqeW05THNQaHduN0JtYzVka0tqSw?oc=5"
-]
-
-# Teste jede URL
-for url in test_urls:
-    result = fetch_original_url(url)
-    print(f"Original-URL: {result}")
+            # Suche nach allen <a>-Tags
+            all_links = soup.find_all('a', href=True)
+            if all
