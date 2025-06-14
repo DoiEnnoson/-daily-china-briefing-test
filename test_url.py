@@ -43,4 +43,37 @@ def fetch_original_url(google_url):
                 print(f"Weiterleitungs-URL (VDXfz) gefunden: {original_url}")
                 return original_url
             # Suche nach allen <a>-Tags
-            all_links = soup.find_all('
+            all_links = soup.find_all('a', href=True)
+            if all_links:
+                print(f"Gefundene <a>-Links: {[link['href'] for link in all_links]}")
+                # Heuristik: Wähle den ersten Link, der nicht zu Google führt
+                for link in all_links:
+                    href = link['href']
+                    if not href.startswith(('https://news.google.com', 'https://www.google.com', '/')):
+                        print(f"Weiterleitungs-URL (Heuristik) gefunden: {href}")
+                        return href
+            else:
+                print("Keine <a>-Links gefunden")
+            # Debugging: Gib die ersten 1000 Zeichen des HTML aus
+            print("Erste 1000 Zeichen des HTML:")
+            print(str(soup)[:1000])
+        else:
+            print(f"Seite konnte nicht geladen werden, Status-Code: {response.status_code}")
+        print(f"Fallback: Verwende response.url: {response.url}")
+        return response.url
+    except RequestException as e:
+        print(f"Fehler beim Abrufen der Original-URL für {google_url}: {e}")
+        return google_url
+
+# Liste von Test-URLs (vollständig korrigiert)
+test_urls = [
+    "https://news.google.com/rss/articles/CBMingFBVV95cUxQeC1wcG5ZXzNCVlgwY1N2U2ZMWHFpZDJDUXdBaEc3TUdBdjdiQkx3aXpoTkhHcFNpRndKVk5RNDlzOG4yRnFrNUdpVWlwMWh6dXJsYk1xOWRKOXUxdEtNT25GR2M5QUNqRzQzS0N3U2c4Nkc4aU0tbUVabTZPTlFFVW91aGFOMkpQbzI0VmJnNnBTczVISnA0N3l0Sk9jUQ?oc=5&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/articles/CBMi5wFBVV95cUxOWEEyempoOFZMaVNOeWFxdDViSnFjM0hxUU5telRHR3hCV3JyTUNtY2FGTHVZczVNR3BmU3BRRkVsMld5T1ZEZUNCVFRhcktGZmp5Q25zZm8zQzhqeG5EV20zMFpHUGdLUno1SW53ZWowVnZCVWJlakFGbXZiLXNHVzNZSnZ1NEs1Y1UtWFVEV2o5U2o3djFJQ1M2QVZPek1pNERVVjNJbmZkZlRsYk5Zd0hCdmQ0ZlJ2clVJWGEtZFB0dHhxN1c4WXNKV0w1WFNDX3pqeXMteW1wRWdqTlYyTkV2dk45akk?oc=5",
+    "https://news.google.com/rss/articles/CBMizwFBVV95cUxPaUduUVBqZ1hsa0s3Y2FRTjZzR3Zua2JHTG5CZjNRQkxLc2hzWHBYbWJHLWt0b0ZUM1Z3Qk90R0VwZU9tdFZXWjdTNjMtM3BJdU1ad0d2eERvM29RejFiUWw4Tzk0enpMVTUwQlo0UnZXR29EVTljSlR1LU1UUmF1QUdZai1DX1BBZ2NOMlc0ZGJfMHR4dnE4Yk5pRnFncU9RVzFYTEo2Wlh5WmJHa3dhUEJzR05pNGFNQWxEeWJmWXhNX3JXTWhSaklUYkVZNDQ?oc=5",
+    "https://news.google.com/rss/articles/CBMi1AFBVV95cUxNWFZfRWJoN0ptaHc5bkN4dnlBbEM0WWdMdTVhQklhTmtQOGY5WkRua1YydFNxMkR5RnVjTkRYNk0yaU9LdXg3WVpVbUtfdWRSWVZEUDA0eGtaS0xvVE9NX19LUVNSQXpjVFRfUDEwam5HaGdGOFJPWXYtSHo0enBWZUhEU2FRTVlMV3FfajlzaTRFQTRwclAyamYyLUFsdmtZWmxlZzg2ZDRENlFXbXFiVDdOZXo3cDE1OGRUMG54eWpqeW05THNQaHduN0JtYzVka0tqSw?oc=5"
+]
+
+# Teste jede URL
+for url in test_urls:
+    result = fetch_original_url(url)
+    print(f"Original-URL: {result}")
