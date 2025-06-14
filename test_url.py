@@ -43,23 +43,4 @@ def fetch_original_url(google_url):
                 print(f"Weiterleitungs-URL (VDXfz) gefunden: {original_url}")
                 return original_url
             # Suche nach allen <a>-Tags
-            all_links = soup.find_all('a', href=True)
-            if all_links:
-                print(f"Gefundene <a>-Links: {[link['href'] for link in all_links]}")
-                # Heuristik: Wähle den ersten Link, der nicht zu Google führt
-                for link in all_links:
-                    href = link['href']
-                    if not href.startswith(('https://news.google.com', 'https://www.google.com', '/')):
-                        print(f"Weiterleitungs-URL (Heuristik) gefunden: {href}")
-                        return href
-            else:
-                print("Keine <a>-Links gefunden")
-            # Debugging: Gib die ersten 1000 Zeichen des HTML aus
-            print("Erste 1000 Zeichen des HTML:")
-            print(str(soup)[:1000])
-        else:
-            print(f"Seite konnte nicht geladen werden, Status-Code: {response.status_code}")
-        print(f"Fallback: Verwende response.url: {response.url}")
-        return response.url
-    except RequestException as e:
-        print(f"Fehler beim Abrufen der Original-URL für {google_url}: {e}")
+            all_links = soup.find_all('
