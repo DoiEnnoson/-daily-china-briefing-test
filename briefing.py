@@ -1,18 +1,18 @@
-import os
-import json
-from datetime import date, datetime, timedelta
-import smtplib
-import feedparser
-from collections import defaultdict
-import requests
-from email.mime.text import MIMEText
-from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
-import imaplib
 import email
-import time
-from email.utils import parsedate_to_datetime
-import warnings
+import feedparser
+import imaplib
+import json
+import os
 import re
+import requests
+import smtplib
+import time
+import warnings
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from email.mime.text import MIMEText
+from email.utils import parsedate_to_datetime
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -482,6 +482,7 @@ def fetch_currency_data():
         except Exception as e:
             results[name] = f"❌ {name}: Unerwarteter Fehler ({str(e)})"
     return results
+
 # === Stimmen von X ===
 x_accounts = [
     {"account": "Sino_Market", "name": "CN Wire", "url": "https://x.com/Sino_Market"},
@@ -509,34 +510,34 @@ def generate_briefing():
         briefing.append("📈 Heute kein Handelstag an der Börse Hongkong.")
 
     # Wechselkurse
-briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
-if is_weekend_day or is_holiday_china or is_holiday_hk:
-    briefing.append("📉 Heute keine aktuellen Wechselkurse.")
-else:
-    currency_data = fetch_currency_data()
-    # CPR
-    if isinstance(currency_data.get("CPR"), float):
-        briefing.append(f"• CPR (CNY/USD): {currency_data['CPR']:.4f}")
+    briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
+    if is_weekend_day or is_holiday_china or is_holiday_hk:
+        briefing.append("📉 Heute keine aktuellen Wechselkurse.")
     else:
-        briefing.append(currency_data.get("CPR"))
-    # CNY/USD (Onshore)
-    if isinstance(currency_data.get("USDCNY"), tuple):
-        val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
-        briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
-    else:
-        briefing.append(currency_data.get("USDCNY"))
-    # CNH/USD (Offshore)
-    if isinstance(currency_data.get("USDCNH"), tuple):
-        val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
-        briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
-    else:
-        briefing.append(currency_data.get("USDCNH"))
-    # Spread CNH–CNY
-    if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
-        val_cny = currency_data["USDCNY"][0]
-        val_cnh = currency_data["USDCNH"][0]
-        spread = val_cnh - val_cny
-        briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
+        currency_data = fetch_currency_data()
+        # CPR
+        if isinstance(currency_data.get("CPR"), float):
+            briefing.append(f"• CPR (CNY/USD): {currency_data['CPR']:.4f}")
+        else:
+            briefing.append(currency_data.get("CPR"))
+        # CNY/USD (Onshore)
+        if isinstance(currency_data.get("USDCNY"), tuple):
+            val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
+            briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
+        else:
+            briefing.append(currency_data.get("USDCNY"))
+        # CNH/USD (Offshore)
+        if isinstance(currency_data.get("USDCNH"), tuple):
+            val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
+            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
+        else:
+            briefing.append(currency_data.get("USDCNH"))
+        # Spread CNH–CNY
+        if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
+            val_cny = currency_data["USDCNY"][0]
+            val_cnh = currency_data["USDCNH"][0]
+            spread = val_cnh - val_cny
+            briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
 
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
@@ -647,21 +648,27 @@ else:
     </div>
   </body>
 </html>"""
+
 # === E-Mail senden ===
-print("🧠 Erzeuge Briefing...")
-briefing_content = generate_briefing()
+def send_briefing():
+    print("🧠 Erzeuge Briefing...")
+    briefing_content = generate_briefing()
 
-msg = MIMEText(briefing_content, "html", "utf-8")
-msg["Subject"] = "📰 Dein tägliches China-Briefing"
-msg["From"] = config_dict["EMAIL_USER"]
-msg["To"] = config_dict["EMAIL_TO"]
+    msg = MIMEText(briefing_content, "html", "utf-8")
+    msg["Subject"] = "📰 Dein tägliches China-Briefing"
+    msg["From"] = config_dict["EMAIL_USER"]
+    msg["To"] = config_dict["EMAIL_TO"]
 
-print("📤 Sende E-Mail...")
-try:
-    with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
-        server.starttls()
-        server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
-        server.send_message(msg)
-    print("✅ E-Mail wurde gesendet!")
-except Exception as e:
-    print("❌ Fehler beim Senden der E-Mail:", str(e))
+    print("📤 Sende E-Mail...")
+    try:
+        with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
+            server.starttls()
+            server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
+            server.send_message(msg)
+        print("✅ E-Mail wurde gesendet!")
+    except Exception as e:
+        print("❌ Fehler beim Senden der E-Mail:", str(e))
+
+# === Hauptskript ===
+if __name__ == "__main__":
+    send_briefing()
