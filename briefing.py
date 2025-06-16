@@ -637,7 +637,7 @@ else:
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
-    return f"""\
+return f"""\
 <html>
   <body>
     <div style="background-color: #ffffff; padding: 20px;">
