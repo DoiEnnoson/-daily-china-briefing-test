@@ -416,23 +416,27 @@ def fetch_cpr_usdcny():
         r = requests.get(url, headers=headers, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        # Suche nach der Tabelle "RMB Central Parity Rate"
-        table = soup.find("table", class_="pub-table")
-        if not table:
-            print("❌ Fehler: Tabelle 'RMB Central Parity Rate' nicht gefunden.")
+        # Suche nach allen Tabellen
+        tables = soup.find_all("table")
+        if not tables:
+            print("❌ Fehler: Keine Tabellen auf der CFETS-Seite gefunden.")
+            print(f"Debug - HTML-Auszug: {soup.prettify()[:500]}")  # Erste 500 Zeichen für Debugging
             return None
-        # Suche nach USD/CNY in der Tabelle
-        for row in table.find_all("tr")[1:]:  # Überspringe Header
-            cells = row.find_all("td")
-            if len(cells) >= 2 and cells[0].text.strip() == "USD/CNY":
-                cpr_text = cells[1].text.strip()
-                try:
-                    cpr = float(cpr_text)
-                    return cpr
-                except ValueError:
-                    print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
-                    return None
-        print("❌ Fehler: USD/CNY CPR nicht in der Tabelle gefunden.")
+        # Durchsuche jede Tabelle nach USD/CNY
+        for table in tables:
+            for row in table.find_all("tr")[1:]:  # Überspringe Header
+                cells = row.find_all("td")
+                if len(cells) >= 2 and cells[0].text.strip() == "USD/CNY":
+                    cpr_text = cells[1].text.strip()
+                    try:
+                        cpr = float(cpr_text)
+                        print(f"✅ CPR gefunden: USD/CNY = {cpr}")
+                        return cpr
+                    except ValueError:
+                        print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
+                        return None
+        print("❌ Fehler: USD/CNY CPR nicht in den Tabellen gefunden.")
+        print(f"Debug - Anzahl gefundener Tabellen: {len(tables)}")
         return None
     except Exception as e:
         print(f"❌ Fehler beim Abrufen des CPR von CFETS: {str(e)}")
