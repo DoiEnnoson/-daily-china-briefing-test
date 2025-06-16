@@ -637,7 +637,7 @@ else:
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
-return f"""\
+    return f"""\
 <html>
   <body>
     <div style="background-color: #ffffff; padding: 20px;">
@@ -647,7 +647,6 @@ return f"""\
     </div>
   </body>
 </html>"""
-
 # === E-Mail senden ===
 print("🧠 Erzeuge Briefing...")
 briefing_content = generate_briefing()
