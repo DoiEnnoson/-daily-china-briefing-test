@@ -12,6 +12,7 @@ import email
 import time
 from email.utils import parsedate_to_datetime
 import warnings
+import re
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -408,14 +409,51 @@ def fetch_index_data():
             results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
     return results
 
+def fetch_cpr_usdcny():
+    url = "http://www.chinamoney.com.cn/english/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        # Suche nach der Tabelle "RMB Central Parity Rate"
+        table = soup.find("table", class_="pub-table")
+        if not table:
+            print("❌ Fehler: Tabelle 'RMB Central Parity Rate' nicht gefunden.")
+            return None
+        # Suche nach USD/CNY in der Tabelle
+        for row in table.find_all("tr")[1:]:  # Überspringe Header
+            cells = row.find_all("td")
+            if len(cells) >= 2 and cells[0].text.strip() == "USD/CNY":
+                cpr_text = cells[1].text.strip()
+                try:
+                    cpr = float(cpr_text)
+                    return cpr
+                except ValueError:
+                    print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
+                    return None
+        print("❌ Fehler: USD/CNY CPR nicht in der Tabelle gefunden.")
+        return None
+    except Exception as e:
+        print(f"❌ Fehler beim Abrufen des CPR von CFETS: {str(e)}")
+        return None
+
 def fetch_currency_data():
     currencies = {
-        "USDCNY": "USDCNY=X",
-        "USDCNH": "USDCNH=X",
-        "HKDUSD": "HKDUSD=X",
+        "USDCNY": "USDCNY=X",  # Onshore
+        "USDCNH": "USDCNH=X",  # Offshore
     }
     headers = {"User-Agent": "Mozilla/5.0"}
     results = {}
+    
+    # Hole CPR von CFETS
+    cpr = fetch_cpr_usdcny()
+    if cpr is not None:
+        results["CPR"] = cpr  # CPR ohne Veränderung, da täglich neu festgelegt
+    else:
+        results["CPR"] = "❌ CPR (CNY/USD): Keine Daten verfügbar."
+    
+    # Hole Onshore- und Offshore-Kurse von Yahoo Finance
     for name, symbol in currencies.items():
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
         try:
@@ -444,7 +482,6 @@ def fetch_currency_data():
         except Exception as e:
             results[name] = f"❌ {name}: Unerwarteter Fehler ({str(e)})"
     return results
-
 # === Stimmen von X ===
 x_accounts = [
     {"account": "Sino_Market", "name": "CN Wire", "url": "https://x.com/Sino_Market"},
