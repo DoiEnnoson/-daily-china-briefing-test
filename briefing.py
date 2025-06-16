@@ -12,8 +12,6 @@ import email
 import time
 from email.utils import parsedate_to_datetime
 import warnings
-import urllib.parse
-from requests.exceptions import RequestException
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -153,35 +151,18 @@ def score_article(title, summary=""):
         if word in content:
             score -= 3
     return score
-    
-# === Ersetzt Google-URL mit Original-URL  ===
-def fetch_original_url(google_url):
-    """Extrahiert die Original-URL aus einer Google News Weiterleitungs-URL."""
-    try:
-        parsed = urllib.parse.urlparse(google_url)
-        query_params = urllib.parse.parse_qs(parsed.query)
-        if 'url' in query_params:
-            return query_params['url'][0]
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.head(google_url, headers=headers, allow_redirects=True, timeout=5)
-        return response.url
-    except RequestException as e:
-        print(f"Fehler beim Abrufen der Original-URL für {google_url}: {e}")
-        return google_url
 
+# === News-Artikel filtern & bewerten ===
 def fetch_news(feed_url, max_items=20, top_n=5):
     feed = feedparser.parse(feed_url)
     scored = []
     for entry in feed.entries[:max_items]:
-        title = entry.get("title", "").strip()
-        summary = entry.get("summary", "").strip()
-        google_link = entry.get("link", "").strip()
-        if not title or not google_link:
-            continue
-        link = fetch_original_url(google_link)
+        title = entry.get("title", "")
+        summary = entry.get("summary", "")
+        link = entry.get("link", "")
         score = score_article(title, summary)
         if score > 0:
-            scored.append((score, f'• <a href="{link}">{title}</a>'))
+            scored.append((score, f'• <a href="{link.strip()}">{title.strip()}</a>'))
     scored.sort(reverse=True, key=lambda x: x[0])
     return [item[1] for item in scored[:top_n]] or ["Keine aktuellen China-Artikel gefunden."]
 
@@ -622,9 +603,11 @@ def generate_briefing():
     return f"""\
 <html>
   <body>
-    <pre style="font-family: system-ui, sans-serif">
+    <div style="background-color: #ffffff; padding: 20px;">
+      <pre style="font-family: system-ui, sans-serif">
 {chr(10).join(briefing)}
-    </pre>
+      </pre>
+    </div>
   </body>
 </html>"""
 
