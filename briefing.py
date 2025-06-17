@@ -660,7 +660,7 @@ def generate_briefing():
             cpr, estimate, pips_diff, prev_cpr = cpr_data
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
-                spread_arrow = "↓" if pips_diff < 0 else "↑" if pips_diff > 0 else "→"
+                spread_arrow = "↓" if pips_diff <= -20 else "↑" if pips_diff >= 20 else "→"
                 usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
                 if prev_cpr is not None:
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
@@ -697,7 +697,7 @@ def generate_briefing():
             spread = val_cnh - val_cny
             spread_pips = int(spread * 10000)  # Convert to pips
             cnh_cny_interpretation = interpret_cnh_cny_spread(spread_pips)
-            spread_arrow = "↓" if spread < 0 else "↑" if spread > 0 else "→"
+            spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
     # Top 5 China-Stories
