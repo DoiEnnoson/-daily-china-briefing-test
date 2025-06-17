@@ -733,3 +733,27 @@ def generate_briefing():
     </div>
   </body>
 </html>"""
+
+# === E-Mail senden ===
+def send_briefing():
+    print("🧠 Erzeuge Briefing...")
+    briefing_content = generate_briefing()
+
+    msg = MIMEText(briefing_content, "html", "utf-8")
+    msg["Subject"] = "📰 Dein tägliches China-Briefing"
+    msg["From"] = config_dict["EMAIL_USER"]
+    msg["To"] = config_dict["EMAIL_TO"]
+
+    print("📤 Sende E-Mail...")
+    try:
+        with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
+            server.starttls()
+            server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
+            server.send_message(msg)
+        print("✅ E-Mail wurde gesendet!")
+    except Exception as e:
+        print("❌ Fehler beim Senden der E-Mail:", str(e))
+
+# === Hauptskript ===
+if __name__ == "__main__":
+    send_briefing()
