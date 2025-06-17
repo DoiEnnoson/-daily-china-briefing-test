@@ -380,67 +380,66 @@ def fetch_latest_nbs_data():
         return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
 
 # === Börsendaten & Wechselkurse abrufen ===
-def fetch_index_data():
-    indices = {
-        "Hang Seng Index (HSI)": "^HSI",
-        "Hang Seng China Enterprises (HSCEI)": "^HSCE",
-        "SSE Composite Index (Shanghai)": "000001.SS",
-        "Shenzhen Component Index": "399001.SZ"
-    }
-    headers = {"User-Agent": "Mozilla/5.0"}
-    results = []
-    for name, symbol in indices.items():
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            if len(closes) < 2 or not all(closes[-2:]):
-                results.append(f"❌ {name}: Keine gültigen Kursdaten verfügbar.")
-                continue
-            prev_close = closes[-2]
-            last_close = closes[-1]
-            change = last_close - prev_close
-            pct = (change / prev_close) * 100
-            arrow = "→" if abs(pct) < 0.01 else "↑" if change > 0 else "↓"
-            results.append(f"• {name}: {round(last_close,2)} {arrow} ({pct:+.2f} %)")
-        except Exception as e:
-            results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
-    return results
-
-def fetch_cpr_usdcny():
-    url = "http://www.chinamoney.com.cn/english/"
+def fetch_cpr_forexlive():
+    url = "https://www.forexlive.com/CentralBanks"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         r = requests.get(url, headers=headers, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        # Suche nach allen Tabellen
+        articles = soup.find_all("h2", class_="card__title")
+        for article in articles:
+            title = article.text.strip()
+            if "PBOC sets USD/CNY" in title:
+                match = re.search(r"\d+\.\d{4}", title)
+                if match:
+                    cpr = float(match.group())
+                    estimate_match = re.search(r"estimate at (\d+\.\d{4})", title)
+                    estimate = float(estimate_match.group(1)) if estimate_match else None
+                    if estimate:
+                        pips_diff = int((cpr - estimate) * 10000)  # Pips: Differenz in Basispoints
+                        pips_str = f"{abs(pips_diff)} pips {'stärker' if pips_diff < 0 else 'schwächer'}"
+                    else:
+                        pips_str = None
+                    print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str}")
+                    return cpr, estimate, pips_str
+        print("❌ Fehler: Kein CPR-Artikel auf ForexLive gefunden.")
+        return None, None, None
+    except Exception as e:
+        print(f"❌ Fehler beim Abrufen des CPR von ForexLive: {str(e)}")
+        return None, None, None
+
+def fetch_cpr_usdcny():
+    # Versuche CFETS
+    url = "https://www.chinamoney.com.cn/english/bmkcpr/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
         tables = soup.find_all("table")
         if not tables:
             print("❌ Fehler: Keine Tabellen auf der CFETS-Seite gefunden.")
-            print(f"Debug - HTML-Auszug: {soup.prettify()[:500]}")  # Erste 500 Zeichen für Debugging
-            return None
-        # Durchsuche jede Tabelle nach USD/CNY
-        for table in tables:
-            for row in table.find_all("tr")[1:]:  # Überspringe Header
-                cells = row.find_all("td")
-                if len(cells) >= 2 and cells[0].text.strip() == "USD/CNY":
-                    cpr_text = cells[1].text.strip()
-                    try:
-                        cpr = float(cpr_text)
-                        print(f"✅ CPR gefunden: USD/CNY = {cpr}")
-                        return cpr
-                    except ValueError:
-                        print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
-                        return None
+            print(f"Debug - HTML-Auszug: {soup.prettify()[:500]}")
+        else:
+            for table in tables:
+                for row in table.find_all("tr")[1:]:
+                    cells = row.find_all("td")
+                    if len(cells) >= 2 and cells[0].text.strip() == "USD/CNY":
+                        cpr_text = cells[1].text.strip()
+                        try:
+                            cpr = float(cpr_text)
+                            print(f"✅ CPR gefunden: USD/CNY = {cpr}")
+                            return cpr, None, None  # Kein Estimate/Pips von CFETS
+                        except ValueError:
+                            print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
         print("❌ Fehler: USD/CNY CPR nicht in den Tabellen gefunden.")
-        print(f"Debug - Anzahl gefundener Tabellen: {len(tables)}")
-        return None
     except Exception as e:
         print(f"❌ Fehler beim Abrufen des CPR von CFETS: {str(e)}")
-        return None
+
+    # Fallback zu ForexLive
+    print("⚠️ CFETS fehlgeschlagen, versuche ForexLive...")
+    return fetch_cpr_forexlive()
 
 def fetch_currency_data():
     currencies = {
@@ -450,10 +449,10 @@ def fetch_currency_data():
     headers = {"User-Agent": "Mozilla/5.0"}
     results = {}
     
-    # Hole CPR von CFETS
-    cpr = fetch_cpr_usdcny()
+    # Hole CPR von CFETS oder ForexLive
+    cpr, estimate, pips_str = fetch_cpr_usdcny()
     if cpr is not None:
-        results["CPR"] = cpr  # CPR ohne Veränderung, da täglich neu festgelegt
+        results["CPR"] = (cpr, estimate, pips_str)
     else:
         results["CPR"] = "❌ CPR (CNY/USD): Keine Daten verfügbar."
     
