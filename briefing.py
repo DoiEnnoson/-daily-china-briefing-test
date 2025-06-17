@@ -519,10 +519,16 @@ def generate_briefing():
     else:
         currency_data = fetch_currency_data()
         # CPR
-        if isinstance(currency_data.get("CPR"), float):
-            briefing.append(f"• CPR (CNY/USD): {currency_data['CPR']:.4f}")
+        cpr_data = currency_data.get("CPR")
+        if isinstance(cpr_data, tuple):
+            cpr, estimate, pips_str = cpr_data
+            briefing.append(f"• CPR (CNY/USD): {cpr:.4f}")
+            if estimate is not None:
+                briefing.append(f"  - Estimate: {estimate:.4f}")
+            if pips_str is not None:
+                briefing.append(f"  - {pips_str}")
         else:
-            briefing.append(currency_data.get("CPR"))
+            briefing.append(cpr_data)
         # CNY/USD (Onshore)
         if isinstance(currency_data.get("USDCNY"), tuple):
             val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
@@ -541,7 +547,6 @@ def generate_briefing():
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
-
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
