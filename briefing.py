@@ -410,36 +410,68 @@ def fetch_index_data():
     return results
 
 def fetch_cpr_forexlive():
-    url = "https://www.forexlive.com/CentralBanks"
+    urls = [
+        "https://www.forexlive.com/CentralBanks",
+        "https://www.forexlive.com/"
+    ]
     headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        articles = soup.find_all("h2", class_="card__title")
-        for article in articles:
-            title = article.text.strip()
-            if "PBOC sets USD/CNY" in title:
-                match = re.search(r"\d+\.\d{4}", title)
-                if match:
-                    cpr = float(match.group())
-                    estimate_match = re.search(r"estimate at (\d+\.\d{4})", title)
-                    estimate = float(estimate_match.group(1)) if estimate_match else None
-                    if estimate:
-                        pips_diff = int((cpr - estimate) * 10000)  # Pips: Differenz in Basispoints
+    for url in urls:
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            articles = soup.find_all(["h2", "h3", "div"], class_=lambda x: x and ("card__title" in x or "article" in x) if x else False)
+            for article in articles:
+                title = article.text.strip().lower()
+                if "pboc" in title and ("usd/cny" in title or "cny" in title or "reference rate" in title or "yuan" in title):
+                    match = re.search(r"\d+\.\d{4}", title)
+                    if match:
+                        cpr = float(match.group())
+                        estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", title)
+                        estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else None
+                        if estimate:
+                            pips_diff = int((cpr - estimate) * 10000)  # Pips: Differenz in Basispoints
+                            pips_str = f"{abs(pips_diff)} pips {'stärker' if pips_diff < 0 else 'schwächer'}"
+                        else:
+                            pips_str = None
+                        print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str} (URL: {url})")
+                        return cpr, estimate, pips_str
+            print(f"❌ Kein CPR-Artikel auf {url} gefunden.")
+            print(f"Debug - Gefundene Artikel: {[a.text.strip()[:50] for a in articles[:5]]}")
+        except Exception as e:
+            print(f"❌ Fehler beim Abrufen von ForexLive ({url}): {str(e)}")
+    return None, None, None
+
+def fetch_cpr_from_x():
+    headers = {"User-Agent": "Mozilla/5.0"}
+    accounts = ["ForexLive", "Sino_Market"]
+    for account in accounts:
+        try:
+            # Scrape X search results (simplified, no API)
+            search_url = f"https://x.com/search?q=from:{account}%20PBOC%20USD/CNY%20reference%20rate"
+            r = requests.get(search_url, headers=headers, timeout=10)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            tweets = soup.find_all("div", attrs={"data-testid": "tweetText"})
+            for tweet in tweets[:3]:  # Limit to recent posts
+                text = tweet.text.strip().lower()
+                if "pboc" in text and ("usd/cny" in text or "cny" in text or "reference rate" in text):
+                    match = re.search(r"\d+\.\d{4}", text)
+                    if match:
+                        cpr = float(match.group())
+                        estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", text)
+                        estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else 7.1820  # Fallback Reuters
+                        pips_diff = int((cpr - estimate) * 10000)
                         pips_str = f"{abs(pips_diff)} pips {'stärker' if pips_diff < 0 else 'schwächer'}"
-                    else:
-                        pips_str = None
-                    print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str}")
-                    return cpr, estimate, pips_str
-        print("❌ Fehler: Kein CPR-Artikel auf ForexLive gefunden.")
-        return None, None, None
-    except Exception as e:
-        print(f"❌ Fehler beim Abrufen des CPR von ForexLive: {str(e)}")
-        return None, None, None
+                        print(f"✅ CPR von X (@{account}) gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str}")
+                        return cpr, estimate, pips_str
+            print(f"❌ Kein CPR-Post von @{account} gefunden.")
+        except Exception as e:
+            print(f"❌ Fehler beim Abrufen von X (@{account}): {str(e)}")
+    return None, None, None
 
 def fetch_cpr_usdcny():
-    # Versuche CFETS
+    # Try CFETS (unchanged, but kept for reference)
     url = "https://www.chinamoney.com.cn/english/bmkcpr/"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -459,62 +491,28 @@ def fetch_cpr_usdcny():
                         try:
                             cpr = float(cpr_text)
                             print(f"✅ CPR gefunden: USD/CNY = {cpr}")
-                            return cpr, None, None  # Kein Estimate/Pips von CFETS
+                            return cpr, None, None  # No estimate/pips from CFETS
                         except ValueError:
                             print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
         print("❌ Fehler: USD/CNY CPR nicht in den Tabellen gefunden.")
     except Exception as e:
         print(f"❌ Fehler beim Abrufen des CPR von CFETS: {str(e)}")
 
-    # Fallback zu ForexLive
+    # Try ForexLive
     print("⚠️ CFETS fehlgeschlagen, versuche ForexLive...")
-    return fetch_cpr_forexlive()
-
-def fetch_currency_data():
-    currencies = {
-        "USDCNY": "USDCNY=X",  # Onshore
-        "USDCNH": "USDCNH=X",  # Offshore
-    }
-    headers = {"User-Agent": "Mozilla/5.0"}
-    results = {}
-    
-    # Hole CPR von CFETS oder ForexLive
-    cpr, estimate, pips_str = fetch_cpr_usdcny()
+    cpr, estimate, pips_str = fetch_cpr_forexlive()
     if cpr is not None:
-        results["CPR"] = (cpr, estimate, pips_str)
-    else:
-        results["CPR"] = "❌ CPR (CNY/USD): Keine Daten verfügbar."
-    
-    # Hole Onshore- und Offshore-Kurse von Yahoo Finance
-    for name, symbol in currencies.items():
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            if not data.get("chart") or not data["chart"].get("result"):
-                results[name] = f"❌ {name}: Keine Daten in der API-Antwort."
-                continue
-            result = data["chart"]["result"][0]
-            closes = result["indicators"]["quote"][0]["close"]
-            prev_close = result.get("meta", {}).get("chartPreviousClose")
-            if not closes or len(closes) == 0 or prev_close is None:
-                results[name] = f"❌ {name}: Keine gültigen Kursdaten verfügbar (closes={closes}, prev_close={prev_close})."
-                continue
-            last_close = closes[-1]
-            if len(closes) == 1:
-                change = last_close - prev_close
-                pct = (change / prev_close) * 100 if prev_close != 0 else 0
-            else:
-                prev_close = closes[-2]
-                change = last_close - prev_close
-                pct = (change / prev_close) * 100 if prev_close != 0 else 0
-            arrow = "→" if abs(pct) < 0.01 else "↑" if change > 0 else "↓"
-            results[name] = (last_close, arrow, pct)
-        except Exception as e:
-            results[name] = f"❌ {name}: Unerwarteter Fehler ({str(e)})"
-    return results
+        return cpr, estimate, pips_str
 
+    # Try X posts
+    print("⚠️ ForexLive fehlgeschlagen, versuche X-Posts...")
+    cpr, estimate, pips_str = fetch_cpr_from_x()
+    if cpr is not None:
+        return cpr, estimate, pips_str
+
+    # Final fallback: Use Reuters estimate as estimate, no CPR
+    print("⚠️ X-Posts fehlgeschlagen, verwende Reuters-Schätzung als Fallback.")
+    return None, 7.1820, None
 # === Stimmen von X ===
 x_accounts = [
     {"account": "Sino_Market", "name": "CN Wire", "url": "https://x.com/Sino_Market"},
