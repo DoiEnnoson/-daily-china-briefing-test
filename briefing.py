@@ -16,10 +16,11 @@ from email.utils import parsedate_to_datetime
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-# Pfad zu den Holiday JSON Dateien (relativ zum Script-Verzeichnis)
+# Pfad zu den Holiday JSON Dateien und CPR-Cache (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
+CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
 
 def load_holidays(filepath):
     try:
@@ -35,6 +36,25 @@ def is_holiday(today_str, holidays_set):
 
 def is_weekend():
     return date.today().weekday() >= 5
+
+# Neue Funktion: CPR-Cache laden
+def load_cpr_cache():
+    try:
+        if os.path.exists(CPR_CACHE_FILE):
+            with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"Fehler beim Laden des CPR-Cache: {e}")
+        return {}
+
+# Neue Funktion: CPR-Cache speichern
+def save_cpr_cache(cache):
+    try:
+        with open(CPR_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Fehler beim Speichern des CPR-Cache: {e}")
 
 # Werte vorladen (global)
 today_str = date.today().isoformat()
@@ -409,7 +429,7 @@ def fetch_index_data():
             results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
     return results
 
-# Neue Funktion: Interpretation für USD/CNY-Spread
+# Interpretation für USD/CNY-Spread
 def interpret_usd_cny_spread(spread_pips):
     if spread_pips <= -100:
         return "CPR stark unter Markterwartungen: starker Abwertungsdruck"
@@ -422,7 +442,7 @@ def interpret_usd_cny_spread(spread_pips):
     else:  # >= 100
         return "CPR stark über Markterwartungen: Markt drängt auf Yuan-Stärke"
 
-# Neue Funktion: Interpretation für CNH–CNY-Spread
+# Interpretation für CNH–CNY-Spread
 def interpret_cnh_cny_spread(spread_pips):
     if spread_pips <= -50:
         return "Starke CNY-Aufwertung"
@@ -495,6 +515,10 @@ def fetch_cpr_from_x():
     return None, None, None
 
 def fetch_cpr_usdcny():
+    # Lade CPR-Cache
+    cpr_cache = load_cpr_cache()
+    yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+
     # Try CFETS
     url = "https://www.chinamoney.com.cn/english/bmkcpr/"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -515,7 +539,12 @@ def fetch_cpr_usdcny():
                         try:
                             cpr = float(cpr_text)
                             print(f"✅ CPR gefunden: USD/CNY = {cpr}")
-                            return cpr, None, None  # No estimate/pips from CFETS
+                            # Speichere CPR im Cache
+                            cpr_cache[today_str] = cpr
+                            save_cpr_cache(cpr_cache)
+                            # Hole Vortagswert
+                            prev_cpr = cpr_cache.get(yesterday_str)
+                            return cpr, None, None, prev_cpr
                         except ValueError:
                             print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
         print("❌ Fehler: USD/CNY CPR nicht in den Tabellen gefunden.")
@@ -526,17 +555,27 @@ def fetch_cpr_usdcny():
     print("⚠️ CFETS fehlgeschlagen, versuche ForexLive...")
     cpr, estimate, pips_diff = fetch_cpr_forexlive()
     if cpr is not None:
-        return cpr, estimate, pips_diff
+        # Speichere CPR im Cache
+        cpr_cache[today_str] = cpr
+        save_cpr_cache(cpr_cache)
+        # Hole Vortagswert
+        prev_cpr = cpr_cache.get(yesterday_str)
+        return cpr, estimate, pips_diff, prev_cpr
 
     # Try X posts
     print("⚠️ ForexLive fehlgeschlagen, versuche X-Posts...")
     cpr, estimate, pips_diff = fetch_cpr_from_x()
     if cpr is not None:
-        return cpr, estimate, pips_diff
+        # Speichere CPR im Cache
+        cpr_cache[today_str] = cpr
+        save_cpr_cache(cpr_cache)
+        # Hole Vortagswert
+        prev_cpr = cpr_cache.get(yesterday_str)
+        return cpr, estimate, pips_diff, prev_cpr
 
     # Final fallback: Use Reuters estimate as estimate, no CPR
     print("⚠️ X-Posts fehlgeschlagen, verwende Reuters-Schätzung als Fallback.")
-    return None, 7.1820, None
+    return None, 7.1820, None, None
 
 def fetch_currency_data():
     currencies = {
@@ -547,11 +586,11 @@ def fetch_currency_data():
     results = {}
     
     # Hole CPR von CFETS oder ForexLive oder X
-    cpr, estimate, pips_diff = fetch_cpr_usdcny()
+    cpr, estimate, pips_diff, prev_cpr = fetch_cpr_usdcny()
     if cpr is not None:
-        results["CPR"] = (cpr, estimate, pips_diff)
+        results["CPR"] = (cpr, estimate, pips_diff, prev_cpr)
     else:
-        results["CPR"] = ("❌ CPR (CNY/USD): Keine Daten verfügbar.", estimate, pips_diff)
+        results["CPR"] = ("❌ CPR (CNY/USD): Keine Daten verfügbar.", estimate, pips_diff, prev_cpr)
     
     # Hole Onshore- und Offshore-Kurse von Yahoo Finance
     for name, symbol in currencies.items():
@@ -618,13 +657,23 @@ def generate_briefing():
         # CPR
         cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
-            cpr, estimate, pips_diff = cpr_data
+            cpr, estimate, pips_diff, prev_cpr = cpr_data
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
+                spread_arrow = "↓" if pips_diff < 0 else "↑" if pips_diff > 0 else "→"
                 usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
-                briefing.append(f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted}, {usd_cny_interpretation})")
+                if prev_cpr is not None:
+                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                else:
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                briefing.append(cpr_line)
             else:
-                briefing.append(f"• CPR (CNY/USD): {cpr:.4f}")
+                if prev_cpr is not None:
+                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
+                    briefing.append(f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %)")
+                else:
+                    briefing.append(f"• CPR (CNY/USD): {cpr:.4f}")
         else:
             briefing.append(str(cpr_data[0]))
             if cpr_data[1] is not None:
@@ -648,7 +697,8 @@ def generate_briefing():
             spread = val_cnh - val_cny
             spread_pips = int(spread * 10000)  # Convert to pips
             cnh_cny_interpretation = interpret_cnh_cny_spread(spread_pips)
-            briefing.append(f"• Spread CNH–CNY: {spread:+.4f} ({cnh_cny_interpretation})")
+            spread_arrow = "↓" if spread < 0 else "↑" if spread > 0 else "→"
+            briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
@@ -702,7 +752,7 @@ def generate_briefing():
         "DE": "🇩🇪 Deutschsprachige Medien",
         "FR": "🇫🇷 Französische Medien",
         "ASIA": "🌏 Asiatische Medien",
-        "OTHER": "🦠 Sonstige Quellen"
+        "OTHER": "🧪 Sonstige Quellen"
     }
     for cat_key, sources in all_articles.items():
         if not sources:
@@ -766,7 +816,7 @@ def send_briefing():
     briefing_content = generate_briefing()
 
     msg = MIMEText(briefing_content, "html", "utf-8")
-    msg["Subject"] = "🗞 Dein tägliches China-Briefing"
+    msg["Subject"] = "📰 Dein tägliches China-Briefing"
     msg["From"] = config_dict["EMAIL_USER"]
     msg["To"] = config_dict["EMAIL_TO"]
 
