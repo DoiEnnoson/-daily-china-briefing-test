@@ -380,6 +380,35 @@ def fetch_latest_nbs_data():
         return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
 
 # === Börsendaten & Wechselkurse abrufen ===
+def fetch_index_data():
+    indices = {
+        "Hang Seng Index (HSI)": "^HSI",
+        "Hang Seng China Enterprises (HSCEI)": "^HSCE",
+        "SSE Composite Index (Shanghai)": "000001.SS",
+        "Shenzhen Component Index": "399001.SZ"
+    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+    results = []
+    for name, symbol in indices.items():
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+            if len(closes) < 2 or not all(closes[-2:]):
+                results.append(f"❌ {name}: Keine gültigen Kursdaten verfügbar.")
+                continue
+            prev_close = closes[-2]
+            last_close = closes[-1]
+            change = last_close - prev_close
+            pct = (change / prev_close) * 100
+            arrow = "→" if abs(pct) < 0.01 else "↑" if change > 0 else "↓"
+            results.append(f"• {name}: {round(last_close,2)} {arrow} ({pct:+.2f} %)")
+        except Exception as e:
+            results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
+    return results
+
 def fetch_cpr_forexlive():
     url = "https://www.forexlive.com/CentralBanks"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -547,6 +576,7 @@ def generate_briefing():
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
+
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
