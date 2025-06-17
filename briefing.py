@@ -409,6 +409,32 @@ def fetch_index_data():
             results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
     return results
 
+# Neue Funktion: Interpretation für USD/CNY-Spread
+def interpret_usd_cny_spread(spread_pips):
+    if spread_pips <= -100:
+        return "CPR stark unter Markterwartungen: starker Abwertungsdruck"
+    elif -99 <= spread_pips <= -20:
+        return "CPR leicht stärker als Markterwartungen: leichter Abwertungsdruck"
+    elif -19 <= spread_pips <= 19:
+        return "CPR liegt innerhalb der Markterwartungen"
+    elif 20 <= spread_pips <= 99:
+        return "CPR leicht schwächer als Markterwartungen: Markt erwartet stärkeren Yuan"
+    else:  # >= 100
+        return "CPR stark über Markterwartungen: Markt drängt auf Yuan-Stärke"
+
+# Neue Funktion: Interpretation für CNH–CNY-Spread
+def interpret_cnh_cny_spread(spread_pips):
+    if spread_pips <= -50:
+        return "Starke CNY-Aufwertung"
+    elif -49 <= spread_pips <= -10:
+        return "Leichte CNY-Stärke"
+    elif -9 <= spread_pips <= 9:
+        return "Stabile Marktbedingungen"
+    elif 10 <= spread_pips <= 49:
+        return "Leichte CNY-Schwäche"
+    else:  # >= 50
+        return "Starke CNY-Abwertung"
+
 def fetch_cpr_forexlive():
     urls = [
         "https://www.forexlive.com/CentralBanks",
@@ -429,13 +455,12 @@ def fetch_cpr_forexlive():
                         cpr = float(match.group())
                         estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", title)
                         estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else None
-                        if estimate:
-                            pips_diff = int((cpr - estimate) * 10000)  # Pips: Differenz in Basispoints
-                            pips_str = f"{abs(pips_diff)} pips {'stärker' if pips_diff < 0 else 'schwächer'}"
+                        if estimate is not None:
+                            pips_diff = int((cpr - estimate) * 10000)  # Pips mit Vorzeichen
                         else:
-                            pips_str = None
-                        print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str} (URL: {url})")
-                        return cpr, estimate, pips_str
+                            pips_diff = None
+                        print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
+                        return cpr, estimate, pips_diff
             print(f"❌ Kein CPR-Artikel auf {url} gefunden.")
             print(f"Debug - Gefundene Artikel: {[a.text.strip()[:50] for a in articles[:5]]}")
         except Exception as e:
@@ -462,9 +487,8 @@ def fetch_cpr_from_x():
                         estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", text)
                         estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else 7.1820  # Fallback Reuters
                         pips_diff = int((cpr - estimate) * 10000)
-                        pips_str = f"{abs(pips_diff)} pips {'stärker' if pips_diff < 0 else 'schwächer'}"
-                        print(f"✅ CPR von X (@{account}) gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_str}")
-                        return cpr, estimate, pips_str
+                        print(f"✅ CPR von X (@{account}) gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
+                        return cpr, estimate, pips_diff
             print(f"❌ Kein CPR-Post von @{account} gefunden.")
         except Exception as e:
             print(f"❌ Fehler beim Abrufen von X (@{account}): {str(e)}")
@@ -500,15 +524,15 @@ def fetch_cpr_usdcny():
 
     # Try ForexLive
     print("⚠️ CFETS fehlgeschlagen, versuche ForexLive...")
-    cpr, estimate, pips_str = fetch_cpr_forexlive()
+    cpr, estimate, pips_diff = fetch_cpr_forexlive()
     if cpr is not None:
-        return cpr, estimate, pips_str
+        return cpr, estimate, pips_diff
 
     # Try X posts
     print("⚠️ ForexLive fehlgeschlagen, versuche X-Posts...")
-    cpr, estimate, pips_str = fetch_cpr_from_x()
+    cpr, estimate, pips_diff = fetch_cpr_from_x()
     if cpr is not None:
-        return cpr, estimate, pips_str
+        return cpr, estimate, pips_diff
 
     # Final fallback: Use Reuters estimate as estimate, no CPR
     print("⚠️ X-Posts fehlgeschlagen, verwende Reuters-Schätzung als Fallback.")
@@ -523,11 +547,11 @@ def fetch_currency_data():
     results = {}
     
     # Hole CPR von CFETS oder ForexLive oder X
-    cpr, estimate, pips_str = fetch_cpr_usdcny()
+    cpr, estimate, pips_diff = fetch_cpr_usdcny()
     if cpr is not None:
-        results["CPR"] = (cpr, estimate, pips_str)
+        results["CPR"] = (cpr, estimate, pips_diff)
     else:
-        results["CPR"] = ("❌ CPR (CNY/USD): Keine Daten verfügbar.", estimate, pips_str)
+        results["CPR"] = ("❌ CPR (CNY/USD): Keine Daten verfügbar.", estimate, pips_diff)
     
     # Hole Onshore- und Offshore-Kurse von Yahoo Finance
     for name, symbol in currencies.items():
@@ -594,11 +618,11 @@ def generate_briefing():
         # CPR
         cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
-            cpr, estimate, pips_str = cpr_data
+            cpr, estimate, pips_diff = cpr_data
             if estimate is not None:
-                pips_diff = int((cpr - estimate) * 10000)  # Pips mit Vorzeichen
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
-                briefing.append(f"• CPR (CNY/USD): {cpr:.4f} ({pips_formatted})")
+                usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
+                briefing.append(f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted}, {usd_cny_interpretation})")
             else:
                 briefing.append(f"• CPR (CNY/USD): {cpr:.4f}")
         else:
@@ -622,7 +646,9 @@ def generate_briefing():
             val_cny = currency_data["USDCNY"][0]
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
-            briefing.append(f"• Spread CNH–CNY: {spread:+.4f}")
+            spread_pips = int(spread * 10000)  # Convert to pips
+            cnh_cny_interpretation = interpret_cnh_cny_spread(spread_pips)
+            briefing.append(f"• Spread CNH–CNY: {spread:+.4f} ({cnh_cny_interpretation})")
 
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
@@ -676,7 +702,7 @@ def generate_briefing():
         "DE": "🇩🇪 Deutschsprachige Medien",
         "FR": "🇫🇷 Französische Medien",
         "ASIA": "🌏 Asiatische Medien",
-        "OTHER": "🧪 Sonstige Quellen"
+        "OTHER": "🦠 Sonstige Quellen"
     }
     for cat_key, sources in all_articles.items():
         if not sources:
@@ -690,11 +716,11 @@ def generate_briefing():
             briefing.extend([a[1] for a in top_articles])
 
     # SCMP
-    briefing.append("\n## SCMP – Top-Themen")
+    briefing.append("\n## 📺 SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
     # Yicai
-    briefing.append("\n## Yicai Global – Top-Themen")
+    briefing.append("\n## 📜 Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
     # Neuer Substack-Abschnitt
@@ -740,7 +766,7 @@ def send_briefing():
     briefing_content = generate_briefing()
 
     msg = MIMEText(briefing_content, "html", "utf-8")
-    msg["Subject"] = "📰 Dein tägliches China-Briefing"
+    msg["Subject"] = "🗞 Dein tägliches China-Briefing"
     msg["From"] = config_dict["EMAIL_USER"]
     msg["To"] = config_dict["EMAIL_TO"]
 
