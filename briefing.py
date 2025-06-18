@@ -23,12 +23,15 @@ HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
 
 def load_holidays(filepath):
+    print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return set(item["date"] for item in data.get("holidays", []))
+            holidays = set(item["date"] for item in data.get("holidays", []))
+            print(f"DEBUG - load_holidays: Loaded {len(holidays)} holidays")
+            return holidays
     except Exception as e:
-        print(f"Fehler beim Laden der Feiertage aus {filepath}: {e}")
+        print(f"ERROR - load_holidays: Failed to load holidays from {filepath}: {str(e)}")
         return set()
 
 def is_holiday(today_str, holidays_set):
@@ -37,24 +40,32 @@ def is_holiday(today_str, holidays_set):
 def is_weekend():
     return date.today().weekday() >= 5
 
-# Neue Funktion: CPR-Cache laden
+# CPR-Cache laden
 def load_cpr_cache():
+    print(f"DEBUG - load_cpr_cache: Starting to load cache from {CPR_CACHE_FILE}")
     try:
         if os.path.exists(CPR_CACHE_FILE):
             with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+                cache = json.load(f)
+                print(f"DEBUG - load_cpr_cache: Successfully loaded cache: {cache}")
+                return cache
+        else:
+            print(f"DEBUG - load_cpr_cache: No cache file found at {CPR_CACHE_FILE}")
+            return {}
     except Exception as e:
-        print(f"Fehler beim Laden des CPR-Cache: {e}")
+        print(f"ERROR - load_cpr_cache: Failed to load cache from {CPR_CACHE_FILE}: {str(e)}")
         return {}
 
-# Neue Funktion: CPR-Cache speichern
+# CPR-Cache speichern
 def save_cpr_cache(cache):
+    print(f"DEBUG - save_cpr_cache: Starting to save cache to {CPR_CACHE_FILE}")
+    print(f"DEBUG - save_cpr_cache: Cache content: {cache}")
     try:
         with open(CPR_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
+        print(f"DEBUG - save_cpr_cache: Successfully wrote cache to {CPR_CACHE_FILE}")
     except Exception as e:
-        print(f"Fehler beim Speichern des CPR-Cache: {e}")
+        print(f"ERROR - save_cpr_cache: Failed to save cache to {CPR_CACHE_FILE}: {str(e)}")
 
 # Werte vorladen (global)
 today_str = date.today().isoformat()
@@ -201,12 +212,12 @@ def extract_source(title):
 
 # === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
-    """Liest Substack-Mails von mehreren Absendern aus Gmail, robuste Version."""
+    print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
     posts = []
     
     try:
-        print(f"Debug - Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
-        print(f"Debug - Existiert substacks.json?: {os.path.exists('substacks.json')}")
+        print(f"DEBUG - fetch_substack_from_email: Current working directory: {os.getcwd()}")
+        print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
@@ -216,13 +227,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             email_counts[sender.get("email")] += 1
         duplicates = [email for email, count in email_counts.items() if count > 1 and email]
         if duplicates:
-            print(f"⚠️ Warnung: Doppelte E-Mail-Adressen in substacks.json: {duplicates}")
+            print(f"⚠️ Warning: Duplicate email addresses in substacks.json: {duplicates}")
     except FileNotFoundError:
-        print("❌ Fehler: substacks.json nicht gefunden! Verwende leere Liste.")
+        print("❌ ERROR: substacks.json not found! Using empty list.")
         substack_senders = []
         posts.append(("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999))
     except json.JSONDecodeError:
-        print("❌ Fehler: substacks.json ungültig!")
+        print("❌ ERROR: substacks.json invalid!")
         substack_senders = []
         posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999))
     
@@ -234,7 +245,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             imap.select(folder)
             break
         except Exception as e:
-            print(f"❌ Verbindung zu Gmail fehlgeschlagen (Versuch {attempt+1}/3): {str(e)}")
+            print(f"❌ ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
             if attempt == 2:
                 return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999)]
             time.sleep(2)
@@ -245,25 +256,23 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
-            sender_order = sender.get("order", 999)  # Fallback für fehlenden order-Wert
+            sender_order = sender.get("order", 999)
             if not sender_email:
                 posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben.", "#", "", sender_order))
                 continue
             try:
-                # Suche: Alle Mails seit since_date von Absender
                 search_query = f'(FROM "{sender_email}" SINCE {since_date})'
-                print(f"Debug - Suche nach: {search_query}")
+                print(f"DEBUG - fetch_substack_from_email: Searching for: {search_query}")
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
-                    print(f"Debug - IMAP-Suchfehler für {sender_name} ({sender_email}): {data}")
+                    print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
                     posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email}).", "#", "", sender_order))
                     continue
                 email_ids = data[0].split()[-max_results_per_sender:]
-                print(f"Debug - Gefundene Mail-IDs für {sender_name}: {email_ids}")
+                print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
                 if not email_ids:
                     posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden.", "#", "", sender_order))
                     continue
-                # Temporäre Liste für Beiträge dieses Senders
                 sender_posts = []
                 for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -276,11 +285,11 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     if date_str:
                         try:
                             mail_date = parsedate_to_datetime(date_str)
-                            print(f"Debug - Datum für Mail {eid} von {sender_name}: {mail_date}")
+                            print(f"DEBUG - fetch_substack_from_email: Date for mail {eid} from {sender_name}: {mail_date}")
                         except (TypeError, ValueError) as e:
-                            print(f"Debug - Ungültiges Datum in Mail {eid} von {sender_name}: {date_str}, Fehler: {str(e)}")
+                            print(f"DEBUG - fetch_substack_from_email: Invalid date in mail {eid} from {sender_name}: {date_str}, Error: {str(e)}")
                     else:
-                        print(f"Debug - Kein Datum in Mail {eid} von {sender_name}")
+                        print(f"DEBUG - fetch_substack_from_email: No date in mail {eid} from {sender_name}")
                     html = None
                     if msg.is_multipart():
                         for part in msg.walk():
@@ -293,7 +302,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                         sender_posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.", "#", "", sender_order, mail_date))
                         continue
                     soup = BeautifulSoup(html, "lxml")
-                    # Erweiterte Titel-Suche
                     title_tag = (soup.find("h1") or 
                                 soup.find("h2") or 
                                 soup.find("h3") or 
@@ -308,13 +316,11 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                             title = msg["Subject"].strip() if msg["Subject"] else "Unbenannter Beitrag"
                     else:
                         title = title_tag.text.strip()
-                    print(f"Debug - Titel für {sender_name}: {title}")
-                    # Link-Suche
+                    print(f"DEBUG - fetch_substack_from_email: Title for {sender_name}: {title}")
                     link_tag = soup.find("a", href=lambda x: x and ("app-link/post" in x or "/post/" in x))
                     if not link_tag:
                         link_tag = soup.find("a", href=lambda x: x and "https://" in x)
                     link = link_tag["href"].strip() if link_tag else "#"
-                    # Verbesserte Teaser-Suche
                     teaser = ""
                     if title_tag or link_tag:
                         start_tag = title_tag or link_tag
@@ -334,11 +340,9 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                                 if len(" ".join(teaser_parts)) > 100:
                                     break
                         teaser = " ".join(teaser_parts).strip()[:300]
-                    print(f"Debug - Teaser für {sender_name}: {teaser}")
+                    print(f"DEBUG - fetch_substack_from_email: Teaser for {sender_name}: {teaser}")
                     sender_posts.append((sender_name, title, link, teaser, sender_order, mail_date))
-                # Sortiere Beiträge nach Datum (neuester zuerst)
                 sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
-                # Füge sortierte Beiträge zu posts hinzu
                 posts.extend(sender_posts)
             except Exception as e:
                 posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}", "#", "", sender_order))
@@ -349,29 +353,27 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
 # === Substack-Posts rendern ===
 def render_markdown(posts):
-    """Erzeugt Markdown für Substack-Beiträge, mit einer Überschrift pro Substack."""
+    print(f"DEBUG - render_markdown: Rendering {len(posts)} Substack posts")
     if not posts:
         return ["Keine neuen Substack-Artikel gefunden."]
     
-    # Gruppiere Beiträge nach sender_name und speichere den order-Wert
     grouped_posts = defaultdict(list)
     sender_orders = {}
     for post in posts:
         sender_name = post[0]
-        sender_order = post[4] if len(post) > 4 else 999  # sender_order ist an Position 4
+        sender_order = post[4] if len(post) > 4 else 999
         grouped_posts[sender_name].append(post)
         sender_orders[sender_name] = min(sender_orders.get(sender_name, 999), sender_order)
     
-    # Sortiere Substacks nach sender_order
     sorted_senders = sorted(grouped_posts.keys(), key=lambda x: sender_orders.get(x, 999))
     
     markdown = []
     for sender_name in sorted_senders:
         markdown.append(f"### {sender_name}")
         for post in grouped_posts[sender_name]:
-            if len(post) == 2:  # Fehlerfall (z. B. "📭 Keine Mails")
+            if len(post) == 2:
                 markdown.append(f"{post[1]}\n")
-            else:  # Normaler Beitrag
+            else:
                 title, link, teaser = post[1], post[2], post[3]
                 markdown.append(f"• <a href=\"{link}\">{title}</a>")
                 if teaser:
@@ -382,6 +384,7 @@ def render_markdown(posts):
 
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
+    print("DEBUG - fetch_latest_nbs_data: Fetching NBS data")
     url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -395,12 +398,15 @@ def fetch_latest_nbs_data():
                 title = a.text.strip()
                 link = "https://www.stats.gov.cn" + a["href"]
                 items.append(f"• {title} ({link})")
+        print(f"DEBUG - fetch_latest_nbs_data: Found {len(items)} NBS items")
         return items or ["Keine aktuellen Veröffentlichungen gefunden."]
     except Exception as e:
+        print(f"ERROR - fetch_latest_nbs_data: Failed to fetch NBS data: {str(e)}")
         return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
 
 # === Börsendaten & Wechselkurse abrufen ===
 def fetch_index_data():
+    print("DEBUG - fetch_index_data: Fetching index data")
     indices = {
         "Hang Seng Index (HSI)": "^HSI",
         "Hang Seng China Enterprises (HSCEI)": "^HSCE",
@@ -427,6 +433,7 @@ def fetch_index_data():
             results.append(f"• {name}: {round(last_close,2)} {arrow} ({pct:+.2f} %)")
         except Exception as e:
             results.append(f"❌ {name}: Fehler beim Abrufen ({e})")
+    print(f"DEBUG - fetch_index_data: Retrieved {len(results)} index results")
     return results
 
 # Interpretation für USD/CNY-Spread
@@ -439,7 +446,7 @@ def interpret_usd_cny_spread(spread_pips):
         return "CPR liegt innerhalb der Markterwartungen"
     elif 20 <= spread_pips <= 99:
         return "CPR leicht schwächer als Markterwartungen: Markt erwartet stärkeren Yuan"
-    else:  # >= 100
+    else:
         return "CPR stark über Markterwartungen: Markt drängt auf Yuan-Stärke"
 
 # Interpretation für CNH–CNY-Spread
@@ -452,10 +459,11 @@ def interpret_cnh_cny_spread(spread_pips):
         return "Stabile Marktbedingungen"
     elif 10 <= spread_pips <= 49:
         return "Leichte CNY-Schwäche"
-    else:  # >= 50
+    else:
         return "Starke CNY-Abwertung"
 
 def fetch_cpr_forexlive():
+    print("DEBUG - fetch_cpr_forexlive: Starting to fetch CPR from ForexLive")
     urls = [
         "https://www.forexlive.com/CentralBanks",
         "https://www.forexlive.com/"
@@ -467,8 +475,10 @@ def fetch_cpr_forexlive():
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
             articles = soup.find_all(["h2", "h3", "div"], class_=lambda x: x and ("card__title" in x or "article" in x) if x else False)
+            print(f"DEBUG - fetch_cpr_forexlive: Found {len(articles)} articles on {url}")
             for article in articles:
                 title = article.text.strip().lower()
+                print(f"DEBUG - fetch_cpr_forexlive: Checking article: {title[:50]}...")
                 if "pboc" in title and ("usd/cny" in title or "cny" in title or "reference rate" in title or "yuan" in title):
                     match = re.search(r"\d+\.\d{4}", title)
                     if match:
@@ -476,50 +486,55 @@ def fetch_cpr_forexlive():
                         estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", title)
                         estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else None
                         if estimate is not None:
-                            pips_diff = int((cpr - estimate) * 10000)  # Pips mit Vorzeichen
+                            pips_diff = int((cpr - estimate) * 10000)
                         else:
                             pips_diff = None
-                        print(f"✅ CPR von ForexLive gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
+                        print(f"✅ DEBUG - fetch_cpr_forexlive: Found CPR: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
                         return cpr, estimate, pips_diff
-            print(f"❌ Kein CPR-Artikel auf {url} gefunden.")
-            print(f"Debug - Gefundene Artikel: {[a.text.strip()[:50] for a in articles[:5]]}")
+            print(f"❌ DEBUG - fetch_cpr_forexlive: No CPR article found on {url}")
+            print(f"DEBUG - fetch_cpr_forexlive: Sample articles: {[a.text.strip()[:50] for a in articles[:5]]}")
         except Exception as e:
-            print(f"❌ Fehler beim Abrufen von ForexLive ({url}): {str(e)}")
+            print(f"❌ ERROR - fetch_cpr_forexlive: Failed to fetch from {url}: {str(e)}")
     return None, None, None
 
 def fetch_cpr_from_x():
+    print("DEBUG - fetch_cpr_from_x: Starting to fetch CPR from X")
     headers = {"User-Agent": "Mozilla/5.0"}
     accounts = ["ForexLive", "Sino_Market"]
     for account in accounts:
         try:
-            # Scrape X search results (simplified, no API)
             search_url = f"https://x.com/search?q=from:{account}%20PBOC%20USD/CNY%20reference%20rate"
             r = requests.get(search_url, headers=headers, timeout=10)
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
             tweets = soup.find_all("div", attrs={"data-testid": "tweetText"})
-            for tweet in tweets[:3]:  # Limit to recent posts
+            print(f"DEBUG - fetch_cpr_from_x: Found {len(tweets)} tweets from @{account}")
+            for tweet in tweets[:3]:
                 text = tweet.text.strip().lower()
+                print(f"DEBUG - fetch_cpr_from_x: Checking tweet: {text[:50]}...")
                 if "pboc" in text and ("usd/cny" in text or "cny" in text or "reference rate" in text):
                     match = re.search(r"\d+\.\d{4}", text)
                     if match:
                         cpr = float(match.group())
                         estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", text)
-                        estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else 7.1820  # Fallback Reuters
+                        estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else 7.1820
                         pips_diff = int((cpr - estimate) * 10000)
-                        print(f"✅ CPR von X (@{account}) gefunden: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
+                        print(f"✅ DEBUG - fetch_cpr_from_x: Found CPR from @{account}: USD/CNY = {cpr}, Estimate = {estimate}, Pips = {pips_diff}")
                         return cpr, estimate, pips_diff
-            print(f"❌ Kein CPR-Post von @{account} gefunden.")
+            print(f"❌ DEBUG - fetch_cpr_from_x: No CPR post found from @{account}")
         except Exception as e:
-            print(f"❌ Fehler beim Abrufen von X (@{account}): {str(e)}")
+            print(f"❌ ERROR - fetch_cpr_from_x: Failed to fetch from @{account}: {str(e)}")
     return None, None, None
 
 def fetch_cpr_usdcny():
-    # Lade CPR-Cache
+    print("DEBUG - fetch_cpr_usdcny: Starting to fetch CPR")
     cpr_cache = load_cpr_cache()
+    today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+    print(f"DEBUG - fetch_cpr_usdcny: Today: {today_str}, Yesterday: {yesterday_str}")
 
     # Try CFETS
+    print("DEBUG - fetch_cpr_usdcny: Trying CFETS")
     url = "https://www.chinamoney.com.cn/english/bmkcpr/"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -528,8 +543,8 @@ def fetch_cpr_usdcny():
         soup = BeautifulSoup(r.text, "html.parser")
         tables = soup.find_all("table")
         if not tables:
-            print("❌ Fehler: Keine Tabellen auf der CFETS-Seite gefunden.")
-            print(f"Debug - HTML-Auszug: {soup.prettify()[:500]}")
+            print("❌ ERROR - fetch_cpr_usdcny: No tables found on CFETS page")
+            print(f"DEBUG - fetch_cpr_usdcny: HTML excerpt: {soup.prettify()[:500]}")
         else:
             for table in tables:
                 for row in table.find_all("tr")[1:]:
@@ -538,46 +553,46 @@ def fetch_cpr_usdcny():
                         cpr_text = cells[1].text.strip()
                         try:
                             cpr = float(cpr_text)
-                            print(f"✅ CPR gefunden: USD/CNY = {cpr}")
-                            # Speichere CPR im Cache
+                            print(f"✅ DEBUG - fetch_cpr_usdcny: Found CPR from CFETS: USD/CNY = {cpr}")
                             cpr_cache[today_str] = cpr
                             save_cpr_cache(cpr_cache)
-                            # Hole Vortagswert
                             prev_cpr = cpr_cache.get(yesterday_str)
+                            print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
                             return cpr, None, None, prev_cpr
                         except ValueError:
-                            print(f"❌ Fehler: Ungültiger CPR-Wert '{cpr_text}'")
-        print("❌ Fehler: USD/CNY CPR nicht in den Tabellen gefunden.")
+                            print(f"❌ ERROR - fetch_cpr_usdcny: Invalid CPR value '{cpr_text}'")
+        print("❌ ERROR - fetch_cpr_usdcny: USD/CNY CPR not found in CFETS tables")
     except Exception as e:
-        print(f"❌ Fehler beim Abrufen des CPR von CFETS: {str(e)}")
+        print(f"❌ ERROR - fetch_cpr_usdcny: Failed to fetch CPR from CFETS: {str(e)}")
 
     # Try ForexLive
-    print("⚠️ CFETS fehlgeschlagen, versuche ForexLive...")
+    print("⚠️ DEBUG - fetch_cpr_usdcny: CFETS failed, trying ForexLive")
     cpr, estimate, pips_diff = fetch_cpr_forexlive()
     if cpr is not None:
-        # Speichere CPR im Cache
+        print(f"DEBUG - fetch_cpr_usdcny: Storing CPR {cpr} from ForexLive")
         cpr_cache[today_str] = cpr
         save_cpr_cache(cpr_cache)
-        # Hole Vortagswert
         prev_cpr = cpr_cache.get(yesterday_str)
+        print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
         return cpr, estimate, pips_diff, prev_cpr
 
     # Try X posts
-    print("⚠️ ForexLive fehlgeschlagen, versuche X-Posts...")
+    print("⚠️ DEBUG - fetch_cpr_usdcny: ForexLive failed, trying X posts")
     cpr, estimate, pips_diff = fetch_cpr_from_x()
     if cpr is not None:
-        # Speichere CPR im Cache
+        print(f"DEBUG - fetch_cpr_usdcny: Storing CPR {cpr} from X")
         cpr_cache[today_str] = cpr
         save_cpr_cache(cpr_cache)
-        # Hole Vortagswert
         prev_cpr = cpr_cache.get(yesterday_str)
+        print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
         return cpr, estimate, pips_diff, prev_cpr
 
-    # Final fallback: Use Reuters estimate as estimate, no CPR
-    print("⚠️ X-Posts fehlgeschlagen, verwende Reuters-Schätzung als Fallback.")
+    # Final fallback
+    print("⚠️ DEBUG - fetch_cpr_usdcny: X posts failed, using Reuters estimate as fallback")
     return None, 7.1820, None, None
 
 def fetch_currency_data():
+    print("DEBUG - fetch_currency_data: Starting to fetch currency data")
     currencies = {
         "USDCNY": "USDCNY=X",  # Onshore
         "USDCNH": "USDCNH=X",  # Offshore
@@ -585,14 +600,12 @@ def fetch_currency_data():
     headers = {"User-Agent": "Mozilla/5.0"}
     results = {}
     
-    # Hole CPR von CFETS oder ForexLive oder X
     cpr, estimate, pips_diff, prev_cpr = fetch_cpr_usdcny()
     if cpr is not None:
         results["CPR"] = (cpr, estimate, pips_diff, prev_cpr)
     else:
         results["CPR"] = ("❌ CPR (CNY/USD): Keine Daten verfügbar.", estimate, pips_diff, prev_cpr)
     
-    # Hole Onshore- und Offshore-Kurse von Yahoo Finance
     for name, symbol in currencies.items():
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=2d"
         try:
@@ -620,6 +633,7 @@ def fetch_currency_data():
             results[name] = (last_close, arrow, pct)
         except Exception as e:
             results[name] = f"❌ {name}: Unerwarteter Fehler ({str(e)})"
+    print(f"DEBUG - fetch_currency_data: Retrieved currency data: {results}")
     return results
 
 # === Stimmen von X ===
@@ -632,10 +646,12 @@ x_accounts = [
 ]
 
 def fetch_recent_x_posts(account, name, url):
+    print(f"DEBUG - fetch_recent_x_posts: Fetching posts for {name} (@{account})")
     return [f"• {name} (@{account}) → {url}"]
 
 # === Briefing generieren ===
 def generate_briefing():
+    print("DEBUG - generate_briefing: Starting to generate briefing")
     date_str = datetime.now().strftime("%d. %B %Y")
     briefing = [f"Guten Morgen, Hado!\n\n🗓️ {date_str}\n\n📬 Dies ist dein tägliches China-Briefing.\n"]
 
@@ -654,10 +670,11 @@ def generate_briefing():
         briefing.append("📉 Heute keine aktuellen Wechselkurse.")
     else:
         currency_data = fetch_currency_data()
-        # CPR
+        print(f"DEBUG - generate_briefing: Currency data: {currency_data}")
         cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
             cpr, estimate, pips_diff, prev_cpr = cpr_data
+            print(f"DEBUG - generate_briefing: CPR={cpr}, Estimate={estimate}, Pips={pips_diff}, Prev_CPR={prev_cpr}")
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
                 spread_arrow = "↓" if pips_diff <= -20 else "↑" if pips_diff >= 20 else "→"
@@ -665,37 +682,40 @@ def generate_briefing():
                 if prev_cpr is not None:
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                    print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
                 else:
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                    print(f"DEBUG - generate_briefing: CPR line without pct_change: {cpr_line}")
                 briefing.append(cpr_line)
             else:
                 if prev_cpr is not None:
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
-                    briefing.append(f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %)")
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %)"
+                    print(f"DEBUG - generate_briefing: CPR line with prev_cpr: {cpr_line}")
+                    briefing.append(cpr_line)
                 else:
-                    briefing.append(f"• CPR (CNY/USD): {cpr:.4f}")
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f}"
+                    print(f"DEBUG - generate_briefing: CPR line without prev_cpr: {cpr_line}")
+                    briefing.append(cpr_line)
         else:
             briefing.append(str(cpr_data[0]))
             if cpr_data[1] is not None:
                 briefing.append(f"  - Estimate: {cpr_data[1]:.4f}")
-        # CNY/USD (Onshore)
         if isinstance(currency_data.get("USDCNY"), tuple):
             val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
             briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNY"))
-        # CNH/USD (Offshore)
         if isinstance(currency_data.get("USDCNH"), tuple):
             val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
             briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
-        # Spread CNH–CNY
         if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
             val_cny = currency_data["USDCNY"][0]
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
-            spread_pips = int(spread * 10000)  # Convert to pips
+            spread_pips = int(spread * 10000)
             cnh_cny_interpretation = interpret_cnh_cny_spread(spread_pips)
             spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
@@ -773,7 +793,7 @@ def generate_briefing():
     briefing.append("\n## 📜 Yicai Global – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
-    # Neuer Substack-Abschnitt
+    # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
@@ -799,6 +819,7 @@ def generate_briefing():
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
+    print("DEBUG - generate_briefing: Briefing generated successfully")
     return f"""\
 <html>
   <body>
@@ -812,7 +833,7 @@ def generate_briefing():
 
 # === E-Mail senden ===
 def send_briefing():
-    print("🧠 Erzeuge Briefing...")
+    print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
     briefing_content = generate_briefing()
 
     msg = MIMEText(briefing_content, "html", "utf-8")
@@ -820,15 +841,15 @@ def send_briefing():
     msg["From"] = config_dict["EMAIL_USER"]
     msg["To"] = config_dict["EMAIL_TO"]
 
-    print("📤 Sende E-Mail...")
+    print("📤 DEBUG - send_briefing: Sending email")
     try:
         with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
             server.starttls()
             server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
             server.send_message(msg)
-        print("✅ E-Mail wurde gesendet!")
+        print("✅ DEBUG - send_briefing: Email sent successfully")
     except Exception as e:
-        print("❌ Fehler beim Senden der E-Mail:", str(e))
+        print(f"❌ ERROR - send_briefing: Failed to send email: {str(e)}")
 
 # === Hauptskript ===
 if __name__ == "__main__":
