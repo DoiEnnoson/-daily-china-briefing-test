@@ -61,11 +61,18 @@ def save_cpr_cache(cache):
     print(f"DEBUG - save_cpr_cache: Starting to save cache to {CPR_CACHE_FILE}")
     print(f"DEBUG - save_cpr_cache: Cache content: {cache}")
     try:
+        # Sicherstellen, dass das Verzeichnis existiert
+        os.makedirs(os.path.dirname(CPR_CACHE_FILE), exist_ok=True)
         with open(CPR_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         print(f"DEBUG - save_cpr_cache: Successfully wrote cache to {CPR_CACHE_FILE}")
+        # Verifizieren, dass die Datei geschrieben wurde
+        with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
+            saved_cache = json.load(f)
+            print(f"DEBUG - save_cpr_cache: Verified cache content: {saved_cache}")
     except Exception as e:
         print(f"ERROR - save_cpr_cache: Failed to save cache to {CPR_CACHE_FILE}: {str(e)}")
+        raise
 
 # Werte vorladen (global)
 today_str = date.today().isoformat()
@@ -557,7 +564,6 @@ def fetch_cpr_usdcny():
                             cpr_cache[today_str] = cpr
                             save_cpr_cache(cpr_cache)
                             prev_cpr = cpr_cache.get(yesterday_str)
-                            print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
                             return cpr, None, None, prev_cpr
                         except ValueError:
                             print(f"❌ ERROR - fetch_cpr_usdcny: Invalid CPR value '{cpr_text}'")
@@ -573,7 +579,6 @@ def fetch_cpr_usdcny():
         cpr_cache[today_str] = cpr
         save_cpr_cache(cpr_cache)
         prev_cpr = cpr_cache.get(yesterday_str)
-        print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
         return cpr, estimate, pips_diff, prev_cpr
 
     # Try X posts
@@ -584,12 +589,17 @@ def fetch_cpr_usdcny():
         cpr_cache[today_str] = cpr
         save_cpr_cache(cpr_cache)
         prev_cpr = cpr_cache.get(yesterday_str)
-        print(f"DEBUG - fetch_cpr_usdcny: Previous CPR: {prev_cpr}")
         return cpr, estimate, pips_diff, prev_cpr
 
-    # Final fallback
-    print("⚠️ DEBUG - fetch_cpr_usdcny: X posts failed, using Reuters estimate as fallback")
-    return None, 7.1820, None, None
+    # Fallback
+    print("⚠️ DEBUG - fetch_cpr_usdcny: All sources failed, using cache or Reuters estimate")
+    cpr = cpr_cache.get(today_str)
+    prev_cpr = cpr_cache.get(yesterday_str)
+    if cpr is not None:
+        print(f"DEBUG - fetch_cpr_usdcny: Using cached CPR for today: {cpr}")
+        return cpr, None, None, prev_cpr
+    print("DEBUG - fetch_cpr_usdcny: No cached CPR found, using Reuters estimate")
+    return None, 7.1820, None, prev_cpr
 
 def fetch_currency_data():
     print("DEBUG - fetch_currency_data: Starting to fetch currency data")
@@ -671,6 +681,13 @@ def generate_briefing():
     else:
         currency_data = fetch_currency_data()
         print(f"DEBUG - generate_briefing: Currency data: {currency_data}")
+        # Überprüfe den Cache nach dem Abrufen der Währungsdaten
+        try:
+            with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_content = json.load(f)
+                print(f"DEBUG - generate_briefing: Cache content after fetch: {cache_content}")
+        except Exception as e:
+            print(f"ERROR - generate_briefing: Failed to read cache after fetch: {str(e)}")
         cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
             cpr, estimate, pips_diff, prev_cpr = cpr_data
