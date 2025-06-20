@@ -868,10 +868,17 @@ def generate_briefing():
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
     # China Update YouTube
-    youtube_episode = fetch_youtube_endpoint()
-    if youtube_episode:  # Nur hinzufügen, wenn ein Video gefunden wurde
+    youtube_episodes = fetch_youtube_endpoint()
+    if youtube_episodes:  # Nur hinzufügen, wenn ein Video gefunden wurde
         briefing.append("\n### China Update")
-        briefing.extend(youtube_episode)
+        for episode in youtube_episodes:
+            title = episode["title"]
+            link = episode["link"]
+            thumbnail = episode["thumbnail"]
+            # Thumbnail und Link einfügen
+            if thumbnail:
+                briefing.append(f'<a href="{link}"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0;"></a>')
+            briefing.append(f"• <a href=\"{link}\">{title}</a>")
 
     # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
