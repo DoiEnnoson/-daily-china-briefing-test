@@ -861,9 +861,10 @@ def generate_briefing():
             link = episode["link"]
             thumbnail = episode["thumbnail"]
             if thumbnail:
-                briefing.append(f'<a href="{link}"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0;"></a>')
+                # Maskierter Link mit JS-Umleitung
+                briefing.append(f'<a href="#" onclick="window.location.href=\'{link}\'; return false;"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0; border: none;" class="no-preview"></a>')
             else:
-                briefing.append(f'• <a href="{link}">{title}</a>')  # Fallback, falls kein Thumbnail
+                briefing.append(f'• <a href="{link}">{title}</a>')  # Fallback
 
     # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
@@ -891,24 +892,37 @@ def generate_briefing():
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
-    print("DEBUG - generate_briefing: Briefing generated successfully")
-    return f"""\
+print("DEBUG - generate_briefing: Briefing generated successfully")
+return f"""\
 <html>
-  <head>
+<head>
     <meta charset="UTF-8">
-    <meta name="robots" content="noimageindex">
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <meta property="og:image" content="">
     <meta property="og:image:secure_url" content="">
+    <meta property="og:image:type" content="">
+    <meta property="og:image:width" content="">
+    <meta property="og:image:height" content="">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Daily China Briefing">
+    <meta property="og:description" content="">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:image" content="">
-  </head>
-  <body>
+    <meta name="twitter:image:alt" content="">
+    <meta name="twitter:title" content="Daily China Briefing">
+    <meta name="twitter:description" content="">
+    <style>
+        .no-preview { pointer-events: auto; }
+        a[href="#"] img { border: none !important; }
+    </style>
+</head>
+<body style="margin: 0; padding: 0;">
     <div style="background-color: #ffffff; padding: 20px;">
-      <pre style="font-family: system-ui, sans-serif">
-{chr(10).join(briefing)}
-      </pre>
+        <pre style="font-family: Arial, sans-serif; margin: 0;">
+{chr(10).join(briefing)}\n
+        </pre>
     </div>
-  </body>
+</body>
 </html>"""
 
 # === E-Mail senden ===
