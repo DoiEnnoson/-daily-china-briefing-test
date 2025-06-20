@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
