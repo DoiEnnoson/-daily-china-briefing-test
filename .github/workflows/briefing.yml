@@ -38,12 +38,12 @@ jobs:
       - name: cpr_cache.json Inhalt prüfen (vor Commit)
         run: |
           echo "Inhalt von cpr_cache.json vor dem Commit:"
-          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+          cat cprue_cache.json || echo "Datei cpr_cache.json existiert nicht"
         continue-on-error: true
 
       - name: Änderungen an cpr_cache.json committen und pushen
         run: |
-          git config --local user.email "action@github.com"
+          git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
           git add cpr_cache.json
           git commit -m "Update cpr_cache.json with latest CPR value" || echo "Keine Änderungen zu committen"
