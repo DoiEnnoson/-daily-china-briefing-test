@@ -401,21 +401,21 @@ def fetch_youtube_endpoint():
         youtube = build("youtube", "v3", developerKey=api_key)
         request = youtube.search().list(
             part="snippet",
-            channelId="UCBtD8Dyw1XKiU7aZzQ-LIDw",  # Korrekte Kanal-ID
+            channelId="287hC44mRWpFLj4hK8gKA",  # Neue Kanal-ID
             maxResults=1,
             order="date",
             type="video"
         )
         response = request.execute()
-        print(f"DEBUG - fetch_youtube_endpoint: API response: {response.get('items', 'No items')}")
+        print(f"DEBUG - fetch_youtube_endpoint: Full API response: {response}")
         if not response.get("items"):
-            print("DEBUG - fetch_youtube_endpoint: No videos found")
+            print("DEBUG - fetch_youtube_endpoint: No videos found in API response")
             return []
         video = response["items"][0]
         title = video["snippet"]["title"].strip()
         video_id = video["id"]["videoId"]
         link = f"https://www.youtube.com/watch?v={video_id}"
-        date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-19T12:00:00Z
+        date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-20T12:00:00Z
         try:
             pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
             two_days_ago = datetime.now() - timedelta(days=2)
@@ -428,6 +428,9 @@ def fetch_youtube_endpoint():
             return []
         print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link})")
         return [f"• <a href=\"{link}\">{title}</a>"]
+    except HttpError as e:
+        print(f"❌ ERROR - fetch_youtube_endpoint: HTTP error from YouTube API: {str(e)}")
+        return []
     except Exception as e:
         print(f"❌ ERROR - fetch_youtube_endpoint: Failed to fetch YouTube episode: {str(e)}")
         return []
