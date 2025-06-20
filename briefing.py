@@ -389,9 +389,11 @@ def render_markdown(posts):
     return markdown
     
 # === China Update aus YT abrufen ===
+from email.utils import parsedate_to_datetime  # Bereits importiert
+
 def fetch_latest_youtube_episode():
     print("DEBUG - fetch_latest_youtube_episode: Fetching latest China Update episode")
-    feed_url = "https://www.youtube.com/feeds/videos.xml?channel_id=UC4pWut6yPKjX5Q0Zu2zGSA"
+    feed_url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCBtD8Dyw1XKiU7aZzQ-LIDw"  # Korrekte Kanal-ID
     two_days_ago = datetime.now() - timedelta(days=2)
     try:
         feed = feedparser.parse(feed_url)
