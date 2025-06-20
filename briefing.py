@@ -124,27 +124,27 @@ source_categories = {
 
 # === Google-News: Feed-Definition ===
 feeds_google_news = {
-    "EN": "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en",
-    "DE": "https://news.google.com/rss/search?q=china+when:1d&hl=de&gl=DE&ceid=DE:de",
-    "FR": "https://news.google.com/rss/search?q=china+when:1d&hl=fr&gl=FR&ceid=FR:fr"
+    "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=china+when:1d&hl=de&gl=DE&ceid=DE:de",
+    "https://news.google.com/rss/search?q=china+when:1d&hl=fr&gl=FR&ceid=FR:fr"
 }
 
 # === Think Tanks & Institute ===
 feeds_thinktanks = {
     "MERICS": "https://merics.org/en/rss.xml",
-    "CSIS": "https://www.csis.org/rss.xml",
-    "CREA (Energy & Clean Air)": "https://energyandcleanair.org/feed/",
-    "Brookings": "https://www.brookings.edu/feed/",
-    "Peterson Institute": "https://www.piie.com/rss/all",
-    "CFR – Council on Foreign Relations": "https://www.cfr.org/rss.xml",
-    "RAND Corporation": "https://www.rand.org/rss.xml",
-    "Chatham House": "https://www.chathamhouse.org/rss.xml",
-    "Lowy Institute": "https://www.lowyinstitute.org/the-interpreter/rss.xml"
+    "https://www.csis.org/rss.xml",
+    "https://energyandcleanair.org/feed/",
+    "https://www.brookings.edu/feed/",
+    "https://www.piie.com/rss/all",
+    "https://www.cfr.org/rss.xml",
+    "https://www.rand.org/rss.xml",
+    "https://www.chathamhouse.org/rss.xml",
+    "https://www.lowyinstitute.org/the-interpreter/rss.xml"
 }
 
 # === Google News China Top-Stories ===
 feeds_topchina = {
-    "Google News – China": "https://news.google.com/rss/search?q=china+when:1d&hl=en&gl=US&ceid=US:en"
+    "Google News – China": "https://news.google.com/rss/search?q=china+when:1d&gl=US&ceid=US:en"
 }
 
 # === SCMP & Yicai ===
@@ -153,13 +153,13 @@ feeds_scmp_yicai = {
     "Yicai Global": "https://www.yicaiglobal.com/rss/news"
 }
 
-# === China-Filter & Score-Funktionen ===
+# === China-Filter & Score-Functionen ===
 def score_article(title, summary=""):
     title = title.lower()
     summary = summary.lower()
     content = f"{title} {summary}"
     must_have_in_title = [
-        "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
+        "china", "chinese", "xi", "beijing", "shanghai", "hongkong", "taiwan", "prc",
         "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
         "belt and road", "macau", "pla"
     ]
@@ -211,6 +211,7 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
 
 # === Neue Funktion: extract_source (für Google News) ===
 def extract_source(title):
+    """Extrahiert den Quellennamen aus dem Titel (z. B. '– Reuters')."""
     for source in source_categories:
         if f"– {source}" in title or f"- {source}" in title or title.lower().endswith(source.lower()):
             return source
@@ -220,12 +221,14 @@ def extract_source(title):
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
     posts = []
+    
     try:
         print(f"DEBUG - fetch_substack_from_email: Current working directory: {os.getcwd()}")
         print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
+        # Prüfe auf doppelte E-Mail-Adressen
         email_counts = defaultdict(int)
         for sender in substack_senders:
             email_counts[sender.get("email")] += 1
@@ -241,6 +244,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         substack_senders = []
         posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999))
     
+    # Retry-Logik für Gmail-Verbindung
     for attempt in range(3):
         try:
             imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -254,12 +258,14 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
+        # Datumsfilter: Letzte 2 Tage (geändert von 3 Tagen)
         since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
             sender_order = sender.get("order", 999)
             if not sender_email:
+                # Keine E-Mail-Adresse: Fehler in posts, aber nicht im Newsletter anzeigen
                 print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                 continue
             try:
@@ -268,12 +274,12 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
                     print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
-                    continue
+                    continue  # Keine Fehlermeldung in posts hinzufügen
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
                 if not email_ids:
                     print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
-                    continue
+                    continue  # Keine Platzhaltermeldung hinzufügen
                 sender_posts = []
                 for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -345,7 +351,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 posts.extend(sender_posts)
             except Exception as e:
                 print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
-                continue
+                continue  # Keine Fehlermeldung in posts hinzufügen
         imap.logout()
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
@@ -393,7 +399,7 @@ def fetch_youtube_endpoint():
         youtube = build("youtube", "v3", developerKey=api_key)
         request = youtube.search().list(
             part="snippet",
-            channelId="UCy287hC44mRWpFLj4hK8gKA",
+            channelId="UCy287hC44mRWpFLj4hK8gKA",  # Korrekte Kanal-ID
             maxResults=1,
             order="date",
             type="video"
@@ -407,12 +413,13 @@ def fetch_youtube_endpoint():
         title = video["snippet"]["title"].strip()
         video_id = video["id"]["videoId"]
         link = f"https://youtu.be/{video_id}"  # Verkürzter YouTube-Link
+        # Thumbnail abrufen (maximale Auflösung bevorzugt)
         thumbnail = video["snippet"].get("thumbnails", {}).get("high", {}).get("url", "")
         if not thumbnail:
             thumbnail = video["snippet"].get("thumbnails", {}).get("medium", {}).get("url", "")
         if not thumbnail:
             thumbnail = video["snippet"].get("thumbnails", {}).get("default", {}).get("url", "")
-        date_str = video["snippet"]["publishedAt"]
+        date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-20T12:00:00Z
         try:
             pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
             two_days_ago = datetime.now() - timedelta(days=2)
@@ -424,6 +431,7 @@ def fetch_youtube_endpoint():
             print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
             return []
         print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link}), Thumbnail: {thumbnail}")
+        # Rückgabe mit Titel, Link und Thumbnail
         return [{
             "title": title,
             "link": link,
@@ -587,6 +595,7 @@ def fetch_cpr_usdcny():
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
     print(f"DEBUG - fetch_cpr_usdcny: Today: {today_str}, Yesterday: {yesterday_str}")
 
+    # Try CFETS
     print("DEBUG - fetch_cpr_usdcny: Trying CFETS")
     url = "https://www.chinamoney.com.cn/english/bmkcpr/"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -617,6 +626,7 @@ def fetch_cpr_usdcny():
     except Exception as e:
         print(f"❌ ERROR - fetch_cpr_usdcny: Failed to fetch CPR from CFETS: {str(e)}")
 
+    # Try ForexLive
     print("⚠️ DEBUG - fetch_cpr_usdcny: CFETS failed, trying ForexLive")
     cpr, estimate, pips_diff = fetch_cpr_forexlive()
     if cpr is not None:
@@ -626,6 +636,7 @@ def fetch_cpr_usdcny():
         prev_cpr = cpr_cache.get(yesterday_str)
         return cpr, estimate, pips_diff, prev_cpr
 
+    # Try X posts
     print("⚠️ DEBUG - fetch_cpr_usdcny: ForexLive failed, trying X posts")
     cpr, estimate, pips_diff = fetch_cpr_from_x()
     if cpr is not None:
@@ -635,6 +646,7 @@ def fetch_cpr_usdcny():
         prev_cpr = cpr_cache.get(yesterday_str)
         return cpr, estimate, pips_diff, prev_cpr
 
+    # Fallback
     print("⚠️ DEBUG - fetch_cpr_usdcny: All sources failed, using cache or Reuters estimate")
     cpr = cpr_cache.get(today_str)
     prev_cpr = cpr_cache.get(yesterday_str)
@@ -647,8 +659,8 @@ def fetch_cpr_usdcny():
 def fetch_currency_data():
     print("DEBUG - fetch_currency_data: Starting to fetch currency data")
     currencies = {
-        "USDCNY": "USDCNY=X",
-        "USDCNH": "USDCNH=X",
+        "USDCNY": "USDCNY=X",  # Onshore
+        "USDCNH": "USDCNH=X",  # Offshore
     }
     headers = {"User-Agent": "Mozilla/5.0"}
     results = {}
@@ -699,8 +711,8 @@ x_accounts = [
 ]
 
 def fetch_recent_x_posts(account, name, url):
-    print(f"DEBUG - fetch_recent_x_posts: Fetching posts for {name} (@{account})")
-    return [f"• {name} (@{account}) → {url}"]
+    print(f"DEBUG - fetch_recent_x_posts: {name} (@{account})")
+    return [f"{name} (@{account}) → {url}"]
 
 # === Briefing generieren ===
 def generate_briefing():
@@ -720,20 +732,21 @@ def generate_briefing():
     # Wechselkurse
     briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
     if is_weekend_day or is_holiday_china or is_holiday_hk:
-        briefing.append("📉 Heute keine aktuellen Wechselkurse.")
+        briefing.append("📉 Heute sind keine aktuellen Wechselkurse verfügbar.")
     else:
         currency_data = fetch_currency_data()
         print(f"DEBUG - generate_briefing: Currency data: {currency_data}")
+        # Überprüfe den Cache nach dem Abrufen der Währungsdaten
         try:
             with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache_content = json.load(f)
                 print(f"DEBUG - generate_briefing: Cache content after fetch: {cache_content}")
         except Exception as e:
-            print(f"ERROR - generate_briefing: Failed to read cache after fetch: {str(e)}")
+            print(f"ERROR - generate_briefing: Failed to read cache after fetch: {e}")
         cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
             cpr, estimate, pips_diff, prev_cpr = cpr_data
-            print(f"DEBUG - generate_briefing: CPR={cpr}, Estimate={estimate}, Pips={pips_diff}, Prev_CPR={prev_cpr}")
+            print(f"DEBUG - generate_briefing: CPR={cpr}, Estimate={Estimate}, Pips={pips_diff}}, Pips={Prev_Cpr, prev_CPR}={prev_cpr}")
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
                 spread_arrow = "↓" if pips_diff <= -20 else "↑" if pips_diff >= 20 else "→"
@@ -743,7 +756,7 @@ def generate_briefing():
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
                 else:
-                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})")
                     print(f"DEBUG - generate_briefing: CPR line without pct_change: {cpr_line}")
                 briefing.append(cpr_line)
             else:
@@ -767,7 +780,7 @@ def generate_briefing():
             briefing.append(currency_data.get("USDCNY"))
         if isinstance(currency_data.get("USDCNH"), tuple):
             val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
-            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
+            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cny} ({pct_cnh:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
         if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
@@ -776,7 +789,7 @@ def generate_briefing():
             spread = val_cnh - val_cny
             spread_pips = int(spread * 10000)
             cnh_cny_interpretation = interpret_cnh_cny_spread(spread_pips)
-            spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
+            spread_arrow = f"↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
     # Top 5 China-Stories
@@ -854,21 +867,22 @@ def generate_briefing():
 
     # China Update YouTube
     youtube_episodes = fetch_youtube_endpoint()
-    if youtube_episodes:
+    if youtube_episodes:  # Nur hinzufügen, wenn ein Video gefunden wurde
         briefing.append("\n### China Update")
         for episode in youtube_episodes:
             title = episode["title"]
             link = episode["link"]
             thumbnail = episode["thumbnail"]
+            # Thumbnail und Link einfügen
             if thumbnail:
                 briefing.append(f'<a href="{link}"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0;"></a>')
-            briefing.append(f"• <a href=\"{link}\">{title}</a>")
+            briefing.append(f'• <a href="{link}"><span>{title}</span></a>')  # Link mit <span> umhüllt
 
     # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
-    substack_mail = os.getenv("SUBSTACK_MAIL")
+    substack_mail = os.getenv("SUBSTACK")
     if not substack_mail:
-        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
+        briefing.append("❌ Fehler: SUBSTACK_MAIIL Umgebungsvariable nicht gefunden!")
     else:
         try:
             mail_pairs = substack_mail.split(";")
@@ -878,15 +892,15 @@ def generate_briefing():
                     key, value = pair.split("=", 1)
                     mail_config[key] = value
             if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
-                missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
+                missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k in not mail_config]
                 briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK_MAIL: {', '.join(missing_keys)}")
             else:
                 email_user = mail_config["GMAIL_USER"]
                 email_password = mail_config["GMAIL_PASS"]
                 posts = fetch_substack_from_email(email_user, email_password)
                 briefing.extend(render_markdown(posts))
-        except ValueError as e:
-            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        except Exception as e:
+            print(f"ERROR - generate_briefing: Fehler beim Parsen von SUBSTACK: {str(e)}")
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
@@ -903,8 +917,8 @@ def generate_briefing():
   </head>
   <body>
     <div style="background-color: #ffffff; padding: 20px;">
-      <pre style="font-family: system-ui, sans-serif">
-{chr(10).join(briefing)}
+      <pre style="font-family: system-ui, sans-serif;">
+      {chr(10).join(briefing)}
       </pre>
     </div>
   </body>
@@ -912,23 +926,23 @@ def generate_briefing():
 
 # === E-Mail senden ===
 def send_briefing():
-    print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
+    print("🧠💻 DEBUG - send_briefing: Starting to generate and send briefing")
     briefing_content = generate_briefing()
 
     msg = MIMEText(briefing_content, "html", "utf-8")
     msg["Subject"] = "📰 Dein tägliches China-Briefing"
-    msg["From"] = config_dict["EMAIL_USER"]
-    msg["To"] = config_dict["EMAIL_TO"]
+    msg["From"] = config_dict["EMAIL"]
+    msg["To"] = config_dict["EMAIL"]
 
-    print("📤 DEBUG - send_briefing: Sending email")
+    print("📤 DEBUG - Sending email")
     try:
         with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
             server.starttls()
-            server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
+            server.login(config_dict.get("EMAIL_USER"), config_dict["EMAIL_PASSWORD"])
             server.send_message(msg)
-        print("✅ DEBUG - send_briefing: Email sent successfully")
+        print("✅ DEBUG - Email sent successfully")
     except Exception as e:
-        print(f"❌ ERROR - send_briefing: Failed to send email: {str(e)}")
+        print(f"❌ ERROR - Failed to send email: {str(e)}")
 
 # === Hauptskript ===
 if __name__ == "__main__":
