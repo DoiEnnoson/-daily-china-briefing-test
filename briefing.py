@@ -415,6 +415,12 @@ def fetch_youtube_endpoint():
         title = video["snippet"]["title"].strip()
         video_id = video["id"]["videoId"]
         link = f"https://www.youtube.com/watch?v={video_id}"
+        # Thumbnail abrufen (maximale Auflösung bevorzugt)
+        thumbnail = video["snippet"].get("thumbnails", {}).get("high", {}).get("url", "")
+        if not thumbnail:
+            thumbnail = video["snippet"].get("thumbnails", {}).get("medium", {}).get("url", "")
+        if not thumbnail:
+            thumbnail = video["snippet"].get("thumbnails", {}).get("default", {}).get("url", "")
         date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-20T12:00:00Z
         try:
             pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
@@ -426,8 +432,13 @@ def fetch_youtube_endpoint():
         except ValueError as e:
             print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
             return []
-        print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link})")
-        return [f"• <a href=\"{link}\">{title}</a>"]
+        print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link}), Thumbnail: {thumbnail}")
+        # Rückgabe mit Titel, Link und Thumbnail
+        return [{
+            "title": title,
+            "link": link,
+            "thumbnail": thumbnail
+        }]
     except HttpError as e:
         print(f"❌ ERROR - fetch_youtube_endpoint: HTTP error from YouTube API: {str(e)}")
         return []
