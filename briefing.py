@@ -424,7 +424,6 @@ def fetch_latest_youtube_episode():
         print(f"❌ ERROR - fetch_latest_youtube_episode: Failed to fetch or parse RSS feed: {str(e)}")
         return []
 
-
 # === NBS-Daten abrufen ===
 def fetch_latest_nbs_data():
     print("DEBUG - fetch_latest_nbs_data: Fetching NBS data")
