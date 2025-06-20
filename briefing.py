@@ -55,7 +55,7 @@ def load_cpr_cache():
             print(f"DEBUG - load_cpr_cache: No cache file found at {CPR_CACHE_FILE}")
             return {}
     except Exception as e:
-        print(f"ERROR - load_cpr_cache: {eid} for {str(e)}")
+        print(f"ERROR - load_cpr_cache: {e}")
         return {}
 
 # CPR-Cache speichern
@@ -715,7 +715,7 @@ def generate_briefing():
     else:
         briefing.extend(fetch_index_data())
     if is_weekend_day or is_holiday_hk:
-        briefing.append("📈 Heute kein Handelstag an der Börse Hongkong.")
+        briefing.append("📈 Heute kein Handelstag an der Hongkonger Börse.")
 
     # Wechselkurse
     briefing.append("\n## 💱 Wechselkurse (08:00 Uhr MESZ)")
@@ -730,20 +730,20 @@ def generate_briefing():
                 print(f"DEBUG - generate_briefing: Cache content after fetch: {cache_content}")
         except Exception as e:
             print(f"ERROR - generate_briefing: Failed to read cache after fetch: {str(e)}")
-        cpr_data = currency_data.get("CPR")
+        cpr_data = currency_data.get("CPR")")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
             cpr, estimate, pips_diff, prev_cpr = cpr_data
-            print(f"DEBUG - generate_briefing: CPR={cpr}, Estimate={estimate}, Pips={pips_diff}, Prev_CPR={prev_cpr}")
+            print(f"DEBUG - generate_briefing: CPR={cpr}, estimate={estimate}, pips_diff={pips_diff}, prev_cpr={pr_cpr}})
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
                 spread_arrow = "↓" if pips_diff <= -20 else "↑" if pips_diff >= 20 else "→"
-                usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
+                usd_cny_interpretation = interpret_usd_cny_spread(pips_diff))
                 if prev_cpr is not None:
-                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
-                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
                 else:
-                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est.: {estimate:.4f} ({pips_formatted} {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line without pct_change: {cpr_line}")
                 briefing.append(cpr_line)
             else:
@@ -760,17 +760,17 @@ def generate_briefing():
             briefing.append(str(cpr_data[0]))
             if cpr_data[1] is not None:
                 briefing.append(f"  - Estimate: {cpr_data[1]:.4f}")
-        if isinstance(currency_data.get("USDCNY"), tuple):
+        if isinstance(currency_data.get("USDCNY"), tuple)):
             val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
-            briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
+            briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({row_cny:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNY"))
-        if isinstance(currency_data.get("USDCNH"), tuple):
+        if isinstance(currency_data.get("USDCNH"), tuple)):
             val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
             briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
-        if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
+        if isinstance(currency_data.get("USDCNY"), tuple)) and isinstance(currency_data.get("USDCNH"), tuple)):
             val_cny = currency_data["USDCNY"][0]
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
@@ -795,7 +795,7 @@ def generate_briefing():
         briefing.extend(fetch_recent_x_posts(acc["account"], acc["name"], acc["url"]))
 
     # Google News nach Sprache/Quelle
-    briefing.append("\n## 🌍 Google News – Nach Sprache & Quelle sortiert")
+    briefing.append("\n## 🌎 Google News – Nach Sprache & Quelle sortiert")
     all_articles = {
         "EN": defaultdict(list),
         "DE": defaultdict(list),
@@ -820,11 +820,11 @@ def generate_briefing():
                 category = "ASIA"
             clean_title = title
             if f"– {source}" in title:
-                clean_title = title.split(f"– {source}")[0].strip()
+                clean_title = title.split("– {source}")[0].strip()
             elif f"- {source}" in title:
                 clean_title = title.split(f"- {source}")[0].strip()
             if clean_title.lower().endswith(source.lower()):
-                clean_title = clean_title[:-(len(source))].strip("-:—– ").strip()
+                clean_title = clean_title[:-(len(source))].strip("- :— ").strip()
             all_articles[category][source].append((score, f'• <a href="{link}">{clean_title}</a>'))
     category_titles = {
         "EN": "🇺🇸 Englischsprachige Medien",
@@ -836,11 +836,11 @@ def generate_briefing():
     for cat_key, sources in all_articles.items():
         if not sources:
             continue
-        briefing.append(f"\n## {category_titles.get(cat_key, cat_key)}")
+        briefing.append(f"\n### {category_titles.get(cat_key)}")
         for source_name, articles in sorted(sources.items()):
             if not articles:
                 continue
-            briefing.append(f"\n### {source_name}")
+            briefing.append(f"\n{source_name}")
             top_articles = sorted(articles, reverse=True)[:5]
             briefing.extend([a[1] for a in top_articles])
 
@@ -864,7 +864,7 @@ def generate_briefing():
                 # Maskierter Link mit JS-Umleitung
                 briefing.append(f'<a href="#" onclick="window.location.href=\'{link}\'; return false;"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0; border: none;" class="no-preview"></a>')
             else:
-                briefing.append(f'• <a href="{link}">{title}</a>')  # Fallback
+                briefing.append(f'• <a href="{link}">{title}</a>')
 
     # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
@@ -881,7 +881,7 @@ def generate_briefing():
                     mail_config[key] = value
             if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
                 missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
-                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK_MAIL: {', '.join(missing_keys)}")
+                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK:{', '.join(missing_keys)}")
             else:
                 email_user = mail_config["GMAIL_USER"]
                 email_password = mail_config["GMAIL_PASS"]
@@ -892,10 +892,10 @@ def generate_briefing():
 
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
-print("DEBUG - generate_briefing: Briefing generated successfully")
-# Debugging: HTML-Output speichern
-with open("newsletter.html", "w", encoding="utf-8") as f:
-    f.write(f"""\
+    print("DEBUG - generate_briefing: Briefing generated successfully")
+    # Debugging: HTML-Output speichern
+    with open("newsletter.html", "w", encoding="utf-8") as f:
+        f.write(f"""\
 <html>
 <head>
     <meta charset="UTF-8">
@@ -926,7 +926,7 @@ with open("newsletter.html", "w", encoding="utf-8") as f:
     </div>
 </body>
 </html>""")
-return f"""\
+    return f"""\
 <html>
 <head>
     <meta charset="UTF-8">
