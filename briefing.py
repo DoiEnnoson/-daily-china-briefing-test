@@ -63,12 +63,10 @@ def save_cpr_cache(cache):
     print(f"DEBUG - save_cpr_cache: Starting to save cache to {CPR_CACHE_FILE}")
     print(f"DEBUG - save_cpr_cache: Cache content: {cache}")
     try:
-        # Sicherstellen, dass das Verzeichnis existiert
         os.makedirs(os.path.dirname(CPR_CACHE_FILE), exist_ok=True)
         with open(CPR_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         print(f"DEBUG - save_cpr_cache: Successfully wrote cache to {CPR_CACHE_FILE}")
-        # Verifizieren, dass die Datei geschrieben wurde
         with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
             saved_cache = json.load(f)
             print(f"DEBUG - save_cpr_cache: Verified cache content: {saved_cache}")
@@ -213,7 +211,6 @@ def fetch_ranked_articles(feed_url, max_items=20, top_n=5):
 
 # === Neue Funktion: extract_source (für Google News) ===
 def extract_source(title):
-    """Extrahiert den Quellennamen aus dem Titel (z. B. '– Reuters')."""
     for source in source_categories:
         if f"– {source}" in title or f"- {source}" in title or title.lower().endswith(source.lower()):
             return source
@@ -223,14 +220,12 @@ def extract_source(title):
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
     posts = []
-    
     try:
         print(f"DEBUG - fetch_substack_from_email: Current working directory: {os.getcwd()}")
         print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
-        # Prüfe auf doppelte E-Mail-Adressen
         email_counts = defaultdict(int)
         for sender in substack_senders:
             email_counts[sender.get("email")] += 1
@@ -246,7 +241,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         substack_senders = []
         posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999))
     
-    # Retry-Logik für Gmail-Verbindung
     for attempt in range(3):
         try:
             imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -260,14 +254,12 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
-        # Datumsfilter: Letzte 2 Tage (geändert von 3 Tagen)
         since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
             sender_order = sender.get("order", 999)
             if not sender_email:
-                # Keine E-Mail-Adresse: Fehler in posts, aber nicht im Newsletter anzeigen
                 print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                 continue
             try:
@@ -276,12 +268,12 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
                     print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
-                    continue  # Keine Fehlermeldung in posts hinzufügen
+                    continue
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
                 if not email_ids:
                     print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
-                    continue  # Keine Platzhaltermeldung hinzufügen
+                    continue
                 sender_posts = []
                 for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -353,7 +345,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 posts.extend(sender_posts)
             except Exception as e:
                 print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
-                continue  # Keine Fehlermeldung in posts hinzufügen
+                continue
         imap.logout()
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
@@ -401,7 +393,7 @@ def fetch_youtube_endpoint():
         youtube = build("youtube", "v3", developerKey=api_key)
         request = youtube.search().list(
             part="snippet",
-            channelId="UCy287hC44mRWpFLj4hK8gKA",  # Korrekte Kanal-ID
+            channelId="UCy287hC44mRWpFLj4hK8gKA",
             maxResults=1,
             order="date",
             type="video"
@@ -414,14 +406,13 @@ def fetch_youtube_endpoint():
         video = response["items"][0]
         title = video["snippet"]["title"].strip()
         video_id = video["id"]["videoId"]
-        link = f"https://www.youtube.com/watch?v={video_id}"
-        # Thumbnail abrufen (maximale Auflösung bevorzugt)
+        link = f"https://youtu.be/{video_id}"  # Verkürzter YouTube-Link
         thumbnail = video["snippet"].get("thumbnails", {}).get("high", {}).get("url", "")
         if not thumbnail:
             thumbnail = video["snippet"].get("thumbnails", {}).get("medium", {}).get("url", "")
         if not thumbnail:
             thumbnail = video["snippet"].get("thumbnails", {}).get("default", {}).get("url", "")
-        date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-20T12:00:00Z
+        date_str = video["snippet"]["publishedAt"]
         try:
             pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
             two_days_ago = datetime.now() - timedelta(days=2)
@@ -433,7 +424,6 @@ def fetch_youtube_endpoint():
             print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
             return []
         print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link}), Thumbnail: {thumbnail}")
-        # Rückgabe mit Titel, Link und Thumbnail
         return [{
             "title": title,
             "link": link,
@@ -597,7 +587,6 @@ def fetch_cpr_usdcny():
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
     print(f"DEBUG - fetch_cpr_usdcny: Today: {today_str}, Yesterday: {yesterday_str}")
 
-    # Try CFETS
     print("DEBUG - fetch_cpr_usdcny: Trying CFETS")
     url = "https://www.chinamoney.com.cn/english/bmkcpr/"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -628,7 +617,6 @@ def fetch_cpr_usdcny():
     except Exception as e:
         print(f"❌ ERROR - fetch_cpr_usdcny: Failed to fetch CPR from CFETS: {str(e)}")
 
-    # Try ForexLive
     print("⚠️ DEBUG - fetch_cpr_usdcny: CFETS failed, trying ForexLive")
     cpr, estimate, pips_diff = fetch_cpr_forexlive()
     if cpr is not None:
@@ -638,7 +626,6 @@ def fetch_cpr_usdcny():
         prev_cpr = cpr_cache.get(yesterday_str)
         return cpr, estimate, pips_diff, prev_cpr
 
-    # Try X posts
     print("⚠️ DEBUG - fetch_cpr_usdcny: ForexLive failed, trying X posts")
     cpr, estimate, pips_diff = fetch_cpr_from_x()
     if cpr is not None:
@@ -648,7 +635,6 @@ def fetch_cpr_usdcny():
         prev_cpr = cpr_cache.get(yesterday_str)
         return cpr, estimate, pips_diff, prev_cpr
 
-    # Fallback
     print("⚠️ DEBUG - fetch_cpr_usdcny: All sources failed, using cache or Reuters estimate")
     cpr = cpr_cache.get(today_str)
     prev_cpr = cpr_cache.get(yesterday_str)
@@ -661,8 +647,8 @@ def fetch_cpr_usdcny():
 def fetch_currency_data():
     print("DEBUG - fetch_currency_data: Starting to fetch currency data")
     currencies = {
-        "USDCNY": "USDCNY=X",  # Onshore
-        "USDCNH": "USDCNH=X",  # Offshore
+        "USDCNY": "USDCNY=X",
+        "USDCNH": "USDCNH=X",
     }
     headers = {"User-Agent": "Mozilla/5.0"}
     results = {}
@@ -738,7 +724,6 @@ def generate_briefing():
     else:
         currency_data = fetch_currency_data()
         print(f"DEBUG - generate_briefing: Currency data: {currency_data}")
-        # Überprüfe den Cache nach dem Abrufen der Währungsdaten
         try:
             with open(CPR_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache_content = json.load(f)
@@ -869,13 +854,12 @@ def generate_briefing():
 
     # China Update YouTube
     youtube_episodes = fetch_youtube_endpoint()
-    if youtube_episodes:  # Nur hinzufügen, wenn ein Video gefunden wurde
+    if youtube_episodes:
         briefing.append("\n### China Update")
         for episode in youtube_episodes:
             title = episode["title"]
             link = episode["link"]
             thumbnail = episode["thumbnail"]
-            # Thumbnail und Link einfügen
             if thumbnail:
                 briefing.append(f'<a href="{link}"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0;"></a>')
             briefing.append(f"• <a href=\"{link}\">{title}</a>")
@@ -909,6 +893,14 @@ def generate_briefing():
     print("DEBUG - generate_briefing: Briefing generated successfully")
     return f"""\
 <html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noimageindex">
+    <meta property="og:image" content="">
+    <meta property="og:image:secure_url" content="">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="">
+  </head>
   <body>
     <div style="background-color: #ffffff; padding: 20px;">
       <pre style="font-family: system-ui, sans-serif">
