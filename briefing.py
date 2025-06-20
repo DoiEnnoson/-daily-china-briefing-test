@@ -387,7 +387,8 @@ def render_markdown(posts):
                 markdown.append("")
     
     return markdown
-
+    
+# === China Update aus YT abrufen ===
 def fetch_latest_youtube_episode():
     print("DEBUG - fetch_latest_youtube_episode: Fetching latest China Update episode")
     feed_url = "https://www.youtube.com/feeds/videos.xml?channel_id=UC4pWut6yPKjX5Q0Zu2zGSA"
