@@ -401,7 +401,7 @@ def fetch_youtube_endpoint():
         youtube = build("youtube", "v3", developerKey=api_key)
         request = youtube.search().list(
             part="snippet",
-            channelId="287hC44mRWpFLj4hK8gKA",  # Neue Kanal-ID
+            channelId="UCy287hC44mRWpFLj4hK8gKA",  # Korrekte Kanal-ID
             maxResults=1,
             order="date",
             type="video"
