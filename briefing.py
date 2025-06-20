@@ -258,14 +258,15 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             time.sleep(2)
     
     try:
-        # Datumsfilter: Letzte 3 Tage
-        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
+        # Datumsfilter: Letzte 2 Tage (geändert von 3 Tagen)
+        since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
         for sender in substack_senders:
             sender_email = sender.get("email")
             sender_name = sender.get("name")
             sender_order = sender.get("order", 999)
             if not sender_email:
-                posts.append((sender_name, f"❌ Keine E-Mail-Adresse für {sender_name} angegeben.", "#", "", sender_order))
+                # Keine E-Mail-Adresse: Fehler in posts, aber nicht im Newsletter anzeigen
+                print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                 continue
             try:
                 search_query = f'(FROM "{sender_email}" SINCE {since_date})'
@@ -273,18 +274,17 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 typ, data = imap.search(None, search_query)
                 if typ != "OK":
                     print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
-                    posts.append((sender_name, f"❌ Fehler beim Suchen nach Mails von {sender_name} ({sender_email}).", "#", "", sender_order))
-                    continue
+                    continue  # Keine Fehlermeldung in posts hinzufügen
                 email_ids = data[0].split()[-max_results_per_sender:]
                 print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
                 if not email_ids:
-                    posts.append((sender_name, f"📭 Keine Mails von {sender_name} in den letzten 3 Tagen gefunden.", "#", "", sender_order))
-                    continue
+                    print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
+                    continue  # Keine Platzhaltermeldung hinzufügen
                 sender_posts = []
                 for eid in email_ids:
                     typ, msg_data = imap.fetch(eid, "(RFC822)")
                     if typ != "OK":
-                        sender_posts.append((sender_name, f"❌ Fehler beim Abrufen der Mail {eid} von {sender_name}.", "#", "", sender_order, None))
+                        print(f"DEBUG - fetch_substack_from_email: Error fetching mail {eid} for {sender_name}.")
                         continue
                     msg = email.message_from_bytes(msg_data[0][1])
                     date_str = msg["Date"]
@@ -295,8 +295,6 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                             print(f"DEBUG - fetch_substack_from_email: Date for mail {eid} from {sender_name}: {mail_date}")
                         except (TypeError, ValueError) as e:
                             print(f"DEBUG - fetch_substack_from_email: Invalid date in mail {eid} from {sender_name}: {date_str}, Error: {str(e)}")
-                    else:
-                        print(f"DEBUG - fetch_substack_from_email: No date in mail {eid} from {sender_name}")
                     html = None
                     if msg.is_multipart():
                         for part in msg.walk():
@@ -306,7 +304,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     elif msg.get_content_type() == "text/html":
                         html = msg.get_payload(decode=True).decode(errors="ignore")
                     if not html:
-                        sender_posts.append((sender_name, f"❌ Kein HTML-Inhalt in der Mail {eid} von {sender_name}.", "#", "", sender_order, mail_date))
+                        print(f"DEBUG - fetch_substack_from_email: No HTML content in mail {eid} from {sender_name}.")
                         continue
                     soup = BeautifulSoup(html, "lxml")
                     title_tag = (soup.find("h1") or 
@@ -352,7 +350,8 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
                 posts.extend(sender_posts)
             except Exception as e:
-                posts.append((sender_name, f"❌ Fehler bei der Verarbeitung von {sender_name} ({sender_email}): {str(e)}", "#", "", sender_order))
+                print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
+                continue  # Keine Fehlermeldung in posts hinzufügen
         imap.logout()
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
