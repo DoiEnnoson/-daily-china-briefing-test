@@ -395,28 +395,31 @@ def fetch_latest_youtube_episode():
     two_days_ago = datetime.now() - timedelta(days=2)
     try:
         feed = feedparser.parse(feed_url)
+        print(f"DEBUG - fetch_latest_youtube_episode: Feed status: {feed.get('status', 'Unknown')}")
         if not feed.entries:
             print("DEBUG - fetch_latest_youtube_episode: No entries found in RSS feed")
             return []
-        for entry in feed.entries[:1]:  # Nur das neueste Video prüfen
-            date_str = entry.get("published") or entry.get("updated")
-            if not date_str:
-                print("DEBUG - fetch_latest_youtube_episode: No publication date found")
+        entry = feed.entries[0]  # Neueste Episode
+        date_str = entry.get("published") or entry.get("updated")
+        print(f"DEBUG - fetch_latest_youtube_episode: Entry date: {date_str}")
+        if not date_str:
+            print("DEBUG - fetch_latest_youtube_episode: No publication date found")
+            return []
+        try:
+            pub_date = parsedate_to_datetime(date_str)
+            print(f"DEBUG - fetch_latest_youtube_episode: Parsed date: {pub_date}")
+            if pub_date < two_days_ago:
+                print(f"DEBUG - fetch_latest_youtube_episode: Latest video ({entry.get('title')}) is older than 2 days")
                 return []
-            try:
-                pub_date = parsedate_to_datetime(date_str)
-                if pub_date < two_days_ago:
-                    print(f"DEBUG - fetch_latest_youtube_episode: Latest video ({entry.get('title')}) is older than 2 days")
-                    return []
-            except (TypeError, ValueError) as e:
-                print(f"DEBUG - fetch_latest_youtube_episode: Invalid date format: {date_str}, Error: {str(e)}")
-                return []
-            title = entry.get("title", "Unbenannter Beitrag").strip()
-            link = entry.get("link", "#").strip()
-            print(f"DEBUG - fetch_latest_youtube_episode: Found episode: {title} ({link})")
-            return [f"• <a href=\"{link}\">{title}</a>"]
+        except (TypeError, ValueError) as e:
+            print(f"DEBUG - fetch_latest_youtube_episode: Invalid date format: {date_str}, Error: {str(e)}")
+            return []
+        title = entry.get("title", "Unbenannter Beitrag").strip()
+        link = entry.get("link", "#").strip()
+        print(f"DEBUG - fetch_latest_youtube_episode: Found episode: {title} ({link})")
+        return [f"• <a href=\"{link}\">{title}</a>"]
     except Exception as e:
-        print(f"❌ ERROR - fetch_latest_youtube_episode: Failed to fetch YouTube episode: {str(e)}")
+        print(f"❌ ERROR - fetch_latest_youtube_episode: Failed to fetch or parse RSS feed: {str(e)}")
         return []
 
 
