@@ -862,7 +862,8 @@ def generate_briefing():
             thumbnail = episode["thumbnail"]
             if thumbnail:
                 briefing.append(f'<a href="{link}"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0;"></a>')
-            briefing.append(f'• <a href="{link}"><span>{title}</span></a>')
+            else:
+                briefing.append(f'• <a href="{link}">{title}</a>')  # Fallback, falls kein Thumbnail
 
     # Substack-Abschnitt
     briefing.append("\n## 📬 Aktuelle Substack-Artikel")
