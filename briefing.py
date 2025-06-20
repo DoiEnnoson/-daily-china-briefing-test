@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
+from googleapiclient.discovery import build
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -389,39 +390,45 @@ def render_markdown(posts):
     return markdown
     
 # === China Update aus YT abrufen ===
-from email.utils import parsedate_to_datetime  # Bereits importiert
-
-def fetch_latest_youtube_episode():
-    print("DEBUG - fetch_latest_youtube_episode: Fetching latest China Update episode")
-    feed_url = "https://www.youtube.com/feeds/videos.xml?channel_id=UCBtD8Dyw1XKiU7aZzQ-LIDw"  # Korrekte Kanal-ID
-    two_days_ago = datetime.now() - timedelta(days=2)
+def fetch_youtube_endpoint():
+    print("DEBUG - fetch_youtube_endpoint: Fetching latest China Update episode via API")
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        print("❌ ERROR - fetch_youtube_endpoint: YOUTUBE_API_KEY not found in environment variables")
+        return []
     try:
-        feed = feedparser.parse(feed_url)
-        print(f"DEBUG - fetch_latest_youtube_episode: Feed status: {feed.get('status', 'Unknown')}")
-        if not feed.entries:
-            print("DEBUG - fetch_latest_youtube_episode: No entries found in RSS feed")
+        youtube = build("youtube", "v3", developerKey=api_key)
+        request = youtube.search().list(
+            part="snippet",
+            channelId="UCBtD8Dyw1XKiU7aZzQ-LIDw",  # Korrekte Kanal-ID
+            maxResults=1,
+            order="date",
+            type="video"
+        )
+        response = request.execute()
+        print(f"DEBUG - fetch_youtube_endpoint: API response: {response.get('items', 'No items')}")
+        if not response.get("items"):
+            print("DEBUG - fetch_youtube_endpoint: No videos found")
             return []
-        entry = feed.entries[0]  # Neueste Episode
-        date_str = entry.get("published") or entry.get("updated")
-        print(f"DEBUG - fetch_latest_youtube_episode: Entry date: {date_str}")
-        if not date_str:
-            print("DEBUG - fetch_latest_youtube_episode: No publication date found")
-            return []
+        video = response["items"][0]
+        title = video["snippet"]["title"].strip()
+        video_id = video["id"]["videoId"]
+        link = f"https://www.youtube.com/watch?v={video_id}"
+        date_str = video["snippet"]["publishedAt"]  # Format: 2025-06-19T12:00:00Z
         try:
-            pub_date = parsedate_to_datetime(date_str)
-            print(f"DEBUG - fetch_latest_youtube_episode: Parsed date: {pub_date}")
+            pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
+            two_days_ago = datetime.now() - timedelta(days=2)
+            print(f"DEBUG - fetch_youtube_endpoint: Parsed date: {pub_date}, Two days ago: {two_days_ago}")
             if pub_date < two_days_ago:
-                print(f"DEBUG - fetch_latest_youtube_episode: Latest video ({entry.get('title')}) is older than 2 days")
+                print(f"DEBUG - fetch_youtube_endpoint: Latest video ({title}) is older than 2 days")
                 return []
-        except (TypeError, ValueError) as e:
-            print(f"DEBUG - fetch_latest_youtube_episode: Invalid date format: {date_str}, Error: {str(e)}")
+        except ValueError as e:
+            print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
             return []
-        title = entry.get("title", "Unbenannter Beitrag").strip()
-        link = entry.get("link", "#").strip()
-        print(f"DEBUG - fetch_latest_youtube_episode: Found episode: {title} ({link})")
+        print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link})")
         return [f"• <a href=\"{link}\">{title}</a>"]
     except Exception as e:
-        print(f"❌ ERROR - fetch_latest_youtube_episode: Failed to fetch or parse RSS feed: {str(e)}")
+        print(f"❌ ERROR - fetch_youtube_endpoint: Failed to fetch YouTube episode: {str(e)}")
         return []
 
 # === NBS-Daten abrufen ===
