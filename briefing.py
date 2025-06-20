@@ -730,20 +730,20 @@ def generate_briefing():
                 print(f"DEBUG - generate_briefing: Cache content after fetch: {cache_content}")
         except Exception as e:
             print(f"ERROR - generate_briefing: Failed to read cache after fetch: {str(e)}")
-        cpr_data = currency_data.get("CPR")")
+        cpr_data = currency_data.get("CPR")
         if isinstance(cpr_data, tuple) and isinstance(cpr_data[0], float):
             cpr, estimate, pips_diff, prev_cpr = cpr_data
-            print(f"DEBUG - generate_briefing: CPR={cpr}, estimate={estimate}, pips_diff={pips_diff}, prev_cpr={pr_cpr}})
+            print(f"DEBUG - generate_briefing: CPR={cpr}, estimate={estimate}, pips_diff={pips_diff}, prev_cpr={prev_cpr}")
             if estimate is not None:
                 pips_formatted = f"Spread: CPR vs Est {pips_diff:+d} pips"
                 spread_arrow = "↓" if pips_diff <= -20 else "↑" if pips_diff >= 20 else "→"
-                usd_cny_interpretation = interpret_usd_cny_spread(pips_diff))
+                usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
                 if prev_cpr is not None:
-                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0
+                    pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
                 else:
-                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est.: {estimate:.4f} ({pips_formatted} {usd_cny_interpretation})"
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line without pct_change: {cpr_line}")
                 briefing.append(cpr_line)
             else:
@@ -760,17 +760,17 @@ def generate_briefing():
             briefing.append(str(cpr_data[0]))
             if cpr_data[1] is not None:
                 briefing.append(f"  - Estimate: {cpr_data[1]:.4f}")
-        if isinstance(currency_data.get("USDCNY"), tuple)):
+        if isinstance(currency_data.get("USDCNY"), tuple):
             val_cny, arrow_cny, pct_cny = currency_data["USDCNY"]
-            briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({row_cny:+.2f} %)")
+            briefing.append(f"• CNY/USD (Onshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNY"))
-        if isinstance(currency_data.get("USDCNH"), tuple)):
+        if isinstance(currency_data.get("USDCNH"), tuple):
             val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
             briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
-        if isinstance(currency_data.get("USDCNY"), tuple)) and isinstance(currency_data.get("USDCNH"), tuple)):
+        if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
             val_cny = currency_data["USDCNY"][0]
             val_cnh = currency_data["USDCNH"][0]
             spread = val_cnh - val_cny
@@ -820,7 +820,7 @@ def generate_briefing():
                 category = "ASIA"
             clean_title = title
             if f"– {source}" in title:
-                clean_title = title.split("– {source}")[0].strip()
+                clean_title = title.split(f"– {source}")[0].strip()
             elif f"- {source}" in title:
                 clean_title = title.split(f"- {source}")[0].strip()
             if clean_title.lower().endswith(source.lower()):
