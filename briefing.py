@@ -85,15 +85,6 @@ is_holiday_hk = is_holiday(today_str, hk_holidays)
 is_weekend_day = is_weekend()
 
 # === 🧠 Wirtschaftskalendar (Dummy) ===
-def fetch_china_economic_events():
-    return [
-        "• 03.06. (Di) 03:45 – Caixin Manufacturing PMI (Mai) | Prognose: 50.6 | Vorher: 50.4",
-        "• 05.06. (Do) 03:45 – Caixin Services PMI (Mai) | Prognose: 51.1 | Vorher: 50.7",
-        "• 05.06. (Do) 03:45 – Caixin Composite PMI (Mai) | Prognose: 50.7 | Vorher: 51.1",
-        "• 07.06. (Sa) 10:00 – Foreign Exchange Reserves (Mai) | Prognose: $3.35T | Vorher: $3.282T"
-    ]
-
-# === Wirtschaftskalender aus CSV ===
 def fetch_economic_calendar():
     print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
     try:
@@ -135,18 +126,21 @@ def fetch_economic_calendar():
 
         markdown = ["### 📅 Was wichtig wird:", ""]
 
-        # Für Testumgebung: False für ➡️, True für ** (Buttondown)
-        use_bold = True  # Setze auf True für Buttondown
+        # Rendering-Option: "bold" für ** (Buttondown), "arrow" für ➡️ (Testumgebung), "html" für <b>
+        highlight_style = "bold"  # Ändere zu "arrow" für Testumgebung oder "html" für <b>
 
         grouped = df.groupby(df["Date"])
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
             weekday = de_weekdays[date_obj.weekday()]  # Deutsche Abkürzung
+            date_text = f"{weekday} {date_str}"
             # Hervorhebung
-            if use_bold:
-                date_line = f"**{weekday} {date_str}**"
-            else:
-                date_line = f"➡️ {weekday} {date_str}" if date_obj.date() == today else f"{weekday} {date_str}"
+            if highlight_style == "bold":
+                date_line = f"**{date_text}**"
+            elif highlight_style == "html":
+                date_line = f"<b>{date_text}</b>"
+            else:  # arrow
+                date_line = f"➡️ {date_text}" if date_obj.date() == today else date_text
             if date_obj.date() == today:
                 date_line += " (heute)"
             markdown.append(date_line)
