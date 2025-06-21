@@ -84,7 +84,7 @@ is_holiday_china = is_holiday(today_str, china_holidays)
 is_holiday_hk = is_holiday(today_str, hk_holidays)
 is_weekend_day = is_weekend()
 
-# === 🧠 Wirtschaftskalendar (Dummy) ===
+# ===  Wirtschaftskalendar ===
 def fetch_economic_calendar():
     print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
     try:
