@@ -80,6 +80,22 @@ def save_cpr_cache(cache):
         print(f"ERROR - save_cpr_cache: Failed to save cache to {CPR_CACHE_FILE}: {str(e)}")
         raise
 
+import os
+import json
+import re
+import requests
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
+import imaplib
+import email
+import pdfplumber
+from io import BytesIO  # NEU: Für PDF-Handling
+from urllib.parse import urljoin
+
+# Globale Variablen (müssen im Skript definiert sein, hier nur als Referenz)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FREIGHT_CACHE_FILE = os.path.join(BASE_DIR, "freight_indices_cache.json")
+
 # NEU: Fracht-Cache laden
 def load_freight_cache():
     print(f"DEBUG - load_freight_cache: Loading cache from {FREIGHT_CACHE_FILE}")
@@ -261,74 +277,69 @@ def fetch_scfi_from_x():
             print(f"ERROR - fetch_scfi_from_x: Failed to fetch from @{account}: {str(e)}")
     return None
 
-# NEU: Hauptfunktion für Frachtindizes
+# NEU: Hauptfunktion für Frachtindizes (Testmodus ohne Tagesbedingungen)
 def fetch_freight_indices():
-    """Hole WCI, SCFI, IACI aus Web oder E-Mail, mit Cache."""
+    """Hole WCI, SCFI, IACI aus Web oder E-Mail, mit Cache. Tagesbedingungen entfernt für Test."""
     print("DEBUG - fetch_freight_indices: Starting to fetch freight indices")
     today = datetime.now().date()
-    day_of_week = today.weekday()  # 0=Montag, 4=Freitag
-    day_of_month = today.day
     cache = load_freight_cache()
     results = {"WCI": None, "SCFI": None, "IACI": None}
 
-    # WCI: Freitags
-    if day_of_week == 4:  # Freitag
-        print("DEBUG - fetch_freight_indices: Checking WCI")
-        value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry", "World Container Index")
-        if not value:
-            substack_mail = os.getenv("SUBSTACK_MAIL")
-            if substack_mail:
-                try:
-                    mail_pairs = substack_mail.split(";")
-                    mail_config = {pair.split("=", 1)[0]: pair.split("=", 1)[1] for pair in mail_pairs if "=" in pair}
-                    email_user = mail_config.get("GMAIL_USER")
-                    email_password = mail_config.get("GMAIL_PASS")
-                    if email_user and email_password:
-                        value = fetch_drewry_email(email_user, email_password, "World Container Index")
-                except Exception as e:
-                    print(f"ERROR - fetch_freight_indices: Failed to parse SUBSTACK_MAIL for WCI: {str(e)}")
-        if value and (not cache.get("WCI") or abs(value - cache["WCI"][0]["value"]) > 0.01):
-            cache["WCI"].insert(0, {"date": today.isoformat(), "value": value, "source": "Drewry", "timestamp": datetime.now().isoformat()})
-            if len(cache["WCI"]) > 5:
-                cache["WCI"].pop()
-            save_freight_cache(cache)
-            results["WCI"] = (value, today)
+    # WCI: Immer abrufen (Tagesbedingung entfernt)
+    print("DEBUG - fetch_freight_indices: Checking WCI")  # NEU: Log immer
+    value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry", "World Container Index")
+    if not value:
+        substack_mail = os.getenv("SUBSTACK_MAIL")
+        if substack_mail:
+            try:
+                mail_pairs = substack_mail.split(";")
+                mail_config = {pair.split("=", 1)[0]: pair.split("=", 1)[1] for pair in mail_pairs if "=" in pair}
+                email_user = mail_config.get("GMAIL_USER")
+                email_password = mail_config.get("GMAIL_PASS")
+                if email_user and email_password:
+                    value = fetch_drewry_email(email_user, email_password, "World Container Index")
+            except Exception as e:
+                print(f"ERROR - fetch_freight_indices: Failed to parse SUBSTACK_MAIL for WCI: {str(e)}")
+    if value:
+        cache["WCI"].insert(0, {"date": today.isoformat(), "value": value, "source": "Drewry", "timestamp": datetime.now().isoformat()})
+        if len(cache["WCI"]) > 5:
+            cache["WCI"].pop()
+        save_freight_cache(cache)
+        results["WCI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
 
-    # SCFI: Dienstag oder Mittwoch
-    if day_of_week in [1, 2]:  # Dienstag oder Mittwoch
-        print("DEBUG - fetch_freight_indices: Checking SCFI")
-        value = scrape_sse("https://en.sse.net.cn/indices/scfinew.jsp")
-        if not value:
-            value = fetch_scfi_from_x()
-        if value and (not cache.get("SCFI") or abs(value - cache["SCFI"][0]["value"]) > 0.01):
-            cache["SCFI"].insert(0, {"date": today.isoformat(), "value": value, "source": "SSE" if value else "X", "timestamp": datetime.now().isoformat()})
-            if len(cache["SCFI"]) > 5:
-                cache["SCFI"].pop()
-            save_freight_cache(cache)
-            results["SCFI"] = (value, today)
+    # SCFI: Immer abrufen (Tagesbedingung entfernt)
+    print("DEBUG - fetch_freight_indices: Checking SCFI")  # NEU: Log immer
+    value = scrape_sse("https://en.sse.net.cn/indices/scfinew.jsp")
+    if not value:
+        value = fetch_scfi_from_x()
+    if value:
+        cache["SCFI"].insert(0, {"date": today.isoformat(), "value": value, "source": "SSE" if value else "X", "timestamp": datetime.now().isoformat()})
+        if len(cache["SCFI"]) > 5:
+            cache["SCFI"].pop()
+        save_freight_cache(cache)
+        results["SCFI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
 
-    # IACI: 14.–17. und 29.–2.
-    if day_of_month in [14, 15, 16, 17, 29, 30, 31, 1, 2]:
-        print("DEBUG - fetch_freight_indices: Checking IACI")
-        value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index", "Intra-Asia Container Index")
-        if not value:
-            substack_mail = os.getenv("SUBSTACK_MAIL")
-            if substack_mail:
-                try:
-                    mail_pairs = substack_mail.split(";")
-                    mail_config = {pair.split("=", 1)[0]: pair.split("=", 1)[1] for pair in mail_pairs if "=" in pair}
-                    email_user = mail_config.get("GMAIL_USER")
-                    email_password = mail_config.get("GMAIL_PASS")
-                    if email_user and email_password:
-                        value = fetch_drewry_email(email_user, email_password, "Intra-Asia Container Index")
-                except Exception as e:
-                    print(f"ERROR - fetch_freight_indices: Failed to parse SUBSTACK_MAIL for IACI: {str(e)}")
-        if value and (not cache.get("IACI") or abs(value - cache["IACI"][0]["value"]) > 0.01):
-            cache["IACI"].insert(0, {"date": today.isoformat(), "value": value, "source": "Drewry", "timestamp": datetime.now().isoformat()})
-            if len(cache["IACI"]) > 5:
-                cache["IACI"].pop()
-            save_freight_cache(cache)
-            results["IACI"] = (value, today)
+    # IACI: Immer abrufen (Tagesbedingung entfernt)
+    print("DEBUG - fetch_freight_indices: Checking IACI")  # NEU: Log immer
+    value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index", "Intra-Asia Container Index")
+    if not value:
+        substack_mail = os.getenv("SUBSTACK_MAIL")
+        if substack_mail:
+            try:
+                mail_pairs = substack_mail.split(";")
+                mail_config = {pair.split("=", 1)[0]: pair.split("=", 1)[1] for pair in mail_pairs if "=" in pair}
+                email_user = mail_config.get("GMAIL_USER")
+                email_password = mail_config.get("GMAIL_PASS")
+                if email_user and email_password:
+                    value = fetch_drewry_email(email_user, email_password, "Intra-Asia Container Index")
+            except Exception as e:
+                print(f"ERROR - fetch_freight_indices: Failed to parse SUBSTACK_MAIL for IACI: {str(e)}")
+    if value:
+        cache["IACI"].insert(0, {"date": today.isoformat(), "value": value, "source": "Drewry", "timestamp": datetime.now().isoformat()})
+        if len(cache["IACI"]) > 5:
+            cache["IACI"].pop()
+        save_freight_cache(cache)
+        results["IACI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
 
     # Fallback: Cache-Werte
     for index in ["WCI", "SCFI", "IACI"]:
@@ -339,16 +350,12 @@ def fetch_freight_indices():
     print(f"DEBUG - fetch_freight_indices: Results: {results}")
     return results, cache
 
-# NEU: Anzeige der Frachtindizes
+# NEU: Anzeige der Frachtindizes (Testmodus ohne Tagesprüfung)
 def render_freight_indices(results, cache):
+    """Formatiere Frachtindizes für das Briefing. Testmodus ohne Tagesprüfung."""
     print("DEBUG - render_freight_indices: Rendering freight indices")
     de_weekdays = {0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So"}
-    markdown = ["## 🚢 Frachtindizes (08:00 Uhr MESZ)"]
-    today = datetime.now().date()
-    if today.weekday() not in [1, 2, 4] and today.day not in [14, 15, 16, 17, 29, 30, 31, 1, 2]:
-        markdown.append("• Keine neuen Frachtindizes heute (kein Abruf-Tag).")
-        print("DEBUG - render_freight_indices: No fetch day, returning default message")
-        return markdown
+    markdown = ["## 🚢 Frachtindizes (08:00 Uhr MESZ)"]  # FIX: Nur eine Überschrift
     for index, (value, date_str) in results.items():
         if value is None:
             if cache.get(index):
@@ -356,7 +363,7 @@ def render_freight_indices(results, cache):
                 date_str = cache[index][0]["date"]
                 line = f"• {index}: {value:.0f} USD → ±0 % (Stand {de_weekdays[datetime.fromisoformat(date_str).weekday()]}, {datetime.fromisoformat(date_str).strftime('%d.%m.%Y')})"
             else:
-                line = f"• {index}: Keine Daten verfügbar"
+                line = f"• {index}: Keine Daten abgerufen (Web/E-Mail fehlgeschlagen)"  # NEU: Klarere Meldung
             markdown.append(line)
             continue
         prev_value = cache.get(index, [{}])[1].get("value") if len(cache.get(index, [])) > 1 else None
