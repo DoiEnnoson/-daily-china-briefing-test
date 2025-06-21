@@ -121,9 +121,8 @@ def fetch_economic_calendar():
         df = df[(df["Date"].dt.date >= today) & (df["Date"].dt.date <= end_date)]
 
         if df.empty:
-            today_str = today.strftime("%d/%m")
-            weekday = today.strftime("%a")[:2]
-            return ["### 📅 Was wichtig wird:", "", f"**{weekday} {today_str}**", "- Keine Events heute."]
+            print("DEBUG - fetch_economic_calendar: No events in next 7 days, skipping output")
+            return ["### 📅 Was wichtig wird:", ""]
 
         # Priorität sortieren
         priority_order = {"High": 1, "Medium": 2, "Low": 3}
@@ -131,17 +130,20 @@ def fetch_economic_calendar():
         df = df.sort_values(by=["Date", "PriorityOrder"])
         df = df.drop(columns=["PriorityOrder"])
 
+        # Deutsche Wochentage
+        de_weekdays = {0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So"}
+
         markdown = ["### 📅 Was wichtig wird:", ""]
 
         grouped = df.groupby(df["Date"])
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
-            weekday = date_obj.strftime("%a")[:2]
-            # Fettes Datum, mit "heute"-Markierung
+            weekday = de_weekdays[date_obj.weekday()]  # Deutsche Abkürzung
+            # Hervorhebung mit ➡️ für heute, normal für andere Tage
             if date_obj.date() == today:
-                markdown.append(f"**{weekday} {date_str}** (heute)")
+                markdown.append(f"➡️ {weekday} {date_str} (heute)")
             else:
-                markdown.append(f"**{weekday} {date_str}**")
+                markdown.append(f"{weekday} {date_str}")
             for _, row in group.iterrows():
                 event = str(row['Event'])
                 org = str(row['Organisation'])
