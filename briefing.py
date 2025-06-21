@@ -100,7 +100,7 @@ def fetch_economic_calendar():
         # CSV-Datei laden
         if not os.path.exists(ECONOMIC_CALENDAR_FILE):
             print(f"ERROR - fetch_economic_calendar: File {ECONOMIC_CALENDAR_FILE} not found")
-            return ["❌ No calendar data available (file not found)."]
+            return ["### 📅 Was wichtig wird:", "❌ No calendar data available (file not found)."]
 
         # CSV einlesen
         df = pd.read_csv(ECONOMIC_CALENDAR_FILE, encoding="utf-8")
@@ -111,14 +111,14 @@ def fetch_economic_calendar():
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
             print(f"ERROR - fetch_economic_calendar: Missing columns in CSV: {missing}")
-            return ["❌ Invalid calendar data (missing columns)."]
+            return ["### 📅 Was wichtig wird:", "❌ Invalid calendar data (missing columns)."]
 
         # Datum in datetime umwandeln
         try:
             df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y")
         except Exception as e:
             print(f"ERROR - fetch_economic_calendar: Failed to parse dates: {str(e)}")
-            return ["❌ Invalid date format in calendar data."]
+            return ["### 📅 Was wichtig wird:", "❌ Invalid date format in calendar data."]
 
         # Heute und Heute + 7 Tage
         today = datetime.now().date()
@@ -129,32 +129,40 @@ def fetch_economic_calendar():
         df = df[(df["Date"].dt.date >= today) & (df["Date"].dt.date <= end_date)]
         if df.empty:
             print("DEBUG - fetch_economic_calendar: No events found in the next 7 days")
-            return ["No upcoming events in the next 7 days."]
+            today_str = datetime.now().strftime("%d/%m")
+            today_weekday = datetime.now().strftime("%a")[:2]
+            return ["### 📅 Was wichtig wird:", f"**{today_weekday:<3} {today_str}  No events today**", ""]
 
         # Nach Datum und Priorität sortieren (High > Medium > Low)
         priority_order = {"High": 1, "Medium": 2, "Low": 3}
-        df["PriorityOrder"] = df["Priority"].map(priority_order).fillna(4)  # Unbekannte Prioritäten ans Ende
+        df["PriorityOrder"] = df["Priority"].map(priority_order).fillna(4)
         df = df.sort_values(by=["Date", "PriorityOrder"])
-        df = df.drop(columns=["PriorityOrder"])  # Temporäre Spalte entfernen
+        df = df.drop(columns=["PriorityOrder"])
 
         # Markdown-Ausgabe erstellen
-        markdown = ["### 📅 Was wichtig wird:"]
+        markdown = ["### 📅 Was wichtig wird:", "Tag  Datum  Event                                          Organisation  Priorität", ""]
+        today_str = datetime.now().strftime("%d/%m")
+        today_weekday = datetime.now().strftime("%a")[:2]
+        if not any(df["Date"].dt.date == today):
+            markdown.append(f"**{today_weekday:<3} {today_str}  No events today**")
+            markdown.append("")
         grouped = df.groupby(df["Date"].dt.strftime("%d/%m/%Y"))
         for date_str, group in grouped:
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            weekday = date_obj.strftime("%a")[:2]
+            date_short = date_obj.strftime("%d/%m")
             for _, row in group.iterrows():
-                event_line = f"{row['Event']}  {row['Organisation']}  {row['Priority']}"
-                # Heute fett hervorheben
-                if date_str == datetime.now().strftime("%d/%m/%Y"):
-                    event_line = f"**{date_str}  {event_line}**"
-                else:
-                    event_line = f"{date_str}  {event_line}"
+                event_line = f"{weekday:<3} {date_short:<5} {row['Event']:<45} {row['Organisation']:<12} {row['Priority']:<8}"
+                if date_obj.date() == today:
+                    event_line = f"**{event_line}**"
                 markdown.append(event_line)
-        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-1} event lines")
+        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-3} event lines")
         return markdown
 
     except Exception as e:
         print(f"ERROR - fetch_economic_calendar: Unexpected error: {str(e)}")
-        return ["❌ Error fetching calendar data."]
+        return ["### 📅 Was wichtig wird:", "❌ Error fetching calendar data."]
+
 
 # === 🔐 Konfiguration aus ENV-Variable ===
 config = os.getenv("CONFIG")
