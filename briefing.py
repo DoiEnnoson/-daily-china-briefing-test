@@ -141,7 +141,40 @@ def fetch_economic_calendar():
 
         # Markdown-Ausgabe erstellen
         markdown = [
-            "### 📅 Was wichtig wird
+            "### 📅 Was wichtig wird:",
+            "",
+            "Tag | Datum | Event                                     | Organisation | Priorität",
+            "----|-------|-----------------------------------------|--------------|----------"
+        ]
+        today_str = datetime.now().strftime("%d/%m")
+        today_weekday = datetime.now().strftime("%a")[:2]
+        if not any(df["Date"].dt.date == today):
+            markdown.append(f"**{today_weekday}** | **{today_str}** | **No events today**")
+        grouped = df.groupby(df["Date"])
+        for date_obj, group in grouped:
+            date_str = date_obj.strftime("%d/%m")
+            weekday = date_obj.strftime("%a")[:2]
+            for _, row in group.iterrows():
+                # Event kürzen, falls zu lang
+                event = row['Event'][:37] + "..." if len(row['Event']) > 37 else row['Event']
+                if date_obj.date() == today:
+                    event_line = (
+                        f"**{weekday}** | **{date_str}** | **{event:<37}** | "
+                        f"**{row['Organisation']:<12}** | **{row['Priority']:<8}**"
+                    )
+                else:
+                    event_line = (
+                        f"{weekday} | {date_str} | {event:<37} | "
+                        f"{row['Organisation']:<12} | {row['Priority']:<8}"
+                    )
+                print(f"DEBUG - fetch_economic_calendar: Event line: '{event_line}'")
+                markdown.append(event_line)
+        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-4} event lines")
+        return markdown
+
+    except Exception as e:
+        print(f"ERROR - fetch_economic_calendar: Unexpected error: {str(e)}")
+        return ["### 📅 Was wichtig wird:", "", "❌ Error fetching calendar data."]
 
 # === 🔐 Konfiguration aus ENV-Variable ===
 config = os.getenv("CONFIG")
