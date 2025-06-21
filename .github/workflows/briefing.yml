@@ -26,7 +26,7 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser requests beautifulsoup4 lxml google-api-python-client
+          pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
 
       - name: Briefing-Skript ausführen
         run: python briefing.py
@@ -38,7 +38,7 @@ jobs:
       - name: cpr_cache.json Inhalt prüfen (vor Commit)
         run: |
           echo "Inhalt von cpr_cache.json vor dem Commit:"
-          cat cprue_cache.json || echo "Datei cpr_cache.json existiert nicht"
+          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
         continue-on-error: true
 
       - name: Änderungen an cpr_cache.json committen und pushen
