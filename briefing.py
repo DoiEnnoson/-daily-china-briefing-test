@@ -844,6 +844,9 @@ def generate_briefing():
             spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
+    # Wirtschaftskalender
+    briefing.extend(fetch_economic_calendar())
+    
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
