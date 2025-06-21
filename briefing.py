@@ -19,11 +19,12 @@ import pandas as pd
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-# Pfad zu den Holiday JSON Dateien und CPR-Cache (relativ zum Script-Verzeichnis)
+# Pfad zu den Holiday JSON Dateien, CPR-Cache und Economic Calendar CSV (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
+ECONOMIC_CALENDAR_FILE = os.path.join(BASE_DIR, "data", "economic_calendar.csv")
 
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
