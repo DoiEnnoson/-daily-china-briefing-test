@@ -135,15 +135,21 @@ def fetch_economic_calendar():
 
         markdown = ["### 📅 Was wichtig wird:", ""]
 
+        # Für Testumgebung: False für ➡️, True für ** (Buttondown)
+        use_bold = True  # Setze auf True für Buttondown
+
         grouped = df.groupby(df["Date"])
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
             weekday = de_weekdays[date_obj.weekday()]  # Deutsche Abkürzung
-            # Hervorhebung mit ➡️ für heute, normal für andere Tage
-            if date_obj.date() == today:
-                markdown.append(f"➡️ {weekday} {date_str} (heute)")
+            # Hervorhebung
+            if use_bold:
+                date_line = f"**{weekday} {date_str}**"
             else:
-                markdown.append(f"{weekday} {date_str}")
+                date_line = f"➡️ {weekday} {date_str}" if date_obj.date() == today else f"{weekday} {date_str}"
+            if date_obj.date() == today:
+                date_line += " (heute)"
+            markdown.append(date_line)
             for _, row in group.iterrows():
                 event = str(row['Event'])
                 org = str(row['Organisation'])
