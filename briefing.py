@@ -101,11 +101,16 @@ def load_freight_cache():
 # NEU: Fracht-Cache speichern
 def save_freight_cache(cache):
     print(f"DEBUG - save_freight_cache: Saving cache to {FREIGHT_CACHE_FILE}")
+    print(f"DEBUG - save_freight_cache: Cache content: {cache}")
     try:
         os.makedirs(os.path.dirname(FREIGHT_CACHE_FILE), exist_ok=True)
+        print(f"DEBUG - save_freight_cache: Directory ensured: {os.path.dirname(FREIGHT_CACHE_FILE)}")
         with open(FREIGHT_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         print(f"DEBUG - save_freight_cache: Cache saved successfully")
+        with open(FREIGHT_CACHE_FILE, "r", encoding="utf-8") as f:
+            saved_content = f.read()
+            print(f"DEBUG - save_freight_cache: Verified saved content: {saved_content}")
     except Exception as e:
         print(f"ERROR - save_freight_cache: Failed to save cache: {str(e)}")
         raise
