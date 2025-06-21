@@ -123,12 +123,13 @@ def fetch_economic_calendar():
         if df.empty:
             today_str = today.strftime("%d/%m")
             weekday = today.strftime("%a")[:2]
-            return ["### 📅 Was wichtig wird:", "", f"📅 {weekday} {today_str} - Keine Events in den nächsten 7 Tagen."]
+            return ["### 📅 Was wichtig wird:", "", f"**📅 {weekday} {today_str}**", "- Keine Events heute."]
 
         # Priorität sortieren
         priority_order = {"High": 1, "Medium": 2, "Low": 3}
         df["PriorityOrder"] = df["Priority"].map(priority_order).fillna(4)
         df = df.sort_values(by=["Date", "PriorityOrder"])
+        df = df.drop(columns=["PriorityOrder"])
 
         markdown = ["### 📅 Was wichtig wird:", ""]
 
@@ -136,7 +137,7 @@ def fetch_economic_calendar():
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
             weekday = date_obj.strftime("%a")[:2]
-            markdown.append(f"📅 {weekday} {date_str}")
+            markdown.append(f"**📅 {weekday} {date_str}**")  # Fettes Datum
             for _, row in group.iterrows():
                 event = str(row['Event'])
                 org = str(row['Organisation'])
