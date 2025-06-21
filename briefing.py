@@ -1153,7 +1153,6 @@ def generate_briefing():
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
     # NEU: Frachtindizes
-    briefing.append("\n## 🚢 Frachtindizes (08:00 Uhr MESZ)")
     freight_results, freight_cache = fetch_freight_indices()
     briefing.extend(render_freight_indices(freight_results, freight_cache))
 
