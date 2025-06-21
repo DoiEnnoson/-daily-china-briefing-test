@@ -31,7 +31,6 @@ jobs:
           else
             pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas pdfplumber
           fi
-        # NEU: Prüft, ob requirements.txt existiert, sonst direkte Installation
 
       - name: Briefing-Skript ausführen
         run: python briefing.py
@@ -47,18 +46,16 @@ jobs:
           echo "Inhalt von freight_indices_cache.json vor dem Commit:"
           cat freight_indices_cache.json || echo "Datei freight_indices_cache.json existiert nicht"
         continue-on-error: true
-        # NEU: Prüft auch freight_indices_cache.json
 
       - name: Änderungen an Cache-Dateien committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add cpr_cache.json freight_indices_cache.json
+          git add cpr_cache.json freight_indices_cache.json || echo "Eine oder beide Cache-Dateien fehlen, fahre fort"
           git commit -m "Update cache files with latest CPR and freight indices" || echo "Keine Änderungen zu committen"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # NEU: Fügt freight_indices_cache.json zum Commit hinzu
 
       - name: Cache-Dateien Inhalt prüfen (nach Commit)
         run: |
@@ -67,4 +64,3 @@ jobs:
           echo "Inhalt von freight_indices_cache.json nach dem Commit:"
           cat freight_indices_cache.json || echo "Datei freight_indices_cache.json existiert nicht"
         continue-on-error: true
-        # NEU: Prüft auch freight_indices_cache.json
