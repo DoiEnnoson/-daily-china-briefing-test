@@ -131,7 +131,7 @@ def fetch_economic_calendar():
             print("DEBUG - fetch_economic_calendar: No events found in the next 7 days")
             today_str = datetime.now().strftime("%d/%m")
             today_weekday = datetime.now().strftime("%a")[:2]
-            return ["### 📅 Was wichtig wird:", "", f"**{today_weekday} {today_str} | No events today**"]
+            return ["### 📅 Was wichtig wird:", "", f"**{today_weekday}** | **{today_str}** | **No events today**"]
 
         # Nach Datum und Priorität sortieren (High > Medium > Low)
         priority_order = {"High": 1, "Medium": 2, "Low": 3}
@@ -149,21 +149,21 @@ def fetch_economic_calendar():
         today_str = datetime.now().strftime("%d/%m")
         today_weekday = datetime.now().strftime("%a")[:2]
         if not any(df["Date"].dt.date == today):
-            markdown.append(f"**{today_weekday} {today_str} | No events today**")
+            markdown.append(f"**{today_weekday}** | **{today_str}** | **No events today**")
         grouped = df.groupby(df["Date"])
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
             weekday = date_obj.strftime("%a")[:2]
             for _, row in group.iterrows():
-                event_line = (
-                    f"{weekday:<3} | {date_str:<5} | {row['Event']:<45} | "
-                    f"{row['Organisation']:<12} | {row['Priority']:<8}"
-                )
                 if date_obj.date() == today:
-                    # Einzelne Spalten mit ** markieren
                     event_line = (
-                        f"**{weekday}** | **{date_str}** | **{row['Event']:<45}** | "
-                        f"**{row['Organisation']:<12}** | **{row['Priority']:<8}**"
+                        f"**{weekday}** | **{date_str}** | **{row['Event']}**{' '*(45-len(row['Event']))} | "
+                        f"**{row['Organisation']}**{' '*(12-len(row['Organisation']))} | **{row['Priority']}**"
+                    )
+                else:
+                    event_line = (
+                        f"{weekday} | {date_str} | {row['Event']}{' '*(45-len(row['Event']))} | "
+                        f"{row['Organisation']}{' '*(12-len(row['Organisation']))} | {row['Priority']}"
                     )
                 markdown.append(event_line)
         print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-4} event lines")
