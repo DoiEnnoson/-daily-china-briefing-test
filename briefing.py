@@ -143,8 +143,8 @@ def fetch_economic_calendar():
         markdown = [
             "### 📅 Was wichtig wird:",
             "",
-            "Tag | Datum | Event                                     | Organisation | Priorität",
-            "----|-------|-----------------------------------------|--------------|----------"
+            "Tag | Datum | Event                                           | Organisation | Priorität",
+            "----|-------|-----------------------------------------------|--------------|----------"
         ]
         today_str = datetime.now().strftime("%d/%m")
         today_weekday = datetime.now().strftime("%a")[:2]
@@ -155,19 +155,23 @@ def fetch_economic_calendar():
             date_str = date_obj.strftime("%d/%m")
             weekday = date_obj.strftime("%a")[:2]
             for _, row in group.iterrows():
-                # Event kürzen, falls zu lang
-                event = row['Event'][:37] + "..." if len(row['Event']) > 37 else row['Event']
+                event = row['Event']  # Keine Kürzung
                 if date_obj.date() == today:
+                    # Fett-Markierung mit korrektem Padding
+                    event_cell = f"**{event}**".ljust(52 - 4)  # 48 + 4 für **, minus 4
+                    org_cell = f"**{row['Organisation']}**".ljust(16 - 4)  # 12 + 4, minus 4
+                    prio_cell = f"**{row['Priority']}**".ljust(12 - 4)  # 8 + 4, minus 4
                     event_line = (
-                        f"**{weekday}** | **{date_str}** | **{event:<37}** | "
-                        f"**{row['Organisation']:<12}** | **{row['Priority']:<8}**"
+                        f"**{weekday}** | **{date_str}** | {event_cell} | {org_cell} | {prio_cell}"
                     )
                 else:
+                    event_cell = event.ljust(48)
+                    org_cell = row['Organisation'].ljust(12)
+                    prio_cell = row['Priority'].ljust(8)
                     event_line = (
-                        f"{weekday} | {date_str} | {event:<37} | "
-                        f"{row['Organisation']:<12} | {row['Priority']:<8}"
+                        f"{weekday} | {date_str} | {event_cell} | {org_cell} | {prio_cell}"
                     )
-                print(f"DEBUG - fetch_economic_calendar: Event line: '{event_line}'")
+                print(f"DEBUG - fetch_economic_calendar: Event line: '{event_line}' (len={len(event_line)})")
                 markdown.append(event_line)
         print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-4} event lines")
         return markdown
@@ -175,6 +179,7 @@ def fetch_economic_calendar():
     except Exception as e:
         print(f"ERROR - fetch_economic_calendar: Unexpected error: {str(e)}")
         return ["### 📅 Was wichtig wird:", "", "❌ Error fetching calendar data."]
+
 
 # === 🔐 Konfiguration aus ENV-Variable ===
 config = os.getenv("CONFIG")
