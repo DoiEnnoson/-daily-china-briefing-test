@@ -94,12 +94,6 @@ def fetch_china_economic_events():
     ]
 
 # === Wirtschaftskalender aus CSV ===
-import os
-import pandas as pd
-from datetime import datetime, timedelta
-
-ECONOMIC_CALENDAR_FILE = "economic_calendar.csv"  # Beispiel-Dateiname
-
 def fetch_economic_calendar():
     print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
     try:
