@@ -82,16 +82,20 @@ def save_cpr_cache(cache):
 # NEU: Fracht-Cache laden
 def load_freight_cache():
     print(f"DEBUG - load_freight_cache: Loading cache from {FREIGHT_CACHE_FILE}")
+    print(f"DEBUG - load_freight_cache: Current working directory: {os.getcwd()}")
     try:
         if os.path.exists(FREIGHT_CACHE_FILE):
             with open(FREIGHT_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
                 print(f"DEBUG - load_freight_cache: Loaded cache with {len(cache.get('WCI', []))} WCI, {len(cache.get('SCFI', []))} SCFI, {len(cache.get('IACI', []))} IACI entries")
                 return cache
-        print(f"DEBUG - load_freight_cache: No cache file found at {FREIGHT_CACHE_FILE}")
-        return {"WCI": [], "SCFI": [], "IACI": []}
+        else:
+            print(f"DEBUG - load_freight_cache: No cache file found at {FREIGHT_CACHE_FILE}, initializing empty cache")
+            initial_cache = {"WCI": [], "SCFI": [], "IACI": []}
+            save_freight_cache(initial_cache)  # NEU: Cache-Datei erstellen
+            return initial_cache
     except Exception as e:
-        print(f"ERROR - load_freight_cache: Failed to load cache: {str(e)}")
+        print(f"ERROR - load_freight_cache: Failed to load or initialize cache: {str(e)}")
         return {"WCI": [], "SCFI": [], "IACI": []}
 
 # NEU: Fracht-Cache speichern
