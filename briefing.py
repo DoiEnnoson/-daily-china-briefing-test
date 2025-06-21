@@ -18,6 +18,7 @@ from googleapiclient.errors import HttpError
 import pandas as pd
 import pdfplumber  # NEU: Für PDF-Parsing bei SCFI
 from urllib.parse import urljoin  # NEU: Für PDF-Links bei SSE
+from io import BytesIO 
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
