@@ -340,10 +340,14 @@ def fetch_freight_indices():
 
 # NEU: Anzeige der Frachtindizes
 def render_freight_indices(results, cache):
-    """Formatiere Frachtindizes für das Briefing."""
     print("DEBUG - render_freight_indices: Rendering freight indices")
     de_weekdays = {0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So"}
-    markdown = ["## 🚢 Frachtindizes"]
+    markdown = ["## 🚢 Frachtindizes (08:00 Uhr MESZ)"]
+    today = datetime.now().date()
+    if today.weekday() not in [1, 2, 4] and today.day not in [14, 15, 16, 17, 29, 30, 31, 1, 2]:
+        markdown.append("• Keine neuen Frachtindizes heute (kein Abruf-Tag).")
+        print("DEBUG - render_freight_indices: No fetch day, returning default message")
+        return markdown
     for index, (value, date_str) in results.items():
         if value is None:
             if cache.get(index):
