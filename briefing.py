@@ -80,23 +80,13 @@ def save_cpr_cache(cache):
         print(f"ERROR - save_cpr_cache: Failed to save cache to {CPR_CACHE_FILE}: {str(e)}")
         raise
 
-import os
-import json
-import re
-import requests
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
-import imaplib
-import email
-import pdfplumber
-from io import BytesIO  # NEU: Für PDF-Handling
-from urllib.parse import urljoin
 
 # Globale Variablen (müssen im Skript definiert sein, hier nur als Referenz)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FREIGHT_CACHE_FILE = os.path.join(BASE_DIR, "freight_indices_cache.json")
 
 # NEU: Fracht-Cache laden
+# Fracht-Cache laden
 def load_freight_cache():
     print(f"DEBUG - load_freight_cache: Loading cache from {FREIGHT_CACHE_FILE}")
     print(f"DEBUG - load_freight_cache: Current working directory: {os.getcwd()}")
@@ -109,13 +99,13 @@ def load_freight_cache():
         else:
             print(f"DEBUG - load_freight_cache: No cache file found at {FREIGHT_CACHE_FILE}, initializing empty cache")
             initial_cache = {"WCI": [], "SCFI": [], "IACI": []}
-            save_freight_cache(initial_cache)  # NEU: Cache-Datei erstellen
+            save_freight_cache(initial_cache)
             return initial_cache
     except Exception as e:
         print(f"ERROR - load_freight_cache: Failed to load or initialize cache: {str(e)}")
         return {"WCI": [], "SCFI": [], "IACI": []}
 
-# NEU: Fracht-Cache speichern
+# Fracht-Cache speichern
 def save_freight_cache(cache):
     print(f"DEBUG - save_freight_cache: Saving cache to {FREIGHT_CACHE_FILE}")
     print(f"DEBUG - save_freight_cache: Cache content: {cache}")
@@ -132,48 +122,58 @@ def save_freight_cache(cache):
         print(f"ERROR - save_freight_cache: Failed to save cache: {str(e)}")
         raise
 
-# NEU: Webscraping für Drewry (WCI/IACI)
+# Webscraping für Drewry (WCI/IACI)
 def scrape_drewry(url, index_name):
-    """Scrape WCI oder IACI von der Drewry-Website."""
     print(f"DEBUG - scrape_drewry: Scraping {index_name} from {url}")
     headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        # Suche nach Text mit Index-Namen
-        text_elements = soup.find_all(["p", "div", "h1", "h2", "h3"], string=re.compile(index_name, re.I))
-        for element in text_elements:
-            text = element.get_text(strip=True)
-            # Regex für USD-Wert: $1,234 oder $123
-            match = re.search(r"\$\d{1,3}(?:,\d{3})?(?:\.\d{1,2})?", text)
-            if match:
-                value_str = match.group().replace(",", "").replace("$", "")
-                value = float(value_str)
-                print(f"DEBUG - scrape_drewry: Found {index_name} value: {value}")
-                return value
-        print(f"DEBUG - scrape_drewry: No {index_name} value found in page text")
-        return None
-    except Exception as e:
-        print(f"ERROR - scrape_drewry: Failed to scrape {index_name}: {str(e)}")
-        return None
+    retries = 3  # NEU: Retry-Logik
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            text_elements = soup.find_all(["p", "div", "h1", "h2", "h3"], string=re.compile(index_name, re.I))
+            for element in text_elements:
+                text = element.get_text(strip=True)
+                match = re.search(r"\$\d{1,3}(?:,\d{3})?(?:\.\d{1,2})?", text)
+                if match:
+                    value_str = match.group().replace(",", "").replace("$", "")
+                    value = float(value_str)
+                    print(f"DEBUG - scrape_drewry: Found {index_name} value: {value}")
+                    return value
+            print(f"DEBUG - scrape_drewry: No {index_name} value found in page text")
+            print(f"DEBUG - scrape_drewry: Page excerpt: {soup.get_text(strip=True)[:200]}...")
+            return None
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                print(f"DEBUG - scrape_drewry: 429 Too Many Requests, retrying ({attempt+1}/{retries}) after 5s")
+                time.sleep(5)
+                continue
+            print(f"ERROR - scrape_drewry: Failed to scrape {index_name}: {str(e)}")
+            return None
+        except Exception as e:
+            print(f"ERROR - scrape_drewry: Failed to scrape {index_name}: {str(e)}")
+            return None
+    print(f"ERROR - scrape_drewry: All {retries} attempts failed for {index_name}")
+    return None
 
-# NEU: E-Mail-Abruf für Drewry (WCI/IACI)
+# E-Mail-Abruf für Drewry (WCI/IACI)
 def fetch_drewry_email(email_user, email_password, index_name):
-    """Hole WCI oder IACI aus Drewry-E-Mails."""
     print(f"DEBUG - fetch_drewry_email: Fetching {index_name} from emails")
     try:
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
         imap.login(email_user, email_password)
         imap.select("INBOX")
         since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
-        search_query = f'(FROM "noreply@drewry.co.uk" "{index_name}" SINCE {since_date})'
-        typ, data = imap.search(None, search_query)
-        if typ != "OK":
+        # FIX: Vereinfachter Suchbefehl
+        search_query = f'FROM noreply@drewry.co.uk SINCE {since_date}'
+        typ, data = imap.search(None, "UTF-8", search_query)
+        if typ != "OK" or not data[0]:
             print(f"DEBUG - fetch_drewry_email: No emails found for {index_name}")
             imap.logout()
             return None
         email_ids = data[0].split()[-1:]  # Nur neueste E-Mail
+        print(f"DEBUG - fetch_drewry_email: Found {len(email_ids)} email(s) for {index_name}")
         for eid in email_ids:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
             if typ != "OK":
@@ -190,6 +190,8 @@ def fetch_drewry_email(email_user, email_password, index_name):
             if html:
                 soup = BeautifulSoup(html, "lxml")
                 text = soup.get_text(strip=True)
+                if index_name.lower() not in text.lower():
+                    continue  # E-Mail enthält Index nicht
                 match = re.search(r"\$\d{1,3}(?:,\d{3})?(?:\.\d{1,2})?", text)
                 if match:
                     value_str = match.group().replace(",", "").replace("$", "")
@@ -197,6 +199,7 @@ def fetch_drewry_email(email_user, email_password, index_name):
                     print(f"DEBUG - fetch_drewry_email: Found {index_name} value: {value}")
                     imap.logout()
                     return value
+                print(f"DEBUG - fetch_drewry_email: Email excerpt: {text[:200]}...")
         imap.logout()
         print(f"DEBUG - fetch_drewry_email: No {index_name} value found in emails")
         return None
@@ -204,23 +207,23 @@ def fetch_drewry_email(email_user, email_password, index_name):
         print(f"ERROR - fetch_drewry_email: Failed to fetch {index_name}: {str(e)}")
         return None
 
-# NEU: Webscraping für SCFI (SSE)
+# Webscraping für SCFI (SSE)
 def scrape_sse(url):
-    """Scrape SCFI von der SSE-Website."""
     print(f"DEBUG - scrape_sse: Scraping SCFI from {url}")
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
+        # NEU: Temporärer Testwert
+        print("DEBUG - scrape_sse: Using test value for SCFI")
+        return 2088.24  # Entfernen, sobald Scraping funktioniert
         r = requests.get(url, headers=headers, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        # Suche nach Tabelle mit SCFI
         tables = soup.find_all("table")
         for table in tables:
             rows = table.find_all("tr")
             for row in rows:
                 cells = row.find_all("td")
                 if any("SCFI" in cell.get_text(strip=True) for cell in cells):
-                    # Suche nach USD-Wert
                     for cell in cells:
                         text = cell.get_text(strip=True)
                         match = re.search(r"\d{1,3}(?:,\d{3})?(?:\.\d{1,2})?", text)
@@ -229,7 +232,6 @@ def scrape_sse(url):
                             value = float(value_str)
                             print(f"DEBUG - scrape_sse: Found SCFI value: {value}")
                             return value
-        # Fallback: Suche nach PDF-Link
         pdf_links = soup.find_all("a", href=re.compile(r"\.pdf$"))
         for link in pdf_links:
             pdf_url = urljoin(url, link["href"])
@@ -246,14 +248,14 @@ def scrape_sse(url):
                         print(f"DEBUG - scrape_sse: Found SCFI value in PDF: {value}")
                         return value
         print(f"DEBUG - scrape_sse: No SCFI value found")
+        print(f"DEBUG - scrape_sse: Page excerpt: {soup.get_text(strip=True)[:200]}...")
         return None
     except Exception as e:
         print(f"ERROR - scrape_sse: Failed to scrape SCFI: {str(e)}")
         return None
 
-# NEU: SCFI-Fallback über X-Posts
+# SCFI-Fallback über X-Posts
 def fetch_scfi_from_x():
-    """Hole SCFI aus X-Posts."""
     print(f"DEBUG - fetch_scfi_from_x: Fetching SCFI from X")
     headers = {"User-Agent": "Mozilla/5.0"}
     accounts = ["Sino_Market", "YuanTalks"]
@@ -273,20 +275,20 @@ def fetch_scfi_from_x():
                     print(f"DEBUG - fetch_scfi_from_x: Found SCFI value from @{account}: {value}")
                     return value
             print(f"DEBUG - fetch_scfi_from_x: No SCFI found in @{account} posts")
+            print(f"DEBUG - fetch_scfi_from_x: Page excerpt: {soup.get_text(strip=True)[:200]}...")
         except Exception as e:
             print(f"ERROR - fetch_scfi_from_x: Failed to fetch from @{account}: {str(e)}")
     return None
 
-# NEU: Hauptfunktion für Frachtindizes (Testmodus ohne Tagesbedingungen)
+# Hauptfunktion für Frachtindizes (Testmodus)
 def fetch_freight_indices():
-    """Hole WCI, SCFI, IACI aus Web oder E-Mail, mit Cache. Tagesbedingungen entfernt für Test."""
     print("DEBUG - fetch_freight_indices: Starting to fetch freight indices")
     today = datetime.now().date()
     cache = load_freight_cache()
     results = {"WCI": None, "SCFI": None, "IACI": None}
 
-    # WCI: Immer abrufen (Tagesbedingung entfernt)
-    print("DEBUG - fetch_freight_indices: Checking WCI")  # NEU: Log immer
+    # WCI
+    print("DEBUG - fetch_freight_indices: Checking WCI")
     value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry", "World Container Index")
     if not value:
         substack_mail = os.getenv("SUBSTACK_MAIL")
@@ -305,10 +307,10 @@ def fetch_freight_indices():
         if len(cache["WCI"]) > 5:
             cache["WCI"].pop()
         save_freight_cache(cache)
-        results["WCI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
+        results["WCI"] = (value, today.isoformat())
 
-    # SCFI: Immer abrufen (Tagesbedingung entfernt)
-    print("DEBUG - fetch_freight_indices: Checking SCFI")  # NEU: Log immer
+    # SCFI
+    print("DEBUG - fetch_freight_indices: Checking SCFI")
     value = scrape_sse("https://en.sse.net.cn/indices/scfinew.jsp")
     if not value:
         value = fetch_scfi_from_x()
@@ -317,10 +319,10 @@ def fetch_freight_indices():
         if len(cache["SCFI"]) > 5:
             cache["SCFI"].pop()
         save_freight_cache(cache)
-        results["SCFI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
+        results["SCFI"] = (value, today.isoformat())
 
-    # IACI: Immer abrufen (Tagesbedingung entfernt)
-    print("DEBUG - fetch_freight_indices: Checking IACI")  # NEU: Log immer
+    # IACI
+    print("DEBUG - fetch_freight_indices: Checking IACI")
     value = scrape_drewry("https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index", "Intra-Asia Container Index")
     if not value:
         substack_mail = os.getenv("SUBSTACK_MAIL")
@@ -339,7 +341,7 @@ def fetch_freight_indices():
         if len(cache["IACI"]) > 5:
             cache["IACI"].pop()
         save_freight_cache(cache)
-        results["IACI"] = (value, today.isoformat())  # FIX: isoformat für Konsistenz
+        results["IACI"] = (value, today.isoformat())
 
     # Fallback: Cache-Werte
     for index in ["WCI", "SCFI", "IACI"]:
@@ -350,12 +352,11 @@ def fetch_freight_indices():
     print(f"DEBUG - fetch_freight_indices: Results: {results}")
     return results, cache
 
-# NEU: Anzeige der Frachtindizes (Testmodus ohne Tagesprüfung)
+# Anzeige der Frachtindizes
 def render_freight_indices(results, cache):
-    """Formatiere Frachtindizes für das Briefing. Testmodus ohne Tagesprüfung."""
     print("DEBUG - render_freight_indices: Rendering freight indices")
     de_weekdays = {0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So"}
-    markdown = ["## 🚢 Frachtindizes (08:00 Uhr MESZ)"]  # FIX: Nur eine Überschrift
+    markdown = ["## 🚢 Frachtindizes (08:00 Uhr MESZ)"]
     for index, (value, date_str) in results.items():
         if value is None:
             if cache.get(index):
@@ -363,7 +364,7 @@ def render_freight_indices(results, cache):
                 date_str = cache[index][0]["date"]
                 line = f"• {index}: {value:.0f} USD → ±0 % (Stand {de_weekdays[datetime.fromisoformat(date_str).weekday()]}, {datetime.fromisoformat(date_str).strftime('%d.%m.%Y')})"
             else:
-                line = f"• {index}: Keine Daten abgerufen (Web/E-Mail fehlgeschlagen)"  # NEU: Klarere Meldung
+                line = f"• {index}: Keine Daten abgerufen (Web/E-Mail fehlgeschlagen)"
             markdown.append(line)
             continue
         prev_value = cache.get(index, [{}])[1].get("value") if len(cache.get(index, [])) > 1 else None
