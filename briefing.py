@@ -845,6 +845,7 @@ def generate_briefing():
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
     # Wirtschaftskalender
+    briefing.append("")  # Leerzeile für Abstand
     briefing.extend(fetch_economic_calendar())
     
     # Top 5 China-Stories
