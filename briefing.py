@@ -97,89 +97,60 @@ def fetch_china_economic_events():
 def fetch_economic_calendar():
     print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
     try:
-        # CSV-Datei laden
         if not os.path.exists(ECONOMIC_CALENDAR_FILE):
             print(f"ERROR - fetch_economic_calendar: File {ECONOMIC_CALENDAR_FILE} not found")
             return ["### 📅 Was wichtig wird:", "", "❌ No calendar data available (file not found)."]
 
-        # CSV einlesen
         df = pd.read_csv(ECONOMIC_CALENDAR_FILE, encoding="utf-8")
         print(f"DEBUG - fetch_economic_calendar: Loaded {len(df)} events from CSV")
 
-        # Überprüfen, ob alle benötigten Spalten vorhanden sind
         required_columns = ["Date", "Event", "Organisation", "Priority"]
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
-            print(f"ERROR - fetch_economic_calendar: Missing columns in CSV: {missing}")
+            print(f"ERROR - fetch_economic_calendar: Missing columns: {missing}")
             return ["### 📅 Was wichtig wird:", "", "❌ Invalid calendar data (missing columns)."]
 
-        # Datum in datetime umwandeln
         try:
             df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y")
         except Exception as e:
-            print(f"ERROR - fetch_economic_calendar: Failed to parse dates: {str(e)}")
-            return ["### 📅 Was wichtig wird:", "", "❌ Invalid date format in calendar data."]
+            print(f"ERROR - fetch_economic_calendar: Date parsing failed: {str(e)}")
+            return ["### 📅 Was wichtig wird:", "", "❌ Invalid date format."]
 
-        # Heute und Heute + 7 Tage
         today = datetime.now().date()
         end_date = today + timedelta(days=7)
-        print(f"DEBUG - fetch_economic_calendar: Filtering events from {today} to {end_date}")
-
-        # Events filtern
         df = df[(df["Date"].dt.date >= today) & (df["Date"].dt.date <= end_date)]
-        if df.empty:
-            print("DEBUG - fetch_economic_calendar: No events found in the next 7 days")
-            today_str = datetime.now().strftime("%d/%m")
-            today_weekday = datetime.now().strftime("%a")[:2]
-            return ["### 📅 Was wichtig wird:", "", f"**{today_weekday}** | **{today_str}** | **No events today**"]
 
-        # Nach Datum und Priorität sortieren (High > Medium > Low)
+        if df.empty:
+            today_str = today.strftime("%d/%m")
+            weekday = today.strftime("%a")[:2]
+            return ["### 📅 Was wichtig wird:", "", f"📅 {weekday} {today_str} - Keine Events in den nächsten 7 Tagen."]
+
+        # Priorität sortieren
         priority_order = {"High": 1, "Medium": 2, "Low": 3}
         df["PriorityOrder"] = df["Priority"].map(priority_order).fillna(4)
         df = df.sort_values(by=["Date", "PriorityOrder"])
-        df = df.drop(columns=["PriorityOrder"])
 
-        # Markdown-Ausgabe erstellen
-        markdown = [
-            "### 📅 Was wichtig wird:",
-            "",
-            "Tag | Datum | Event                                           | Organisation | Priorität",
-            "----|-------|-----------------------------------------------|--------------|----------"
-        ]
-        today_str = datetime.now().strftime("%d/%m")
-        today_weekday = datetime.now().strftime("%a")[:2]
-        if not any(df["Date"].dt.date == today):
-            markdown.append(f"**{today_weekday}** | **{today_str}** | **No events today**")
+        markdown = ["### 📅 Was wichtig wird:", ""]
+
         grouped = df.groupby(df["Date"])
         for date_obj, group in grouped:
             date_str = date_obj.strftime("%d/%m")
             weekday = date_obj.strftime("%a")[:2]
+            markdown.append(f"📅 {weekday} {date_str}")
             for _, row in group.iterrows():
-                event = row['Event']  # Keine Kürzung
-                if date_obj.date() == today:
-                    # Fett-Markierung mit korrektem Padding
-                    event_cell = f"**{event}**".ljust(52 - 4)  # 48 + 4 für **, minus 4
-                    org_cell = f"**{row['Organisation']}**".ljust(16 - 4)  # 12 + 4, minus 4
-                    prio_cell = f"**{row['Priority']}**".ljust(12 - 4)  # 8 + 4, minus 4
-                    event_line = (
-                        f"**{weekday}** | **{date_str}** | {event_cell} | {org_cell} | {prio_cell}"
-                    )
-                else:
-                    event_cell = event.ljust(48)
-                    org_cell = row['Organisation'].ljust(12)
-                    prio_cell = row['Priority'].ljust(8)
-                    event_line = (
-                        f"{weekday} | {date_str} | {event_cell} | {org_cell} | {prio_cell}"
-                    )
-                print(f"DEBUG - fetch_economic_calendar: Event line: '{event_line}' (len={len(event_line)})")
-                markdown.append(event_line)
-        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-4} event lines")
+                event = str(row['Event'])
+                org = str(row['Organisation'])
+                prio = str(row['Priority'])
+                line = f"- {event} ({org}, {prio})"
+                markdown.append(line)
+            markdown.append("")  # Leerzeile nach jedem Datum
+
+        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-2} lines")
         return markdown
 
     except Exception as e:
         print(f"ERROR - fetch_economic_calendar: Unexpected error: {str(e)}")
         return ["### 📅 Was wichtig wird:", "", "❌ Error fetching calendar data."]
-
 
 # === 🔐 Konfiguration aus ENV-Variable ===
 config = os.getenv("CONFIG")
