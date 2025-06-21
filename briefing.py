@@ -93,6 +93,69 @@ def fetch_china_economic_events():
         "• 07.06. (Sa) 10:00 – Foreign Exchange Reserves (Mai) | Prognose: $3.35T | Vorher: $3.282T"
     ]
 
+# === Wirtschaftskalender aus CSV ===
+def fetch_economic_calendar():
+    print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
+    try:
+        # CSV-Datei laden
+        if not os.path.exists(ECONOMIC_CALENDAR_FILE):
+            print(f"ERROR - fetch_economic_calendar: File {ECONOMIC_CALENDAR_FILE} not found")
+            return ["❌ No calendar data available (file not found)."]
+
+        # CSV einlesen
+        df = pd.read_csv(ECONOMIC_CALENDAR_FILE, encoding="utf-8")
+        print(f"DEBUG - fetch_economic_calendar: Loaded {len(df)} events from CSV")
+
+        # Überprüfen, ob alle benötigten Spalten vorhanden sind
+        required_columns = ["Date", "Event", "Organisation", "Priority"]
+        if not all(col in df.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in df.columns]
+            print(f"ERROR - fetch_economic_calendar: Missing columns in CSV: {missing}")
+            return ["❌ Invalid calendar data (missing columns)."]
+
+        # Datum in datetime umwandeln
+        try:
+            df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y")
+        except Exception as e:
+            print(f"ERROR - fetch_economic_calendar: Failed to parse dates: {str(e)}")
+            return ["❌ Invalid date format in calendar data."]
+
+        # Heute und Heute + 7 Tage
+        today = datetime.now().date()
+        end_date = today + timedelta(days=7)
+        print(f"DEBUG - fetch_economic_calendar: Filtering events from {today} to {end_date}")
+
+        # Events filtern
+        df = df[(df["Date"].dt.date >= today) & (df["Date"].dt.date <= end_date)]
+        if df.empty:
+            print("DEBUG - fetch_economic_calendar: No events found in the next 7 days")
+            return ["No upcoming events in the next 7 days."]
+
+        # Nach Datum und Priorität sortieren (High > Medium > Low)
+        priority_order = {"High": 1, "Medium": 2, "Low": 3}
+        df["PriorityOrder"] = df["Priority"].map(priority_order).fillna(4)  # Unbekannte Prioritäten ans Ende
+        df = df.sort_values(by=["Date", "PriorityOrder"])
+        df = df.drop(columns=["PriorityOrder"])  # Temporäre Spalte entfernen
+
+        # Markdown-Ausgabe erstellen
+        markdown = ["### 📅 Was wichtig wird:"]
+        grouped = df.groupby(df["Date"].dt.strftime("%d/%m/%Y"))
+        for date_str, group in grouped:
+            for _, row in group.iterrows():
+                event_line = f"{row['Event']}  {row['Organisation']}  {row['Priority']}"
+                # Heute fett hervorheben
+                if date_str == datetime.now().strftime("%d/%m/%Y"):
+                    event_line = f"**{date_str}  {event_line}**"
+                else:
+                    event_line = f"{date_str}  {event_line}"
+                markdown.append(event_line)
+        print(f"DEBUG - fetch_economic_calendar: Generated {len(markdown)-1} event lines")
+        return markdown
+
+    except Exception as e:
+        print(f"ERROR - fetch_economic_calendar: Unexpected error: {str(e)}")
+        return ["❌ Error fetching calendar data."]
+
 # === 🔐 Konfiguration aus ENV-Variable ===
 config = os.getenv("CONFIG")
 if not config:
