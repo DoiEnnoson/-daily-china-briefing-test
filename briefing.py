@@ -470,31 +470,46 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             try:
                 imap.login(email_user, email_password)
                 imap.select(folder)
+                print(f"DEBUG - fetch_caixin_from_email: Successfully logged in to Gmail, selected folder {folder}")
                 break
             except Exception as e:
                 print(f"❌ ERROR - fetch_caixin_from_email: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
                 if attempt == 2:
-                    return []
+                    return ["Keine aktuellen Caixin-Artikel gefunden."]
                 time.sleep(2)
     except Exception as e:
         print(f"❌ ERROR - fetch_caixin_from_email: Failed to connect to Gmail: {str(e)}")
-        return []
+        return ["Keine aktuellen Caixin-Artikel gefunden."]
 
     try:
-        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")  # Geändert von days=1 zu days=3
-        search_query = '(FROM "caixinglobal.team@102113822.mailchimpapp.com" "CX Daily" SINCE {})'.format(since_date)
-        print(f"DEBUG - fetch_caixin_from_email: Searching for: {search_query}")
-        typ, data = imap.search(None, search_query)
-        if typ != "OK":
-            print(f"❌ ERROR - fetch_caixin_from_email: IMAP search error: {data}")
-            imap.logout()
-            return []
+        # Zeitraum auf 7 Tage erweitern für robustere Suche
+        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")  # z.B. "15-Jun-2025"
+        # Vereinfachte Suchanfrage ohne Anführungszeichen um den Betreff
+        search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com CX Daily SINCE {since_date}'
+        print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
+        try:
+            typ, data = imap.search(None, search_query)
+            if typ != "OK":
+                print(f"❌ ERROR - fetch_caixin_from_email: IMAP search failed: {data}")
+                imap.logout()
+                return ["Keine aktuellen Caixin-Artikel gefunden."]
+        except Exception as e:
+            print(f"❌ ERROR - fetch_caixin_from_email: IMAP search error: {str(e)}")
+            # Fallback: Versuche Suche ohne Betreff
+            search_query_fallback = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
+            print(f"DEBUG - fetch_caixin_from_email: Trying fallback search query: {search_query_fallback}")
+            typ, data = imap.search(None, search_query_fallback)
+            if typ != "OK":
+                print(f"❌ ERROR - fetch_caixin_from_email: Fallback IMAP search failed: {data}")
+                imap.logout()
+                return ["Keine aktuellen Caixin-Artikel gefunden."]
+
         email_ids = data[0].split()[:1]  # Nur der neueste Newsletter
-        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails in the last 3 days")
+        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails in the last 7 days")
         if not email_ids:
-            print("DEBUG - fetch_caixin_from_email: No emails found in the last 3 days")
+            print("DEBUG - fetch_caixin_from_email: No emails found in the last 7 days")
             imap.logout()
-            return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
+            return ["Keine aktuellen Caixin-Artikel gefunden."]
 
         scored_posts = []
         for eid in email_ids:
@@ -580,7 +595,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         if not posts:
             print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
             imap.logout()
-            return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
+            return ["Keine aktuellen Caixin-Artikel gefunden."]
 
         imap.logout()
         print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
@@ -588,7 +603,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
     except Exception as e:
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
-        return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
+        return ["Keine aktuellen Caixin-Artikel gefunden."]
 
 # === Substack-Posts rendern ===
 def render_markdown(posts):
