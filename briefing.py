@@ -498,8 +498,21 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             imap.logout()
             return ["Keine aktuellen Caixin-Artikel gefunden."]
 
-        email_ids = data[0].split()[:5]
-        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails in the last 7 days")
+        email_ids = data[0].split()
+        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} email IDs: {email_ids}")
+
+        # Debug: Alle E-Mail-Betreffs und Daten ausgeben
+        for eid in email_ids:
+            typ, msg_data = imap.fetch(eid, "(BODY[HEADER.FIELDS (SUBJECT DATE FROM)])")
+            if typ == "OK":
+                msg = email.message_from_bytes(msg_data[0][1])
+                subject = msg.get("Subject", "No Subject")
+                date_str = msg.get("Date", "No Date")
+                from_str = msg.get("From", "No From")
+                print(f"DEBUG - fetch_caixin_from_email: Email ID {eid}, Subject: {subject}, Date: {date_str}, From: {from_str}")
+
+        email_ids = email_ids[:5]  # Begrenze auf 5, wie im Original
+        print(f"DEBUG - fetch_caixin_from_email: Processing {len(email_ids)} emails")
         if not email_ids:
             print("DEBUG - fetch_caixin_from_email: No emails found in the last 7 days")
             imap.logout()
@@ -531,18 +544,16 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             print(f"DEBUG - fetch_caixin_from_email: Saved HTML for mail {eid} to caixin_email_{eid}.html")
             soup = BeautifulSoup(html, "lxml")
             links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
-            print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal'")
+            print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
             for link_tag in links:
                 title = link_tag.get_text(strip=True)
-                # Lockere Filterbedingungen
-                if not title or len(title) < 5:  # Reduziert von <10 auf <5
+                if not title or len(title) < 5:
                     print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
                     continue
                 link = link_tag.get("href", "#").strip()
                 if not link or link == "#" or "unsubscribe" in link.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
                     continue
-                # Auflösen der Mailchimp-URL
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
@@ -553,13 +564,13 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 if "caixinglobal.com" not in final_url.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
                     continue
-                # Scoring immer durchführen
                 score = score_caixin_article(title)
+                print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
                 else:
                     print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
-
+        # ... (Rest des Codes bleibt gleich)
         # Fallback: Lockere Scoring
         if len(scored_posts) < max_results:
             print("DEBUG - fetch_caixin_from_email: Less than 5 articles, applying scoring fallback")
