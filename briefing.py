@@ -84,7 +84,7 @@ is_holiday_china = is_holiday(today_str, china_holidays)
 is_holiday_hk = is_holiday(today_str, hk_holidays)
 is_weekend_day = is_weekend()
 
-# ===  Wirtschaftskalendar ===
+# === Wirtschaftskalendar ===
 def fetch_economic_calendar():
     print("DEBUG - fetch_economic_calendar: Starting to fetch economic calendar")
     try:
@@ -418,6 +418,173 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999)]
+
+# === Caixin Newsletter ===
+def score_caixin_article(title):
+    title = title.lower()
+    must_have_in_title = [
+        "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
+        "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
+        "belt and road", "macau", "pla"
+    ]
+    important_keywords = [
+        "gdp", "exports", "imports", "tariffs", "real estate", "economy", "policy", "ai",
+        "semiconductors", "pmi", "cpi", "housing", "foreign direct investment", "tech",
+        "military", "sanctions", "trade", "data", "manufacturing", "industrial"
+    ]
+    positive_modifiers = [
+        "analysis", "explainer", "comment", "feature", "official", "report", "statement",
+        "in depth", "long read"
+    ]
+    negative_keywords = [
+        "celebrity", "gossip", "dog", "baby", "fashion", "movie", "series", "bizarre",
+        "dating", "weird", "quiz", "elon musk", "rapid", "lask", "bundesliga", "eurovision",
+        "basketball", "nba", "mlb", "nfl", "liberty", "yankees", "tournament", "playoffs",
+        "finale", "score", "blowout", "caixin summer", "summit"
+    ]
+    # Basis-Score: 1 bei China-Bezug, sonst 0
+    score = 1 if any(kw in title for kw in must_have_in_title) else 0
+    if "caixin pmi" in title:
+        score += 5
+    if "gdp" in title or "cpi" in title:
+        score += 3
+    for word in important_keywords:
+        if word in title:
+            score += 2
+    for word in positive_modifiers:
+        if word in title:
+            score += 1
+    for word in negative_keywords:
+        if word in title:
+            score -= 3
+    if "subscribe" in title or "unsubscribe" in title:
+        score -= 5
+    return score
+
+def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_results=5):
+    print("DEBUG - fetch_caixin_from_email: Starting to fetch Caixin emails")
+    posts = []
+    try:
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        for attempt in range(3):
+            try:
+                imap.login(email_user, email_password)
+                imap.select(folder)
+                break
+            except Exception as e:
+                print(f"❌ ERROR - fetch_caixin_from_email: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
+                if attempt == 2:
+                    return []
+                time.sleep(2)
+    except Exception as e:
+        print(f"❌ ERROR - fetch_caixin_from_email: Failed to connect to Gmail: {str(e)}")
+        return []
+
+    try:
+        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+        search_query = '(FROM "caixinglobal.team@102113822.mailchimpapp.com" "CX Daily" SINCE {})'.format(since_date)
+        print(f"DEBUG - fetch_caixin_from_email: Searching for: {search_query}")
+        typ, data = imap.search(None, search_query)
+        if typ != "OK":
+            print(f"❌ ERROR - fetch_caixin_from_email: IMAP search error: {data}")
+            imap.logout()
+            return []
+        email_ids = data[0].split()[:1]  # Nur der neueste Newsletter
+        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails")
+        if not email_ids:
+            print("DEBUG - fetch_caixin_from_email: No emails found in the last 24 hours")
+            imap.logout()
+            return []
+
+        scored_posts = []
+        for eid in email_ids:
+            typ, msg_data = imap.fetch(eid, "(RFC822)")
+            if typ != "OK":
+                print(f"❌ ERROR - fetch_caixin_from_email: Error fetching mail {eid}")
+                continue
+            msg = email.message_from_bytes(msg_data[0][1])
+            html = None
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        html = part.get_payload(decode=True).decode(errors="ignore")
+                        break
+            elif msg.get_content_type() == "text/html":
+                html = msg.get_payload(decode=True).decode(errors="ignore")
+            if not html:
+                print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
+                continue
+            soup = BeautifulSoup(html, "lxml")
+            # Finde alle Links mit "(Link)" im Text
+            links = soup.find_all("a", string=lambda x: x and "(Link)" in x)
+            print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with '(Link)'")
+            for link_tag in links:
+                parent = link_tag.find_parent()
+                if not parent:
+                    continue
+                # Extrahiere Text vor "(Link)" als Titel
+                text = parent.get_text(strip=True)
+                title = text.replace("(Link)", "").strip()
+                if not title:
+                    continue
+                link = link_tag.get("href", "#").strip()
+                if not link or link == "#" or "subscribe" in link.lower() or "unsubscribe" in link.lower():
+                    continue
+                score = score_caixin_article(title)
+                if score > 0:
+                    scored_posts.append((score, f'• <a href="{link}">{title}</a>'))
+            print(f"DEBUG - fetch_caixin_from_email: Found {len(scored_posts)} scored articles")
+
+        # Fallback: Wenn weniger als 5 Artikel, lockere must_have_in_title
+        if len(scored_posts) < max_results:
+            print("DEBUG - fetch_caixin_from_email: Less than 5 articles, applying fallback")
+            fallback_posts = []
+            for link_tag in links:
+                parent = link_tag.find_parent()
+                if not parent:
+                    continue
+                text = parent.get_text(strip=True)
+                title = text.replace("(Link)", "").strip()
+                if not title:
+                    continue
+                link = link_tag.get("href", "#").strip()
+                if not link or link == "#" or "subscribe" in link.lower() or "unsubscribe" in link.lower():
+                    continue
+                # Fallback: Ignoriere must_have_in_title
+                score = score_caixin_article(title) if any(kw in title.lower() for kw in must_have_in_title) else 0
+                if score == 0:
+                    score = sum(2 for word in important_keywords if word in title.lower()) + \
+                            sum(1 for word in positive_modifiers if word in title.lower()) - \
+                            sum(3 for word in negative_keywords if word in title.lower())
+                    if "caixin pmi" in title.lower():
+                        score += 5
+                    if "gdp" in title.lower() or "cpi" in title.lower():
+                        score += 3
+                    if "in depth" in title.lower() or "long read" in title.lower():
+                        score += 3
+                    if any(kw in title.lower() for kw in ["caixin summer", "summit"]):
+                        score -= 3
+                    if "subscribe" in title.lower() or "unsubscribe" in title.lower():
+                        score -= 5
+                if score > 0:
+                    fallback_posts.append((score, f'• <a href="{link}">{title}</a>'))
+            scored_posts.extend(fallback_posts)
+
+        # Sortiere nach Score und wähle Top 5
+        scored_posts.sort(reverse=True, key=lambda x: x[0])
+        posts = [item[1] for item in scored_posts[:max_results]]
+        if not posts:
+            print("DEBUG - fetch_caixin_from_email: No relevant articles found")
+            imap.logout()
+            return []
+
+        imap.logout()
+        print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
+        return posts
+    except Exception as e:
+        print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
+        imap.logout()
+        return []
 
 # === Substack-Posts rendern ===
 def render_markdown(posts):
@@ -920,9 +1087,30 @@ def generate_briefing():
     briefing.append("\n## 📺 SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
-    # Yicai
-    briefing.append("\n## 📜 Yicai Global – Top-Themen")
-    briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
+    # Caixin
+    briefing.append("\n## 📜 Caixin – Top-Themen")
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    if not substack_mail:
+        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
+    else:
+        try:
+            mail_pairs = substack_mail.split(";")
+            mail_config = {}
+            for pair in mail_pairs:
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
+                    mail_config[key] = value
+            if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
+                missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
+                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK:{', '.join(missing_keys)}")
+            else:
+                email_user = mail_config["GMAIL_USER"]
+                email_password = mail_config["GMAIL_PASS"]
+                caixin_posts = fetch_caixin_from_email(email_user, email_password)
+                if caixin_posts:
+                    briefing.extend(caixin_posts)
+        except ValueError as e:
+            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
 
     # China Update YouTube
     youtube_episodes = fetch_youtube_endpoint()
