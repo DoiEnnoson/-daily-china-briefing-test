@@ -463,6 +463,8 @@ def score_caixin_article(title):
 
 import requests
 
+import requests
+
 def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_results=5):
     print("DEBUG - fetch_caixin_from_email: Starting to fetch Caixin emails")
     posts = []
@@ -484,9 +486,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return ["Keine aktuellen Caixin-Artikel gefunden."]
 
     try:
-        # Zeitraum: 7 Tage
-        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")  # z.B. "15-Jun-2025"
-        # Suche nur nach Absender
+        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
@@ -495,7 +495,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             imap.logout()
             return ["Keine aktuellen Caixin-Artikel gefunden."]
 
-        email_ids = data[0].split()[:5]  # Bis zu 5 E-Mails
+        email_ids = data[0].split()[:5]
         print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails in the last 7 days")
         if not email_ids:
             print("DEBUG - fetch_caixin_from_email: No emails found in the last 7 days")
@@ -512,7 +512,6 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             subject = msg.get("Subject", "No Subject")
             date_str = msg.get("Date", "")
             print(f"DEBUG - fetch_caixin_from_email: Processing email ID {eid}, Subject: {subject}, Date: {date_str}")
-            # HTML-Inhalt extrahieren
             html = None
             if msg.is_multipart():
                 for part in msg.walk():
@@ -524,22 +523,21 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             if not html:
                 print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
                 continue
-            # HTML zum Debugging speichern
             with open(f"caixin_email_{eid}.html", "w", encoding="utf-8") as f:
                 f.write(html)
             print(f"DEBUG - fetch_caixin_from_email: Saved HTML for mail {eid} to caixin_email_{eid}.html")
             soup = BeautifulSoup(html, "lxml")
-            # Links mit caixinglobal finden
             links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal'")
             for link_tag in links:
                 title = link_tag.get_text(strip=True)
-                if not title or len(title) < 10 or "subscribe" in title.lower() or "unsubscribe" in title.lower() or "click here" in title.lower():
+                # Filtere Footer-Links und irrelevante Titel
+                if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "click here", "newsletters", "mobile apps", "caixin global"]):
                     continue
                 link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower():
+                if not link or link == "#" or "unsubscribe" in link.lower() or "?utm_source=" in link.lower():
                     continue
-                # Mailchimp-Tracking-URL auflösen
+                # Auflösen der Mailchimp-URL
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
@@ -547,52 +545,52 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
                     final_url = link
-                if "caixinglobal.com" not in final_url.lower():
+                if "caixinglobal.com" not in final_url.lower() or "?utm_source=" in final_url.lower():
                     continue
                 score = score_caixin_article(title)
                 print(f"DEBUG - fetch_caixin_from_email: Scored article '{title[:50]}...': {score}")
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
 
-        # Fallback: Lockere Scoring, wenn zu wenige Artikel
+        # Fallback: Lockere Scoring
         if len(scored_posts) < max_results:
             print("DEBUG - fetch_caixin_from_email: Less than 5 articles, applying scoring fallback")
             fallback_posts = []
             for link_tag in soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower()):
                 title = link_tag.get_text(strip=True)
-                if not title or len(title) < 10 or "subscribe" in title.lower() or "unsubscribe" in title.lower() or "click here" in title.lower():
+                if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "click here", "newsletters", "mobile apps", "caixin global"]):
                     continue
                 link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower():
+                if not link or link == "#" or "unsubscribe" in link.lower() or "?utm_source=" in link.lower():
                     continue
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
                 except Exception:
                     final_url = link
-                if "caixinglobal.com" not in final_url.lower():
+                if "caixinglobal.com" not in final_url.lower() or "?utm_source=" in final_url.lower():
                     continue
                 score = score_caixin_article(title) if any(kw in title.lower() for kw in must_have_in_title) else 0
                 if score == 0:
-                    score = sum(2 for word in important_keywords if word in title.lower()) + \
+                    score = sum(3 for word in ["china", "chinese", "beijing", "shanghai", "hong kong"] if word in title.lower()) + \
+                            sum(2 for word in important_keywords if word in title.lower()) + \
                             sum(1 for word in positive_modifiers if word in title.lower()) - \
-                            sum(3 for word in negative_keywords if word in title.lower())
+                            sum(5 for word in ["canada", "british columbia", "japan", "uzbekistan", "india"] if word in title.lower())
                     if "caixin pmi" in title.lower():
-                        score += 5
+                        score += 7
                     if "gdp" in title.lower() or "cpi" in title.lower():
-                        score += 3
-                    if "in depth" in title.lower() or "long read" in title.lower():
+                        score += 5
+                    if any(kw in title.lower() for kw in ["in depth", "cover story", "analysis"]):
+                        score += 5
+                    if any(kw in title.lower() for kw in ["long read", "weekend long read"]):
                         score += 3
                     if any(kw in title.lower() for kw in ["caixin summer", "summit"]):
                         score -= 3
-                    if "subscribe" in title.lower() or "unsubscribe" in title.lower():
-                        score -= 5
                 if score > 0:
                     fallback_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
             scored_posts.extend(fallback_posts)
             print(f"DEBUG - fetch_caixin_from_email: Added {len(fallback_posts)} fallback articles")
 
-        # Sortiere und wähle Top 5
         scored_posts.sort(reverse=True, key=lambda x: x[0])
         posts = [item[1] for item in scored_posts[:max_results]]
         if not posts:
@@ -607,36 +605,6 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
         return ["Keine aktuellen Caixin-Artikel gefunden."]
-# === Substack-Posts rendern ===
-def render_markdown(posts):
-    print(f"DEBUG - render_markdown: Rendering {len(posts)} Substack posts")
-    if not posts:
-        return ["Keine neuen Substack-Artikel gefunden."]
-    
-    grouped_posts = defaultdict(list)
-    sender_orders = {}
-    for post in posts:
-        sender_name = post[0]
-        sender_order = post[4] if len(post) > 4 else 999
-        grouped_posts[sender_name].append(post)
-        sender_orders[sender_name] = min(sender_orders.get(sender_name, 999), sender_order)
-    
-    sorted_senders = sorted(grouped_posts.keys(), key=lambda x: sender_orders.get(x, 999))
-    
-    markdown = []
-    for sender_name in sorted_senders:
-        markdown.append(f"### {sender_name}")
-        for post in grouped_posts[sender_name]:
-            if len(post) == 2:
-                markdown.append(f"{post[1]}\n")
-            else:
-                title, link, teaser = post[1], post[2], post[3]
-                markdown.append(f"• <a href=\"{link}\">{title}</a>")
-                if teaser:
-                    markdown.append(f"{teaser}")
-                markdown.append("")
-    
-    return markdown
     
 # === China Update aus YT abrufen ===
 def fetch_youtube_endpoint():
