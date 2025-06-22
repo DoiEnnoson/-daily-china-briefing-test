@@ -467,6 +467,14 @@ def score_caixin_article(title):
     print(f"DEBUG - score_caixin_article: Title '{title[:50]}...': Score {score} (China-relevance: {any(kw in title_lower for kw in must_have_in_title)}, In Depth/Cover/Analysis: {any(kw in title_lower for kw in ['in depth', 'cover story', 'analysis'])}, Non-China: {any(kw in title_lower for kw in ['canada', 'british columbia', 'japan', 'uzbekistan', 'india'])})")
     return max(score, 0)
 
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
+import imaplib
+import email
+from bs4 import BeautifulSoup
+import requests
+import time
+
 def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_results=5):
     print("DEBUG - fetch_caixin_from_email: Starting to fetch Caixin emails")
     posts = []
@@ -481,26 +489,28 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             except Exception as e:
                 print(f"❌ ERROR - fetch_caixin_from_email: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
                 if attempt == 2:
-                    return ["Keine aktuellen Caixin-Artikel gefunden."]
+                    return []  # Leere Liste für Live-Umgebung
                 time.sleep(2)
     except Exception as e:
         print(f"❌ ERROR - fetch_caixin_from_email: Failed to connect to Gmail: {str(e)}")
-        return ["Keine aktuellen Caixin-Artikel gefunden."]
+        return []
 
     try:
-        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
+        # Suche nur E-Mails vom letzten Tag für Live-Umgebung
+        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
         if typ != "OK":
             print(f"❌ ERROR - fetch_caixin_from_email: IMAP search failed: {data}")
             imap.logout()
-            return ["Keine aktuellen Caixin-Artikel gefunden."]
+            return []
 
         email_ids = data[0].split()
         print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} email IDs: {email_ids}")
 
-        # Debug: Alle E-Mail-Betreffs und Daten ausgeben
+        # Sortiere E-Mails nach Datum (neueste zuerst)
+        email_data = []
         for eid in email_ids:
             typ, msg_data = imap.fetch(eid, "(BODY[HEADER.FIELDS (SUBJECT DATE FROM)])")
             if typ == "OK":
@@ -508,14 +518,29 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 subject = msg.get("Subject", "No Subject")
                 date_str = msg.get("Date", "No Date")
                 from_str = msg.get("From", "No From")
+                try:
+                    parsed_date = parsedate_to_datetime(date_str)
+                except Exception as e:
+                    print(f"DEBUG - fetch_caixin_from_email: Failed to parse date for email ID {eid}: {date_str}, error: {e}")
+                    parsed_date = datetime.min
                 print(f"DEBUG - fetch_caixin_from_email: Email ID {eid}, Subject: {subject}, Date: {date_str}, From: {from_str}")
+                email_data.append((eid, parsed_date, subject, from_str))
+        
+        email_data.sort(key=lambda x: x[1], reverse=True)
+        email_ids = [eid for eid, _, _, _ in email_data]
+        print(f"DEBUG - fetch_caixin_from_email: Processing {len(email_ids)} emails (newest first): {email_ids}")
 
-        email_ids = email_ids[:5]  # Begrenze auf 5, wie im Original
-        print(f"DEBUG - fetch_caixin_from_email: Processing {len(email_ids)} emails")
         if not email_ids:
-            print("DEBUG - fetch_caixin_from_email: No emails found in the last 7 days")
+            print("DEBUG - fetch_caixin_from_email: No emails found in the last day")
             imap.logout()
-            return ["Keine aktuellen Caixin-Artikel gefunden."]
+            return []  # Leere Liste für Live-Umgebung
+
+        # Liste von generischen Titeln, die ignoriert werden sollen
+        generic_titles = {
+            "in depth", "cover story", "analysis", "finance", "economy", "business", "tech",
+            "briefing", "news graphics", "opinion", "world", "podcast", "the wall street journal",
+            "weekend long read"
+        }
 
         scored_posts = []
         for eid in email_ids:
@@ -546,8 +571,12 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
             for link_tag in links:
                 title = link_tag.get_text(strip=True)
+                title_lower = title.lower()
                 if not title or len(title) < 5:
                     print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
+                    continue
+                if title_lower in generic_titles:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}'")
                     continue
                 link = link_tag.get("href", "#").strip()
                 if not link or link == "#" or "unsubscribe" in link.lower():
@@ -569,8 +598,8 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
                 else:
                     print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
-        # ... (Rest des Codes bleibt gleich)
-        # Fallback: Lockere Scoring
+
+        # Fallback: Lockere Scoring, falls zu wenige Artikel
         if len(scored_posts) < max_results:
             print("DEBUG - fetch_caixin_from_email: Less than 5 articles, applying scoring fallback")
             fallback_posts = []
@@ -592,7 +621,11 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 soup = BeautifulSoup(html, "lxml")
                 for link_tag in soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower()):
                     title = link_tag.get_text(strip=True)
+                    title_lower = title.lower()
                     if not title or len(title) < 5:
+                        continue
+                    if title_lower in generic_titles:
+                        print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}' in fallback")
                         continue
                     link = link_tag.get("href", "#").strip()
                     if not link or link == "#" or "unsubscribe" in link.lower():
@@ -616,7 +649,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         if not posts:
             print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
             imap.logout()
-            return ["Keine aktuellen Caixin-Artikel gefunden."]
+            return []  # Leere Liste für Live-Umgebung
 
         imap.logout()
         print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
@@ -624,7 +657,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
     except Exception as e:
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
-        return ["Keine aktuellen Caixin-Artikel gefunden."]
+        return []
     
 # === China Update aus YT abrufen ===
 def fetch_youtube_endpoint():
