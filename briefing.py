@@ -489,7 +489,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return ["Keine aktuellen Caixin-Artikel gefunden."]
 
     try:
-        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
