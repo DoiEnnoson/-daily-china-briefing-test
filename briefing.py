@@ -467,14 +467,6 @@ def score_caixin_article(title):
     print(f"DEBUG - score_caixin_article: Title '{title[:50]}...': Score {score} (China-relevance: {any(kw in title_lower for kw in must_have_in_title)}, In Depth/Cover/Analysis: {any(kw in title_lower for kw in ['in depth', 'cover story', 'analysis'])}, Non-China: {any(kw in title_lower for kw in ['canada', 'british columbia', 'japan', 'uzbekistan', 'india'])})")
     return max(score, 0)
 
-from datetime import datetime, timedelta
-from email.utils import parsedate_to_datetime
-import imaplib
-import email
-from bs4 import BeautifulSoup
-import requests
-import time
-
 def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_results=5):
     print("DEBUG - fetch_caixin_from_email: Starting to fetch Caixin emails")
     posts = []
@@ -496,7 +488,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        # Suche nur E-Mails vom letzten Tag für Live-Umgebung
+        # Suche nur E-Mails vom letzten Tag
         since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
@@ -534,6 +526,89 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             print("DEBUG - fetch_caixin_from_email: No emails found in the last day")
             imap.logout()
             return []  # Leere Liste für Live-Umgebung
+
+        # Liste von generischen Titeln, die ignoriert werden sollen
+        generic_titles = {
+            "in depth", "cover story", "analysis", "finance", "economy", "business", "tech",
+            "briefing", "news graphics", "opinion", "world", "podcast", "the wall street journal",
+            "weekend long read"
+        }
+
+        scored_posts = []
+        for eid in email_ids:
+            typ, msg_data = imap.fetch(eid, "(RFC822)")
+            if typ != "OK":
+                print(f"❌ ERROR - fetch_caixin_from_email: Error fetching mail {eid}")
+                continue
+            msg = email.message_from_bytes(msg_data[0][1])
+            subject = msg.get("Subject", "No Subject")
+            date_str = msg.get("Date", "")
+            print(f"DEBUG - fetch_caixin_from_email: Processing email ID {eid}, Subject: {subject}, Date: {date_str}")
+            html = None
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        html = part.get_payload(decode=True).decode(errors="ignore")
+                        break
+            elif msg.get_content_type() == "text/html":
+                html = msg.get_payload(decode=True).decode(errors="ignore")
+            if not html:
+                print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
+                continue
+            with open(f"caixin_email_{eid}.html", "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"DEBUG - fetch_caixin_from_email: Saved HTML for mail {eid} to caixin_email_{eid}.html")
+            soup = BeautifulSoup(html, "lxml")
+            links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
+            print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
+            for link_tag in links:
+                title = link_tag.get_text(strip=True)
+                title_lower = title.lower()
+                if not title or len(title) < 5:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
+                    continue
+                if title_lower in generic_titles:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}'")
+                    continue
+                # Neuer Filter: Mindestens 3 Wörter im Titel
+                if len(title.split()) < 3:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title}' (less than 3 words)")
+                    continue
+                link = link_tag.get("href", "#").strip()
+                if not link or link == "#" or "unsubscribe" in link.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
+                    continue
+                try:
+                    response = requests.head(link, allow_redirects=True, timeout=5)
+                    final_url = response.url
+                    print(f"DEBUG - fetch_caixin_from_email: Resolved URL {link[:50]}... to {final_url[:50]}...")
+                except Exception as e:
+                    print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
+                    final_url = link
+                if "caixinglobal.com" not in final_url.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
+                    continue
+                score = score_caixin_article(title)
+                print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
+                if score > 0:
+                    scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
+                else:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
+
+        scored_posts.sort(reverse=True, key=lambda x: x[0])
+        posts = [item[1] for item in scored_posts[:max_results]]
+        if not posts:
+            print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
+            imap.logout()
+            return []  # Leere Liste für Live-Umgebung
+
+        imap.logout()
+        print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
+        return posts
+    except Exception as e:
+        print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
+        imap.logout()
+        return []
 
         # Liste von generischen Titeln, die ignoriert werden sollen
         generic_titles = {
