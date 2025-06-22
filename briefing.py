@@ -481,7 +481,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")  # Geändert von days=1 zu days=3
         search_query = '(FROM "caixinglobal.team@102113822.mailchimpapp.com" "CX Daily" SINCE {})'.format(since_date)
         print(f"DEBUG - fetch_caixin_from_email: Searching for: {search_query}")
         typ, data = imap.search(None, search_query)
@@ -490,11 +490,11 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             imap.logout()
             return []
         email_ids = data[0].split()[:1]  # Nur der neueste Newsletter
-        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails")
+        print(f"DEBUG - fetch_caixin_from_email: Found {len(email_ids)} emails in the last 3 days")
         if not email_ids:
-            print("DEBUG - fetch_caixin_from_email: No emails found in the last 24 hours")
+            print("DEBUG - fetch_caixin_from_email: No emails found in the last 3 days")
             imap.logout()
-            return []
+            return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
 
         scored_posts = []
         for eid in email_ids:
@@ -518,6 +518,8 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             # Finde alle Links mit "(Link)" im Text
             links = soup.find_all("a", string=lambda x: x and "(Link)" in x)
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with '(Link)'")
+            if not links:
+                print("DEBUG - fetch_caixin_from_email: No links with '(Link)' found in email")
             for link_tag in links:
                 parent = link_tag.find_parent()
                 if not parent:
@@ -531,6 +533,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 if not link or link == "#" or "subscribe" in link.lower() or "unsubscribe" in link.lower():
                     continue
                 score = score_caixin_article(title)
+                print(f"DEBUG - fetch_caixin_from_email: Scored article '{title[:50]}...': {score}")
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{link}">{title}</a>'))
             print(f"DEBUG - fetch_caixin_from_email: Found {len(scored_posts)} scored articles")
@@ -569,14 +572,15 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 if score > 0:
                     fallback_posts.append((score, f'• <a href="{link}">{title}</a>'))
             scored_posts.extend(fallback_posts)
+            print(f"DEBUG - fetch_caixin_from_email: Added {len(fallback_posts)} fallback articles")
 
         # Sortiere nach Score und wähle Top 5
         scored_posts.sort(reverse=True, key=lambda x: x[0])
         posts = [item[1] for item in scored_posts[:max_results]]
         if not posts:
-            print("DEBUG - fetch_caixin_from_email: No relevant articles found")
+            print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
             imap.logout()
-            return []
+            return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
 
         imap.logout()
         print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
@@ -584,7 +588,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
     except Exception as e:
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
-        return []
+        return ["Keine aktuellen Caixin-Artikel gefunden."]  # Fallback-Nachricht
 
 # === Substack-Posts rendern ===
 def render_markdown(posts):
