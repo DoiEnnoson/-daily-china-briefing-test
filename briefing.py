@@ -920,30 +920,9 @@ def generate_briefing():
     briefing.append("\n## 📺 SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
-    # Neuer Code:
-    briefing.append("\n## 📜 Caixin – Top-Themen")
-    substack_mail = os.getenv("SUBSTACK_MAIL")
-    if not substack_mail:
-        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
-    else:
-        try:
-            mail_pairs = substack_mail.split(";")
-            mail_config = {}
-            for pair in mail_pairs:
-                if "=" in pair:
-                    key, value = pair.split("=", 1)
-                    mail_config[key] = value
-            if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
-                missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
-                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK:{', '.join(missing_keys)}")
-            else:
-                email_user = mail_config["GMAIL_USER"]
-                email_password = mail_config["GMAIL_PASS"]
-                caixin_posts = fetch_caixin_from_email(email_user, email_password)
-                if caixin_posts:
-                    briefing.extend(caixin_posts)
-        except ValueError as e:
-            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+    # Yicai
+    briefing.append("\n## 📜 Yicai Global – Top-Themen")
+    briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["Yicai Global"]))
 
     # China Update YouTube
     youtube_episodes = fetch_youtube_endpoint()
