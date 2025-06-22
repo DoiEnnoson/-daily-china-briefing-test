@@ -444,24 +444,23 @@ def score_caixin_article(title):
         "canada", "british columbia", "japan", "uzbekistan", "india"
     ]
     # Basis-Score: 1 bei China-Bezug, sonst 0
-    score = 1 if any(kw in title_lower for kw in must_have_in_title) else 0
-    if "caixin pmi" in title_lower:
-        score += 7
-    if "gdp" in title_lower or "cpi" in title_lower:
-        score += 5
-    if any(kw in title_lower for kw in ["in depth", "cover story", "analysis"]):
-        score += 5
-    if any(kw in title_lower for kw in ["long read", "weekend long read"]):
+def score_caixin_article(title):
+    score = 0
+    title_lower = title.lower()
+    must_have_keywords = ["china", "xi", "beijing", "shanghai", "hong kong", "guangdong", "shenzhen"]
+    negative_keywords = ["japan", "korea", "canada", "australia", "india"]
+    in_depth_keywords = ["in depth", "cover story", "analysis"]
+    
+    if any(kw in title_lower for kw in must_have_keywords):
         score += 3
-    for word in important_keywords:
-        if word in title_lower:
-            score += 2
-    for word in positive_modifiers:
-        if word in title_lower:
-            score += 1
-    for word in negative_keywords:
-        if word in title_lower:
-            score -= 3
+    if any(kw in title_lower for kw in in_depth_keywords):
+        score += 6
+    if any(kw in title_lower for kw in negative_keywords):
+        score -= 3
+    
+    print(f"DEBUG - score_caixin_article: Title '{title[:50]}...': Score {score} (China-relevance: {any(kw in title_lower for kw in must_have_keywords)}, In Depth/Cover/Analysis: {any(kw in title_lower for kw in in_depth_keywords)}, Non-China: {any(kw in title_lower for kw in negative_keywords)})")
+    return max(score, 0)
+            
     # Filtere Footer-Links
     if any(kw in title_lower for kw in ["subscribe", "unsubscribe", "caixin global", "newsletters", "mobile apps", "sign up", "read online", "enjoy unlimited access"]):
         score = 0
