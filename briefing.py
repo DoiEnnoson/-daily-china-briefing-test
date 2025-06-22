@@ -36,7 +36,7 @@ def load_holidays(filepath):
             return holidays
     except Exception as e:
         print(f"ERROR - load_holidays: Failed to load holidays from {filepath}: {str(e)}")
-        return set()
+        return set()  # Fallback: Leere Liste, um fortzufahren
 
 def is_holiday(today_str, holidays_set):
     return today_str in holidays_set
@@ -421,7 +421,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
 
 # === Caixin Newsletter ===
 def score_caixin_article(title):
-    title = title.lower()
+    title_lower = title.lower()
     must_have_in_title = [
         "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
         "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
@@ -434,36 +434,39 @@ def score_caixin_article(title):
     ]
     positive_modifiers = [
         "analysis", "explainer", "comment", "feature", "official", "report", "statement",
-        "in depth", "long read"
+        "in depth", "long read", "cover story"
     ]
     negative_keywords = [
         "celebrity", "gossip", "dog", "baby", "fashion", "movie", "series", "bizarre",
         "dating", "weird", "quiz", "elon musk", "rapid", "lask", "bundesliga", "eurovision",
         "basketball", "nba", "mlb", "nfl", "liberty", "yankees", "tournament", "playoffs",
-        "finale", "score", "blowout", "caixin summer", "summit"
+        "finale", "score", "blowout", "caixin summer", "summit",
+        "canada", "british columbia", "japan", "uzbekistan", "india"
     ]
     # Basis-Score: 1 bei China-Bezug, sonst 0
-    score = 1 if any(kw in title for kw in must_have_in_title) else 0
-    if "caixin pmi" in title:
+    score = 1 if any(kw in title_lower for kw in must_have_in_title) else 0
+    if "caixin pmi" in title_lower:
+        score += 7
+    if "gdp" in title_lower or "cpi" in title_lower:
         score += 5
-    if "gdp" in title or "cpi" in title:
+    if any(kw in title_lower for kw in ["in depth", "cover story", "analysis"]):
+        score += 5
+    if any(kw in title_lower for kw in ["long read", "weekend long read"]):
         score += 3
     for word in important_keywords:
-        if word in title:
+        if word in title_lower:
             score += 2
     for word in positive_modifiers:
-        if word in title:
+        if word in title_lower:
             score += 1
     for word in negative_keywords:
-        if word in title:
+        if word in title_lower:
             score -= 3
-    if "subscribe" in title or "unsubscribe" in title:
-        score -= 5
-    return score
-
-import requests
-
-import requests
+    # Filtere Footer-Links
+    if any(kw in title_lower for kw in ["subscribe", "unsubscribe", "caixin global", "newsletters", "mobile apps", "sign up", "read online", "enjoy unlimited access"]):
+        score = 0
+    print(f"DEBUG - score_caixin_article: Title '{title[:50]}...': Score {score} (China-relevance: {any(kw in title_lower for kw in must_have_in_title)}, In Depth/Cover/Analysis: {any(kw in title_lower for kw in ['in depth', 'cover story', 'analysis'])}, Non-China: {any(kw in title_lower for kw in ['canada', 'british columbia', 'japan', 'uzbekistan', 'india'])})")
+    return max(score, 0)
 
 def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_results=5):
     print("DEBUG - fetch_caixin_from_email: Starting to fetch Caixin emails")
@@ -531,11 +534,13 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal'")
             for link_tag in links:
                 title = link_tag.get_text(strip=True)
-                # Filtere Footer-Links und irrelevante Titel
-                if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "click here", "newsletters", "mobile apps", "caixin global"]):
+                # Lockere Filterbedingungen
+                if not title or len(title) < 5:  # Reduziert von <10 auf <5
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
                     continue
                 link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower() or "?utm_source=" in link.lower():
+                if not link or link == "#" or "unsubscribe" in link.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
                     continue
                 # Auflösen der Mailchimp-URL
                 try:
@@ -545,49 +550,54 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
                     final_url = link
-                if "caixinglobal.com" not in final_url.lower() or "?utm_source=" in final_url.lower():
+                if "caixinglobal.com" not in final_url.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
                     continue
+                # Scoring immer durchführen
                 score = score_caixin_article(title)
-                print(f"DEBUG - fetch_caixin_from_email: Scored article '{title[:50]}...': {score}")
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
+                else:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
 
         # Fallback: Lockere Scoring
         if len(scored_posts) < max_results:
             print("DEBUG - fetch_caixin_from_email: Less than 5 articles, applying scoring fallback")
             fallback_posts = []
-            for link_tag in soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower()):
-                title = link_tag.get_text(strip=True)
-                if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "click here", "newsletters", "mobile apps", "caixin global"]):
+            for eid in email_ids:
+                typ, msg_data = imap.fetch(eid, "(RFC822)")
+                if typ != "OK":
                     continue
-                link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower() or "?utm_source=" in link.lower():
+                msg = email.message_from_bytes(msg_data[0][1])
+                html = None
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == "text/html":
+                            html = part.get_payload(decode=True).decode(errors="ignore")
+                            break
+                elif msg.get_content_type() == "text/html":
+                    html = msg.get_payload(decode=True).decode(errors="ignore")
+                if not html:
                     continue
-                try:
-                    response = requests.head(link, allow_redirects=True, timeout=5)
-                    final_url = response.url
-                except Exception:
-                    final_url = link
-                if "caixinglobal.com" not in final_url.lower() or "?utm_source=" in final_url.lower():
-                    continue
-                score = score_caixin_article(title) if any(kw in title.lower() for kw in must_have_in_title) else 0
-                if score == 0:
-                    score = sum(3 for word in ["china", "chinese", "beijing", "shanghai", "hong kong"] if word in title.lower()) + \
-                            sum(2 for word in important_keywords if word in title.lower()) + \
-                            sum(1 for word in positive_modifiers if word in title.lower()) - \
-                            sum(5 for word in ["canada", "british columbia", "japan", "uzbekistan", "india"] if word in title.lower())
-                    if "caixin pmi" in title.lower():
-                        score += 7
-                    if "gdp" in title.lower() or "cpi" in title.lower():
-                        score += 5
-                    if any(kw in title.lower() for kw in ["in depth", "cover story", "analysis"]):
-                        score += 5
-                    if any(kw in title.lower() for kw in ["long read", "weekend long read"]):
-                        score += 3
-                    if any(kw in title.lower() for kw in ["caixin summer", "summit"]):
-                        score -= 3
-                if score > 0:
-                    fallback_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
+                soup = BeautifulSoup(html, "lxml")
+                for link_tag in soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower()):
+                    title = link_tag.get_text(strip=True)
+                    if not title or len(title) < 5:
+                        continue
+                    link = link_tag.get("href", "#").strip()
+                    if not link or link == "#" or "unsubscribe" in link.lower():
+                        continue
+                    try:
+                        response = requests.head(link, allow_redirects=True, timeout=5)
+                        final_url = response.url
+                    except Exception:
+                        final_url = link
+                    if "caixinglobal.com" not in final_url.lower():
+                        continue
+                    score = score_caixin_article(title)
+                    print(f"DEBUG - score_caixin_article (fallback): Title '{title[:50]}...': Score {score}")
+                    if score > 0:
+                        fallback_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
             scored_posts.extend(fallback_posts)
             print(f"DEBUG - fetch_caixin_from_email: Added {len(fallback_posts)} fallback articles")
 
@@ -926,6 +936,20 @@ def fetch_recent_x_posts(account, name, url):
     print(f"DEBUG - fetch_recent_x_posts: Fetching posts for {name} (@{account})")
     return [f"• {name} (@{account}) → {url}"]
 
+# === Render Markdown für Substack ===
+def render_markdown(posts):
+    print(f"DEBUG - render_markdown: Processing {len(posts)} posts")
+    markdown = []
+    current_sender = None
+    for sender_name, title, link, teaser, sender_order, _ in sorted(posts, key=lambda x: (x[4], x[5] or datetime(1970, 1, 1)), reverse=True):
+        if sender_name != current_sender:
+            markdown.append(f"\n### {sender_name}")
+            current_sender = sender_name
+        markdown.append(f'• <a href="{link}">{title}</a>')
+        if teaser:
+            markdown.append(f'  {teaser}')
+    return markdown
+
 # === Briefing generieren ===
 def generate_briefing():
     print("DEBUG - generate_briefing: Starting to generate briefing")
@@ -990,8 +1014,8 @@ def generate_briefing():
         else:
             briefing.append(currency_data.get("USDCNY"))
         if isinstance(currency_data.get("USDCNH"), tuple):
-            val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
-            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
+            val_cny, arrow_cny, pct_cny = currency_data["USDCNH"]
+            briefing.append(f"• CNH/USD (Offshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
         if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
