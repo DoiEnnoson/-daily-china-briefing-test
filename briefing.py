@@ -1,8 +1,11 @@
 import os
 import json
+import re
 import requests
 from bs4 import BeautifulSoup
 from datetime import date, datetime, timedelta
+from email.mime.text import MIMEText
+import smtplib
 
 # Pfad zum SCFI-Cache (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,7 +13,7 @@ SCFI_CACHE_FILE = os.path.join(BASE_DIR, "scfi_cache.json")
 
 # SCFI-Cache laden
 def load_scfi_cache():
-    print(f"DEBUG - load_scfi_cache: Starting to load cache from {SCFI_CACHE_FILE}")
+    print(f"DEBUG - load_scfi_cache: Attempting to load cache from {SCFI_CACHE_FILE}")
     try:
         if os.path.exists(SCFI_CACHE_FILE):
             with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
@@ -18,7 +21,7 @@ def load_scfi_cache():
                 print(f"DEBUG - load_scfi_cache: Successfully loaded cache: {cache}")
                 return cache
         else:
-            print(f"DEBUG - load_scfi_cache: No cache file found at {SCFI_CACHE_FILE}")
+            print(f"DEBUG - load_scfi_cache: Cache file {SCFI_CACHE_FILE} does not exist")
             return {}
     except Exception as e:
         print(f"ERROR - load_scfi_cache: Failed to load cache: {str(e)}")
@@ -26,10 +29,11 @@ def load_scfi_cache():
 
 # SCFI-Cache speichern
 def save_scfi_cache(cache):
-    print(f"DEBUG - save_scfi_cache: Starting to save cache to {SCFI_CACHE_FILE}")
+    print(f"DEBUG - save_scfi_cache: Attempting to save cache to {SCFI_CACHE_FILE}")
     print(f"DEBUG - save_scfi_cache: Cache content: {cache}")
     try:
         os.makedirs(os.path.dirname(SCFI_CACHE_FILE), exist_ok=True)
+        print(f"DEBUG - save_scfi_cache: Ensured directory exists: {os.path.dirname(SCFI_CACHE_FILE)}")
         with open(SCFI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         print(f"DEBUG - save_scfi_cache: Successfully wrote cache to {SCFI_CACHE_FILE}")
@@ -43,7 +47,7 @@ def save_scfi_cache(cache):
 # SCFI-Daten von der Shanghai Shipping Exchange abrufen
 def fetch_scfi():
     print("DEBUG - fetch_scfi: Starting to fetch SCFI data")
-    url = "https://en.sse.net.cn/indices/scfi_new.jsp"
+    url = "https://en.sse.net.cn/indices/scfinew.jsp"  # Neue URL
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
@@ -57,18 +61,23 @@ def fetch_scfi():
         print(f"DEBUG - fetch_scfi: Successfully fetched page, status code: {response.status_code}")
         print(f"DEBUG - fetch_scfi: HTML content length: {len(response.text)}")
 
+        # HTML speichern für Debugging
+        with open("scfi_page.html", "w", encoding="utf-8") as f:
+            f.write(response.text)
+        print(f"DEBUG - fetch_scfi: Saved HTML to scfi_page.html")
+
         # HTML parsen
         soup = BeautifulSoup(response.text, "html.parser")
         print(f"DEBUG - fetch_scfi: Parsed HTML with BeautifulSoup")
 
-        # Suche nach dem SCFI-Wert (angenommen, er ist in einem <td> oder <div> mit einer Zahl wie "xxxx.xx")
-        scfi_value = None
-        scfi_date = None
-        table = soup.find("table", class_="table2")
-        if table:
-            print(f"DEBUG - fetch_scfi: Found table with class 'table2'")
+        # Suche nach allen Tabellen
+        tables = soup.find_all("table")
+        print(f"DEBUG - fetch_scfi: Found {len(tables)} tables on page")
+        for i, table in enumerate(tables):
+            class_name = table.get("class", [])
+            print(f"DEBUG - fetch_scfi: Table {i+1} classes: {class_name}")
             rows = table.find_all("tr")
-            print(f"DEBUG - fetch_scfi: Found {len(rows)} rows in table")
+            print(f"DEBUG - fetch_scfi: Table {i+1} has {len(rows)} rows")
             for row in rows:
                 cells = row.find_all("td")
                 if len(cells) >= 2:
@@ -76,19 +85,31 @@ def fetch_scfi():
                     value_text = cells[1].text.strip()
                     print(f"DEBUG - fetch_scfi: Row data - Date: {date_text}, Value: {value_text}")
                     try:
-                        # Versuche, das Datum zu parsen (erwartetes Format: YYYY-MM-DD oder DD/MM/YYYY)
-                        parsed_date = datetime.strptime(date_text, "%Y-%m-%d").date()
-                        if parsed_date == date.today():
-                            scfi_value = float(value_text)
+                        # Versuche, das Datum zu parsen
+                        parsed_date = None
+                        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
+                            try:
+                                parsed_date = datetime.strptime(date_text, fmt).date()
+                                break
+                            except ValueError:
+                                continue
+                        if parsed_date is None:
+                            print(f"DEBUG - fetch_scfi: Could not parse date '{date_text}'")
+                            continue
+                        if parsed_date >= date.today() - timedelta(days=1):
+                            scfi_value = float(value_text.replace(",", ""))
                             scfi_date = parsed_date.strftime("%d%m%Y")
                             print(f"✅ DEBUG - fetch_scfi: Found SCFI value: {scfi_value}, Date: {scfi_date}")
                             break
                     except ValueError:
-                        print(f"DEBUG - fetch_scfi: Could not parse date '{date_text}'")
+                        print(f"DEBUG - fetch_scfi: Could not convert value '{value_text}' to float")
                         continue
-        else:
-            print(f"❌ ERROR - fetch_scfi: No table with class 'table2' found")
-            # Fallback: Suche nach einer Zahl im Text, die wie ein Index aussieht
+            if scfi_value is not None:
+                break
+
+        if scfi_value is None:
+            print(f"❌ ERROR - fetch_scfi: No SCFI value found in tables")
+            # Fallback: Suche nach einer Zahl im Format xxxx.xx
             text = soup.get_text()
             number_matches = re.findall(r'\b\d{3,5}\.\d{2}\b', text)
             print(f"DEBUG - fetch_scfi: Fallback search found {len(number_matches)} potential SCFI values: {number_matches}")
@@ -162,6 +183,33 @@ def generate_briefing():
     print(f"DEBUG - generate_briefing: Generated briefing with {len(briefing)} lines")
     return "\n".join(briefing)
 
+# E-Mail senden (optional, nur wenn CONFIG gesetzt ist)
+def send_briefing():
+    print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
+    briefing_content = generate_briefing()
+
+    config = os.getenv("CONFIG")
+    if not config:
+        print("❌ ERROR - send_briefing: CONFIG environment variable not found, skipping email")
+        return
+
+    try:
+        pairs = config.split(";")
+        config_dict = dict(pair.split("=", 1) for pair in pairs)
+        msg = MIMEText(briefing_content, "plain", "utf-8")
+        msg["Subject"] = "📰 Dein tägliches China-Briefing (SCFI Test)"
+        msg["From"] = config_dict["EMAIL_USER"]
+        msg["To"] = config_dict["EMAIL_TO"]
+
+        print("📤 DEBUG - send_briefing: Sending email")
+        with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
+            server.starttls()
+            server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
+            server.send_message(msg)
+        print("✅ DEBUG - send_briefing: Email sent successfully")
+    except Exception as e:
+        print(f"❌ ERROR - send_briefing: Failed to send email: {str(e)}")
+
 # Hauptskript
 if __name__ == "__main__":
     print("DEBUG - main: Starting script execution")
@@ -170,3 +218,13 @@ if __name__ == "__main__":
     with open("scfi_test.txt", "w", encoding="utf-8") as f:
         f.write(briefing_content)
     print("DEBUG - main: Briefing written to scfi_test.txt")
+    # Überprüfen, ob Cache-Datei existiert
+    if os.path.exists(SCFI_CACHE_FILE):
+        print(f"DEBUG - main: Cache file {SCFI_CACHE_FILE} exists")
+        with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
+            print(f"DEBUG - main: Cache content: {f.read()}")
+    else:
+        print(f"DEBUG - main: Cache file {SCFI_CACHE_FILE} does not exist")
+    # E-Mail senden, falls CONFIG vorhanden ist
+    if os.getenv("CONFIG"):
+        send_briefing()
