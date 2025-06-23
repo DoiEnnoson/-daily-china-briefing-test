@@ -35,28 +35,32 @@ jobs:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
 
-      - name: scfi_cache.json Inhalt prüfen (vor Commit)
+      - name: scfi_page.html und scfi_cache.json Inhalt prüfen (vor Commit)
         run: |
+          echo "Inhalt von scfi_page.html vor dem Commit:"
+          cat scfi_page.html || echo "Datei scfi_page.html existiert nicht"
           echo "Inhalt von scfi_cache.json vor dem Commit:"
           cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
         continue-on-error: true
 
-      - name: Änderungen an scfi_cache.json committen und pushen
+      - name: Änderungen an scfi_cache.json und scfi_page.html committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          if [ -f scfi_cache.json ]; then
-            git add scfi_cache.json
-            git commit -m "Update scfi_cache.json with latest SCFI value" || echo "Keine Änderungen zu committen"
+          if [ -f scfi_cache.json ] || [ -f scfi_page.html ]; then
+            git add scfi_cache.json scfi_page.html
+            git commit -m "Update scfi_cache.json and scfi_page.html with latest SCFI data" || echo "Keine Änderungen zu committen"
             git push
           else
-            echo "Keine scfi_cache.json Datei vorhanden, überspringe Commit"
+            echo "Weder scfi_cache.json noch scfi_page.html vorhanden, überspringe Commit"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: scfi_cache.json Inhalt prüfen (nach Commit)
+      - name: scfi_page.html und scfi_cache.json Inhalt prüfen (nach Commit)
         run: |
+          echo "Inhalt von scfi_page.html nach dem Commit:"
+          cat scfi_page.html || echo "Datei scfi_page.html existiert nicht"
           echo "Inhalt von scfi_cache.json nach dem Commit:"
           cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
         continue-on-error: true
