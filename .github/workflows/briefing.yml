@@ -47,15 +47,23 @@ jobs:
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          if [ -f scfi_cache.json ] || [ -f scfi_page.html ]; then
-            git add scfi_cache.json scfi_page.html
-            git commit -m "Update scfi_cache.json and scfi_page.html with latest SCFI data" || echo "Keine Änderungen zu committen"
+          files_to_commit=""
+          if [ -f scfi_cache.json ]; then
+            files_to_commit="$files_to_commit scfi_cache.json"
+          fi
+          if [ -f scfi_page.html ]; then
+            files_to_commit="$files_to_commit scfi_page.html"
+          fi
+          if [ -n "$files_to_commit" ]; then
+            git add $files_to_commit
+            git commit -m "Update scfi_cache.json and/or scfi_page.html with latest SCFI data" || echo "Keine Änderungen zu committen"
             git push
           else
             echo "Weder scfi_cache.json noch scfi_page.html vorhanden, überspringe Commit"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       - name: scfi_page.html und scfi_cache.json Inhalt prüfen (nach Commit)
         run: |
