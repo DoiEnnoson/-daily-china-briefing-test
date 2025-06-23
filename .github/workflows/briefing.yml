@@ -1,32 +1,27 @@
 name: Daily China Briefing
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *' # täglich um 06:00 UTC
+    - cron: '0 8 * * *'  # Läuft täglich um 08:00 UTC
+  workflow_dispatch:     # Ermöglicht manuelles Auslösen
 
 jobs:
-  build:
+  run-briefing:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Ermöglicht Schreibrechte für das Repository
-      actions: read  # Standard-Berechtigung für Actions
 
     steps:
-      - name: Repository klonen
+      - name: Repository auschecken
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Python installieren
+      - name: Python setzen
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.x'
 
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
+          pip install requests beautifulsoup4
 
       - name: Briefing-Skript ausführen
         run: python briefing.py
@@ -35,40 +30,20 @@ jobs:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
 
-      - name: scfi_page.html und scfi_cache.json Inhalt prüfen (vor Commit)
+      - name: Inhalt von scfi_cache.json vor dem Commit anzeigen
         run: |
-          echo "Inhalt von scfi_page.html vor dem Commit:"
-          cat scfi_page.html || echo "Datei scfi_page.html existiert nicht"
           echo "Inhalt von scfi_cache.json vor dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
-        continue-on-error: true
+          cat scfi_cache.json
 
-      - name: Änderungen an scfi_cache.json und scfi_page.html committen und pushen
+      - name: Änderungen committen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          files_to_commit=""
-          if [ -f scfi_cache.json ]; then
-            files_to_commit="$files_to_commit scfi_cache.json"
-          fi
-          if [ -f scfi_page.html ]; then
-            files_to_commit="$files_to_commit scfi_page.html"
-          fi
-          if [ -n "$files_to_commit" ]; then
-            git add $files_to_commit
-            git commit -m "Update scfi_cache.json and/or scfi_page.html with latest SCFI data" || echo "Keine Änderungen zu committen"
-            git push
-          else
-            echo "Weder scfi_cache.json noch scfi_page.html vorhanden, überspringe Commit"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+          git add scfi_cache.json
+          git commit -m "Update scfi_cache.json with latest SCFI data" || echo "Keine Änderungen zu committen"
+          git push
 
-      - name: scfi_page.html und scfi_cache.json Inhalt prüfen (nach Commit)
+      - name: Inhalt von scfi_cache.json nach dem Commit anzeigen
         run: |
-          echo "Inhalt von scfi_page.html nach dem Commit:"
-          cat scfi_page.html || echo "Datei scfi_page.html existiert nicht"
           echo "Inhalt von scfi_cache.json nach dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
-        continue-on-error: true
+          cat scfi_cache.json
