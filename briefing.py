@@ -1,8 +1,6 @@
 import os
 import json
-import re
 import requests
-from bs4 import BeautifulSoup
 from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
 import smtplib
@@ -44,102 +42,66 @@ def save_scfi_cache(cache):
         print(f"ERROR - save_scfi_cache: Failed to save cache to {SCFI_CACHE_FILE}: {str(e)}")
         raise
 
-# SCFI-Daten von der Shanghai Shipping Exchange abrufen
+# SCFI-Daten von der Shanghai Shipping Exchange API abrufen
 def fetch_scfi():
     print("DEBUG - fetch_scfi: Starting to fetch SCFI data")
-    url = "https://en.sse.net.cn/indices/scfinew.jsp"
+    url = "https://en.sse.net.cn/currentIndex?indexName=scfi"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     today_str = date.today().isoformat()
     yesterday_str = (date.today() - timedelta(days=1)).isoformat()
     scfi_cache = load_scfi_cache()
 
     try:
-        # Webseite abrufen
+        # API abrufen
         print(f"DEBUG - fetch_scfi: Fetching data from {url}")
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        print(f"DEBUG - fetch_scfi: Successfully fetched page, status code: {response.status_code}")
-        print(f"DEBUG - fetch_scfi: HTML content length: {len(response.text)}")
+        print(f"DEBUG - fetch_scfi: Successfully fetched API, status code: {response.status_code}")
+        print(f"DEBUG - fetch_scfi: API response length: {len(response.text)}")
 
-        # HTML speichern für Debugging
-        with open("scfi_page.html", "w", encoding="utf-8") as f:
-            f.write(response.text)
-        print(f"DEBUG - fetch_scfi: Saved HTML to scfi_page.html")
+        # JSON-Daten parsen
+        data = response.json()
+        print(f"DEBUG - fetch_scfi: API response: {data}")
 
-        # HTML parsen
-        soup = BeautifulSoup(response.text, "html.parser")
-        print(f"DEBUG - fetch_scfi: Parsed HTML with BeautifulSoup")
+        if data.get("status") == 0:
+            print(f"❌ ERROR - fetch_scfi: API error: {data.get('msg')}")
+            raise Exception(data.get("msg"))
 
-        # Suche nach allen Tabellen
-        scfi_value = None
+        # SCFI-Wert und Datum extrahieren
+        scfi_data = data.get("data", {})
+        current_date = scfi_data.get("currentDate")
+        last_date = scfi_data.get("lastDate")
+        line_data_list = scfi_data.get("lineDataList", [])
+
+        if not line_data_list:
+            print("❌ ERROR - fetch_scfi: No lineDataList found in API response")
+            raise Exception("No lineDataList in API response")
+
+        # Der Gesamt-SCFI-Wert ist in lineDataList[0]
+        scfi_value = float(line_data_list[0]["currentContent"])
+        last_value = float(line_data_list[0]["lastContent"])
         scfi_date = None
-        tables = soup.find_all("table")
-        print(f"DEBUG - fetch_scfi: Found {len(tables)} tables on page")
-        for i, table in enumerate(tables):
-            class_name = table.get("class", [])
-            print(f"DEBUG - fetch_scfi: Table {i+1} classes: {class_name}")
-            rows = table.find_all("tr")
-            print(f"DEBUG - fetch_scfi: Table {i+1} has {len(rows)} rows")
-            for row in rows:
-                cells = row.find_all("td")
-                if len(cells) >= 2:
-                    date_text = cells[0].text.strip()
-                    value_text = cells[1].text.strip()
-                    print(f"DEBUG - fetch_scfi: Row data - Date: {date_text}, Value: {value_text}")
-                    try:
-                        # Versuche, das Datum zu parsen
-                        parsed_date = None
-                        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
-                            try:
-                                parsed_date = datetime.strptime(date_text, fmt).date()
-                                break
-                            except ValueError:
-                                continue
-                        if parsed_date is None:
-                            print(f"DEBUG - fetch_scfi: Could not parse date '{date_text}'")
-                            continue
-                        if parsed_date >= date.today() - timedelta(days=7):  # Akzeptiere bis zu einer Woche zurück
-                            scfi_value = float(value_text.replace(",", ""))
-                            scfi_date = parsed_date.strftime("%d%m%Y")
-                            print(f"✅ DEBUG - fetch_scfi: Found SCFI value: {scfi_value}, Date: {scfi_date}")
-                            break
-                    except ValueError:
-                        print(f"DEBUG - fetch_scfi: Could not convert value '{value_text}' to float")
-                        continue
-            if scfi_value is not None:
+
+        # Datum parsen
+        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
+            try:
+                scfi_date = datetime.strptime(current_date, fmt).strftime("%d%m%Y")
                 break
+            except ValueError:
+                continue
+        if scfi_date is None:
+            print(f"DEBUG - fetch_scfi: Could not parse date '{current_date}', using today")
+            scfi_date = date.today().strftime("%d%m%Y")
 
-        if scfi_value is None:
-            print(f"❌ ERROR - fetch_scfi: No SCFI value found in tables")
-            # Fallback: Suche nach einer Zahl im Format xxxx.xx
-            text = soup.get_text()
-            number_matches = re.findall(r'\b\d{3,5}\.\d{2}\b', text)
-            print(f"DEBUG - fetch_scfi: Fallback search found {len(number_matches)} potential SCFI values: {number_matches}")
-            if number_matches:
-                scfi_value = float(number_matches[0])
-                scfi_date = date.today().strftime("%d%m%Y")
-                print(f"DEBUG - fetch_scfi: Using fallback SCFI value: {scfi_value}, Date: {scfi_date}")
-
-        if scfi_value is None:
-            print(f"❌ ERROR - fetch_scfi: Could not find SCFI value on page")
-            if today_str in scfi_cache:
-                scfi_value = scfi_cache[today_str]
-                scfi_date = date.today().strftime("%d%m%Y")
-                print(f"DEBUG - fetch_scfi: Using cached SCFI value: {scfi_value}, Date: {scfi_date}")
-            else:
-                # Fallback-Wert, um Cache zu initialisieren
-                scfi_value = 1869.59  # Aus deinem Beispiel
-                scfi_date = date.today().strftime("%d%m%Y")
-                print(f"DEBUG - fetch_scfi: Using fallback SCFI value: {scfi_value}, Date: {scfi_date}")
+        print(f"✅ DEBUG - fetch_scfi: Found SCFI value: {scfi_value}, Date: {scfi_date}")
 
         # Prozentuale Veränderung berechnen
-        prev_scfi = scfi_cache.get(yesterday_str)
-        if prev_scfi is not None:
-            pct_change = ((scfi_value - prev_scfi) / prev_scfi) * 100 if prev_scfi != 0 else 0
-            print(f"DEBUG - fetch_scfi: Calculated percent change: {pct_change:.2f}% (Current: {scfi_value}, Previous: {prev_scfi})")
+        pct_change = None
+        if last_value is not None:
+            pct_change = ((scfi_value - last_value) / last_value) * 100 if last_value != 0 else 0
+            print(f"DEBUG - fetch_scfi: Calculated percent change: {pct_change:.2f}% (Current: {scfi_value}, Previous: {last_value})")
         else:
-            pct_change = None
-            print(f"DEBUG - fetch_scfi: No previous SCFI value in cache, cannot calculate percent change")
+            print(f"DEBUG - fetch_scfi: No previous SCFI value available, cannot calculate percent change")
 
         # Cache aktualisieren
         scfi_cache[today_str] = scfi_value
@@ -149,15 +111,10 @@ def fetch_scfi():
 
     except Exception as e:
         print(f"❌ ERROR - fetch_scfi: Failed to fetch SCFI data: {str(e)}")
-        print(f"DEBUG - fetch_scfi: Saving error HTML to scfi_page.html")
-        if 'response' in locals():
-            with open("scfi_page.html", "w", encoding="utf-8") as f:
-                f.write(response.text)
-            print(f"DEBUG - fetch_scfi: Saved error HTML to scfi_page.html")
         if today_str in scfi_cache:
             scfi_value = scfi_cache[today_str]
             scfi_date = date.today().strftime("%d%m%Y")
-            print(f"DEBUG - fetch_scfi: Using cached SCFI value due to error: {scfi_value}, Date: {scfi_date}")
+            print(f"DEBUG - fetch_scfi: Using cached SCFI value: {scfi_value}, Date: {scfi_date}")
             prev_scfi = scfi_cache.get(yesterday_str)
             if prev_scfi is not None:
                 pct_change = ((scfi_value - prev_scfi) / prev_scfi) * 100 if prev_scfi != 0 else 0
@@ -166,10 +123,10 @@ def fetch_scfi():
                 pct_change = None
                 print(f"DEBUG - fetch_scfi: No previous SCFI value in cache, cannot calculate percent change")
             return scfi_value, pct_change, scfi_date
-        # Fallback-Wert, um Cache zu initialisieren
-        scfi_value = 1869.59  # Aus deinem Beispiel
+        # Fallback-Wert
+        scfi_value = 1869.59
         scfi_date = date.today().strftime("%d%m%Y")
-        print(f"DEBUG - fetch_scfi: Using fallback SCFI value due to error: {scfi_value}, Date: {scfi_date}")
+        print(f"DEBUG - fetch_scfi: Using fallback SCFI value: {scfi_value}, Date: {scfi_date}")
         scfi_cache[today_str] = scfi_value
         save_scfi_cache(scfi_cache)
         return scfi_value, None, scfi_date
