@@ -35,24 +35,24 @@ jobs:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
 
-      - name: cpr_cache.json Inhalt prüfen (vor Commit)
+      - name: scfi_cache.json Inhalt prüfen (vor Commit)
         run: |
-          echo "Inhalt von cpr_cache.json vor dem Commit:"
-          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+          echo "Inhalt von scfi_cache.json vor dem Commit:"
+          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
         continue-on-error: true
 
-      - name: Änderungen an cpr_cache.json committen und pushen
+      - name: Änderungen an scfi_cache.json committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add cpr_cache.json
-          git commit -m "Update cpr_cache.json with latest CPR value" || echo "Keine Änderungen zu committen"
+          git add scfi_cache.json
+          git commit -m "Update scfi_cache.json with latest SCFI value" || echo "Keine Änderungen zu committen"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: cpr_cache.json Inhalt prüfen (nach Commit)
+      - name: scfi_cache.json Inhalt prüfen (nach Commit)
         run: |
-          echo "Inhalt von cpr_cache.json nach dem Commit:"
-          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+          echo "Inhalt von scfi_cache.json nach dem Commit:"
+          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
         continue-on-error: true
