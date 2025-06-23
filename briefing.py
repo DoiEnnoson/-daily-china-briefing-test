@@ -1,3 +1,41 @@
+import requests
+import json
+import os
+import smtplib
+from email.mime.text import MIMEText
+from datetime import date, datetime, timedelta
+
+def load_scfi_cache():
+    cache_file = "scfi_cache.json"
+    print(f"DEBUG - load_scfi_cache: Attempting to load cache from {cache_file}")
+    try:
+        with open(cache_file, "r") as f:
+            cache = json.load(f)
+            print(f"DEBUG - load_scfi_cache: Successfully loaded cache: {cache}")
+            return cache
+    except FileNotFoundError:
+        print("DEBUG - load_scfi_cache: Cache file not found, returning empty cache")
+        return {}
+    except Exception as e:
+        print(f"❌ ERROR - load_scfi_cache: Failed to load cache: {str(e)}")
+        return {}
+
+def save_scfi_cache(cache):
+    cache_file = "scfi_cache.json"
+    print(f"DEBUG - save_scfi_cache: Attempting to save cache to {cache_file}")
+    print(f"DEBUG - save_scfi_cache: Cache content: {cache}")
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        print(f"DEBUG - save_scfi_cache: Ensured directory exists: {os.path.dirname(cache_file)}")
+        with open(cache_file, "w") as f:
+            json.dump(cache, f, indent=2)
+        print(f"DEBUG - save_scfi_cache: Successfully wrote cache to {cache_file}")
+        with open(cache_file, "r") as f:
+            print(f"DEBUG - save_scfi_cache: Verified cache content: {json.load(f)}")
+    except Exception as e:
+        print(f"❌ ERROR - save_scfi_cache: Failed to save cache: {str(e)}")
+        raise
+
 def fetch_scfi():
     print("DEBUG - fetch_scfi: Starting to fetch SCFI data")
     url = "https://en.sse.net.cn/currentIndex?indexName=scfi"
@@ -35,7 +73,6 @@ def fetch_scfi():
 
         for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
             try:
-                # Änderung: Datum im Format DD.MM.YYYY
                 scfi_date = datetime.strptime(current_date, fmt).strftime("%d.%m.%Y")
                 break
             except ValueError:
@@ -76,3 +113,85 @@ def fetch_scfi():
         scfi_cache[today_str] = scfi_value
         save_scfi_cache(scfi_cache)
         return scfi_value, None, scfi_date
+
+def generate_briefing():
+    print("DEBUG - generate_briefing: Starting to generate briefing")
+    try:
+        scfi_value, pct_change, scfi_date = fetch_scfi()
+        scfi_line = f"SCFI: {scfi_value:.2f} {pct_change:.2f}% (Stand: {scfi_date})"
+        # Fix: Erwartet-Zeile mit Punkt statt Komma
+        expected_line = f"Erwartet: {scfi_value:.2f} {pct_change:.2f}% (Stand: {scfi_date})"
+        print(f"DEBUG - generate_briefing: SCFI line: {scfi_line}")
+        print(f"DEBUG - generate_briefing: Expected line: {expected_line}")
+
+        briefing_lines = [
+            "Das ist ein Test, ob der SCFI funktioniert.",
+            scfi_line,
+            expected_line
+        ]
+        print(f"DEBUG - generate_briefing: Generated briefing with {len(briefing_lines)} lines")
+        return "\n".join(briefing_lines)
+    except Exception as e:
+        print(f"❌ ERROR - generate_briefing: Failed to generate briefing: {str(e)}")
+        raise
+
+def send_briefing():
+    print("📤 DEBUG - send_briefing: Starting to generate and send briefing")
+    try:
+        briefing = generate_briefing()
+        print(f"DEBUG - send_briefing: Briefing content: {briefing}")
+
+        smtp_server = "smtp.gmx.com"  # Für GMX, da user.email "action@gmx.com" ist
+        smtp_port = 587
+        email_user = os.getenv("SUBSTACK_MAIL")
+        email_password = os.getenv("SUBSTACK_MAIL_PASSWORD")
+        
+        if not email_user:
+            print("❌ ERROR - send_briefing: SUBSTACK_MAIL environment variable missing")
+            raise Exception("Missing SUBSTACK_MAIL")
+        if not email_password:
+            print("❌ ERROR - send_briefing: SUBSTACK_MAIL_PASSWORD environment variable missing")
+            raise Exception("Missing SUBSTACK_MAIL_PASSWORD")
+
+        print(f"DEBUG - send_briefing: Using email user: {email_user}")
+        msg = MIMEText(briefing)
+        msg['Subject'] = "Daily China Briefing"
+        msg['From'] = email_user
+        msg['To'] = email_user
+
+        print("DEBUG - send_briefing: Connecting to SMTP server")
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            print("DEBUG - send_briefing: Logging in to SMTP server")
+            server.login(email_user, email_password)
+            print("DEBUG - send_briefing: Sending email")
+            server.send_message(msg)
+            print("✅ DEBUG - send_briefing: Email sent successfully")
+    except Exception as e:
+        print(f"❌ ERROR - send_briefing: Failed to send email: {str(e)}")
+        raise
+
+def main():
+    print("DEBUG - main: Starting script execution")
+    try:
+        briefing = generate_briefing()
+        print(f"DEBUG - main: Briefing content:\n{briefing}")
+        with open("scfi_test.txt", "w") as f:
+            f.write(briefing)
+        print("DEBUG - main: Briefing written to scfi_test.txt")
+        
+        cache_file = "scfi_cache.json"
+        if os.path.exists(cache_file):
+            print(f"DEBUG - main: Cache file {cache_file} exists")
+            with open(cache_file, "r") as f:
+                print(f"DEBUG - main: Cache content: {f.read()}")
+        else:
+            print(f"DEBUG - main: Cache file {cache_file} does not exist")
+        
+        send_briefing()
+    except Exception as e:
+        print(f"❌ ERROR - main: Script failed: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
