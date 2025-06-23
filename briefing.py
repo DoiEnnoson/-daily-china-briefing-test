@@ -25,8 +25,6 @@ def save_scfi_cache(cache):
     print(f"DEBUG - save_scfi_cache: Attempting to save cache to {cache_file}")
     print(f"DEBUG - save_scfi_cache: Cache content: {cache}")
     try:
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-        print(f"DEBUG - save_scfi_cache: Ensured directory exists: {os.path.dirname(cache_file)}")
         with open(cache_file, "w") as f:
             json.dump(cache, f, indent=2)
         print(f"DEBUG - save_scfi_cache: Successfully wrote cache to {cache_file}")
@@ -118,9 +116,10 @@ def generate_briefing():
     print("DEBUG - generate_briefing: Starting to generate briefing")
     try:
         scfi_value, pct_change, scfi_date = fetch_scfi()
-        scfi_line = f"SCFI: {scfi_value:.2f} {pct_change:.2f}% (Stand: {scfi_date})"
-        # Fix: Erwartet-Zeile mit Punkt statt Komma
-        expected_line = f"Erwartet: {scfi_value:.2f} {pct_change:.2f}% (Stand: {scfi_date})"
+        # Fix: Behandle None für pct_change
+        pct_change_str = f"{pct_change:.2f}" if pct_change is not None else "N/A"
+        scfi_line = f"SCFI: {scfi_value:.2f} {pct_change_str}% (Stand: {scfi_date})"
+        expected_line = f"Erwartet: {scfi_value:.2f} {pct_change_str}% (Stand: {scfi_date})"
         print(f"DEBUG - generate_briefing: SCFI line: {scfi_line}")
         print(f"DEBUG - generate_briefing: Expected line: {expected_line}")
 
@@ -141,7 +140,7 @@ def send_briefing():
         briefing = generate_briefing()
         print(f"DEBUG - send_briefing: Briefing content: {briefing}")
 
-        smtp_server = "smtp.gmx.com"  # Für GMX, da user.email "action@gmx.com" ist
+        smtp_server = "smtp.gmx.com"
         smtp_port = 587
         email_user = os.getenv("SUBSTACK_MAIL")
         email_password = os.getenv("SUBSTACK_MAIL_PASSWORD")
