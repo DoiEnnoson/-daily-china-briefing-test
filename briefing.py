@@ -6,13 +6,15 @@ def send_briefing():
 
         smtp_server = "smtp.gmx.com"
         smtp_port = 587
-        # Nutze SUBSTACK_MAIL für E-Mail-Adresse
-        email_user = "action@gmx.com"  # Fallback, falls SUBSTACK_MAIL nur Passwort enthält
-        email_password = os.getenv("SUBSTACK_MAIL")  # Passwort aus SUBSTACK_MAIL
+        email_user = os.getenv("SUBSTACK_MAIL")  # E-Mail aus SUBSTACK_MAIL
+        email_password = os.getenv("CONFIG")  # Passwort aus CONFIG
         
-        if not email_password:
+        if not email_user:
             print("❌ ERROR - send_briefing: SUBSTACK_MAIL environment variable missing or empty")
             raise Exception("Missing SUBSTACK_MAIL")
+        if not email_password:
+            print("❌ ERROR - send_briefing: CONFIG environment variable missing or empty")
+            raise Exception("Missing CONFIG")
 
         print(f"DEBUG - send_briefing: Using email user: {email_user}")
         msg = MIMEText(briefing)
