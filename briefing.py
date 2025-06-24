@@ -185,7 +185,8 @@ def generate_briefing():
             elif pct_change < 0:
                 arrow = "↓"
 
-        scfi_line = f"SCFI (https://en.sse.net.cn/indices/scfinew.jsp): {scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
+        # Änderung: SCFI mit Markdown-Verlinkung
+        scfi_line = f"[SCFI](https://en.sse.net.cn/indices/scfinew.jsp): {scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
         wci_line = f"WCI: 2584.00 ↓ (-8.00%, Stand {date.today().strftime('%d.%m.%Y')})"
         iaca_line = f"IACA: 875.00 ↑ (+2.00%, Stand {date.today().strftime('%d.%m.%Y')})"
 
