@@ -11,6 +11,10 @@ def load_scfi_cache():
     try:
         with open(cache_file, "r") as f:
             cache = json.load(f)
+            # Konvertiere alte Einträge (Float) in neues Format
+            for key, value in cache.items():
+                if isinstance(value, (int, float)):
+                    cache[key] = {"value": float(value), "api_date": key}
             print(f"DEBUG - load_scfi_cache: Successfully loaded cache: {cache}")
             return cache
     except FileNotFoundError:
@@ -132,8 +136,6 @@ def fetch_scfi():
         scfi_date = date.today().strftime("%d.%m.%Y")
         warning_message = warning_message or "API ausgefallen, kein Cache verfügbar, Fallback 1869.59 genutzt"
         print(f"DEBUG - fetch_scfi: Using fallback SCFI value: {scfi_value}, Date: {scfi_date}")
-        cache[today_str] = {"value": scfi_value, "api_date": today_str}
-        save_scfi_cache(cache)
         return scfi_value, None, scfi_date, warning_message
 
 def send_warning_email(warning_message):
