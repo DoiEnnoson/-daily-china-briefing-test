@@ -1146,7 +1146,7 @@ def generate_briefing():
                 usd_cny_interpretation = interpret_usd_cny_spread(pips_diff)
                 if prev_cpr is not None:
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
-                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}), {usd_cny_interpretation})"
+                    cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
                     briefing.append(cpr_line)
                 else:
@@ -1213,7 +1213,7 @@ def generate_briefing():
 
     # Wirtschaftskalender
     briefing.append("")  # Leerzeile für Abstand
-    briefing.extend(fetch_economic_calendar_email())
+    briefing.extend(fetch_economic_calendar())  # Korrigierter Aufruf
 
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
@@ -1240,7 +1240,7 @@ def generate_briefing():
         "OTHER": defaultdict(list)
     }
     for lang, source_url in feeds_google_news.items():
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(source_url)
         for entry in feed.entries:
             title = entry.get("title", "").strip()
             summary = entry.get("summary", "").strip()
