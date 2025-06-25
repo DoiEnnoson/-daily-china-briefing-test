@@ -1,3 +1,20 @@
+# --- Dynamisch eingefügter SCFI-Code ---
+import email
+import feedparser
+import imaplib
+import json
+import os
+import re
+import requests
+import smtplib
+import time
+import warnings
+import pandas as pd
+
+
+
+# --- Ende SCFI-Code ---
+
 import email
 import feedparser
 import imaplib
@@ -19,12 +36,11 @@ import pandas as pd
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-# Pfad zu den Holiday JSON Dateien, CPR-Cache, SCFI-Cache und Economic Calendar CSV (relativ zum Script-Verzeichnis)
+# Pfad zu den Holiday JSON Dateien, CPR-Cache und Economic Calendar CSV (relativ zum Script-Verzeichnis)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
-SCFI_CACHE_FILE = os.path.join(BASE_DIR, "scfi_cache.json")
 ECONOMIC_CALENDAR_FILE = os.path.join(BASE_DIR, "data", "economic_calendar.csv")
 
 def load_holidays(filepath):
@@ -75,172 +91,6 @@ def save_cpr_cache(cache):
             print(f"DEBUG - save_cpr_cache: Verified cache content: {saved_cache}")
     except Exception as e:
         print(f"ERROR - save_cpr_cache: Failed to save cache to {CPR_CACHE_FILE}: {str(e)}")
-        raise
-
-# SCFI-Cache laden
-def load_scfi_cache():
-    print(f"DEBUG - load_scfi_cache: Attempting to load cache from {SCFI_CACHE_FILE}")
-    try:
-        with open(SCFI_CACHE_FILE, "r") as f:
-            cache = json.load(f)
-            # Konvertiere alte Einträge (Float) in neues Format
-            for key, value in cache.items():
-                if isinstance(value, (int, float)):
-                    cache[key] = {"value": float(value), "api_date": key}
-            print(f"DEBUG - load_scfi_cache: Successfully loaded cache: {cache}")
-            return cache
-    except FileNotFoundError:
-        print("DEBUG - load_scfi_cache: Cache file not found, returning empty cache")
-        return {}
-    except Exception as e:
-        print(f"❌ ERROR - load_scfi_cache: Failed to load cache: {str(e)}")
-        return {}
-
-# SCFI-Cache speichern
-def save_scfi_cache(cache):
-    print(f"DEBUG - save_scfi_cache: Attempting to save cache to {SCFI_CACHE_FILE}")
-    print(f"DEBUG - save_scfi_cache: Cache content: {cache}")
-    try:
-        with open(SCFI_CACHE_FILE, "w") as f:
-            json.dump(cache, f, indent=2)
-        print(f"DEBUG - save_scfi_cache: Successfully written cache to {SCFI_CACHE_FILE}")
-        with open(SCFI_CACHE_FILE, "r") as f:
-            print(f"DEBUG - save_scfi_cache: Verified cache content: {json.load(f)}")
-    except Exception as e:
-        print(f"❌ ERROR - save_scfi_cache: Failed to save cache: {str(e)}")
-        raise
-
-# SCFI-Daten abrufen
-def fetch_scfi():
-    print("DEBUG - fetch_scfi: Starting to fetch SCFI data")
-    url = "https://en.sse.net.cn/currentIndex?indexName=scfi"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-    today_str = date.today().isoformat()
-    cache = load_scfi_cache()
-
-    try:
-        print(f"DEBUG - fetch_scfi: Fetching data from {url}")
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        print(f"DEBUG - fetch_scfi: Successfully fetched API, status code: {response.status_code}")
-        data = response.json()
-        print(f"DEBUG - fetch_scfi: API response: {data}")
-
-        if data.get("status") == 0:
-            print(f"❌ ERROR - fetch_scfi: API error: {data.get('msg')}")
-            raise Exception(data.get("msg"))
-
-        scfi_data = data.get("data", {})
-        current_date = scfi_data.get("currentDate")
-        line_data_list = scfi_data.get("lineDataList", [])
-
-        if not line_data_list:
-            print("❌ ERROR - fetch_scfi: No lineDataList found in API response")
-            raise Exception("No lineDataList in API response")
-
-        scfi_value = float(line_data_list[0]["currentContent"])
-        last_value = float(line_data_list[0]["lastContent"])
-        scfi_date = None
-
-        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
-            try:
-                scfi_date = datetime.strptime(current_date, fmt).strftime("%d.%m.%Y")
-                break
-            except ValueError:
-                continue
-        if scfi_date is None:
-            print(f"DEBUG - fetch_scfi: Could not parse date '{current_date}', using today")
-            scfi_date = date.today().strftime("%d.%m.%Y")
-
-        print(f"✅ DEBUG - fetch_scfi: Found SCFI value: {scfi_value}, Date: {scfi_date}")
-
-        pct_change = None
-        if last_value is not None:
-            pct_change = ((scfi_value - last_value) / last_value) * 100 if last_value != 0 else 0
-            print(f"DEBUG - fetch_scfi: Calculated percent change: {pct_change:.2f}% (Current: {scfi_value}, Previous: {last_value})")
-
-        latest_cache_date = max(cache.keys(), default=None)
-        should_save = True
-        if latest_cache_date:
-            latest_entry = cache[latest_cache_date]
-            if latest_entry["value"] == scfi_value and latest_entry["api_date"] == current_date:
-                should_save = False
-                print("DEBUG - fetch_scfi: No change in value or api_date, skipping cache save")
-
-        if should_save:
-            cache[today_str] = {"value": scfi_value, "api_date": current_date}
-            save_scfi_cache(cache)
-
-        return scfi_value, pct_change, scfi_date, None
-
-    except Exception as e:
-        print(f"❌ ERROR - fetch_scfi: Failed to fetch SCFI data: {str(e)}")
-        warning_message = None
-        latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
-
-        if latest_cache_date:
-            latest_entry = cache[latest_cache_date]
-            scfi_value = latest_entry["value"]
-            api_date_str = latest_entry["api_date"]
-            scfi_date = None
-
-            for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
-                try:
-                    scfi_date = datetime.strptime(api_date_str, fmt).strftime("%d.%m.%Y")
-                    break
-                except ValueError:
-                    continue
-            if scfi_date is None:
-                scfi_date = date.today().strftime("%d.%m.%Y")
-
-            try:
-                api_date = datetime.strptime(api_date_str, "%Y-%m-%d")
-                if api_date >= datetime.strptime(ten_days_ago, "%Y-%m-%d"):
-                    print(f"DEBUG - fetch_scfi: Using cached SCFI value: {scfi_value}, Date: {scfi_date}")
-                    warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} (api_date: {api_date_str}) genutzt"
-                    return scfi_value, None, scfi_date, warning_message
-                else:
-                    warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} zu alt (api_date: {api_date_str})"
-            except ValueError:
-                warning_message = f"API nicht erreichbar, Cache-Datum ungültig (api_date: {api_date_str})"
-
-        scfi_value = 1869.59
-        scfi_date = date.today().strftime("%d.%m.%Y")
-        warning_message = warning_message or "API ausgefallen, kein Cache verfügbar, Fallback 1869.59 genutzt"
-        print(f"DEBUG - fetch_scfi: Using fallback SCFI value: {scfi_value}, Date: {scfi_date}")
-        return scfi_value, None, scfi_date, warning_message
-
-# Warn-E-Mail für SCFI-Probleme senden
-def send_warning_email(warning_message):
-    print("📩 DEBUG - send_warning_email: Preparing to send warning email")
-    try:
-        config = os.getenv("CONFIG")
-        if not config:
-            print("❌ ERROR - send_warning_email: CONFIG environment variable not found")
-            raise Exception("Missing CONFIG")
-
-        pairs = config.split(";")
-        config_dict = dict(pair.split("=", 1) for pair in pairs)
-        msg = MIMEText(
-            f"Problem: API-Ausfall oder veralteter Cache\nDetails: {warning_message}\nDatum: {date.today().strftime('%Y-%m-%d')}",
-            "plain",
-            "utf-8"
-        )
-        msg["Subject"] = "China-Briefing SCFI API-Warnung"
-        msg["From"] = config_dict["EMAIL_USER"]
-        msg["To"] = "hadobrockmeyer@gmail.com"
-
-        print("DEBUG - send_warning_email: Connecting to SMTP server")
-        with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
-            server.starttls()
-            print("DEBUG - send_warning_email: Logging in to SMTP server")
-            server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
-            print("DEBUG - send_warning_email: Sending warning email")
-            server.send_message(msg)
-            print("✅ DEBUG - send_warning_email: Warning email sent successfully")
-    except Exception as e:
-        print(f"❌ ERROR - send_warning_email: Failed to send warning email: {str(e)}")
         raise
 
 # Werte vorladen (global)
@@ -583,7 +433,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 continue
         imap.logout()
     except Exception as e:
-        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {e}", "#", "", 999))
+        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999)]
 
 # === Caixin Newsletter ===
@@ -592,7 +442,7 @@ def score_caixin_article(title):
     must_have_in_title = [
         "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
         "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
-        "belt and road", "macau", "pla", "guangdong", "shenzhen"
+        "belt and road", "macau", "pla"
     ]
     important_keywords = [
         "gdp", "exports", "imports", "tariffs", "real estate", "economy", "policy", "ai",
@@ -608,14 +458,45 @@ def score_caixin_article(title):
         "dating", "weird", "quiz", "elon musk", "rapid", "lask", "bundesliga", "eurovision",
         "basketball", "nba", "mlb", "nfl", "liberty", "yankees", "tournament", "playoffs",
         "finale", "score", "blowout", "caixin summer", "summit",
+        "canada", "british columbia", "japan", "uzbekistan", "india"
+    ]
+    # Basis-Score: 1 bei China-Bezug, sonst 0
+def score_caixin_article(title):
+    title_lower = title.lower()
+    score = 0
+
+    # Schlüsselwörter für China-Bezug
+    must_have_in_title = [
+        "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
+        "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
+        "belt and road", "macau", "pla", "guangdong", "shenzhen"
+    ]
+    # Wichtige Themen
+    important_keywords = [
+        "gdp", "exports", "imports", "tariffs", "real estate", "economy", "policy", "ai",
+        "semiconductors", "pmi", "cpi", "housing", "foreign direct investment", "tech",
+        "military", "sanctions", "trade", "data", "manufacturing", "industrial"
+    ]
+    # Positive Modifikatoren
+    positive_modifiers = [
+        "analysis", "explainer", "comment", "feature", "official", "report", "statement",
+        "in depth", "long read", "cover story"
+    ]
+    # Negative Schlüsselwörter
+    negative_keywords = [
+        "celebrity", "gossip", "dog", "baby", "fashion", "movie", "series", "bizarre",
+        "dating", "weird", "quiz", "elon musk", "rapid", "lask", "bundesliga", "eurovision",
+        "basketball", "nba", "mlb", "nfl", "liberty", "yankees", "tournament", "playoffs",
+        "finale", "score", "blowout", "caixin summer", "summit",
         "canada", "british columbia", "japan", "uzbekistan", "india", "korea", "australia"
     ]
+    # Footer-Links
     footer_phrases = [
         "subscribe", "unsubscribe", "caixin global", "newsletters", "mobile apps", "sign up",
         "read online", "enjoy unlimited access"
     ]
 
-    score = 0
+    # Scoring-Logik
     if any(kw in title_lower for kw in must_have_in_title):
         score += 3
     if any(kw in title_lower for kw in important_keywords):
@@ -771,7 +652,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
         return []
-
+    
 # === China Update aus YT abrufen ===
 def fetch_youtube_endpoint():
     print("DEBUG - fetch_youtube_endpoint: Fetching latest China Update episode via API")
@@ -783,7 +664,7 @@ def fetch_youtube_endpoint():
         youtube = build("youtube", "v3", developerKey=api_key)
         request = youtube.search().list(
             part="snippet",
-            channelId="UCy287hCQA44HsRWpFLj4hK8gKA",
+            channelId="UCy287hC44mRWpFLj4hK8gKA",
             maxResults=1,
             order="date",
             type="video"
@@ -922,12 +803,12 @@ def fetch_cpr_forexlive():
             print(f"DEBUG - fetch_cpr_forexlive: Found {len(articles)} articles on {url}")
             for article in articles:
                 title = article.text.strip().lower()
-                print(f"DEBUG - fetch_cpr_forexlive: Checking article title: {title[:50]}...")
-                if "pboc" in title and ("usd/cny" in title or "cny" in title or "reference rate" or "yuan" in title):
-                    match = re.search(r'\d+\.\d{4}', title)
+                print(f"DEBUG - fetch_cpr_forexlive: Checking article: {title[:50]}...")
+                if "pboc" in title and ("usd/cny" in title or "cny" in title or "reference rate" in title or "yuan" in title):
+                    match = re.search(r"\d+\.\d{4}", title)
                     if match:
                         cpr = float(match.group())
-                        estimate_match = re.search(r'estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})', title)
+                        estimate_match = re.search(r"estimate at (\d+\.\d{4})|vs\. (\d+\.\d{4})|vs\. estimate (\d+\.\d{4})", title)
                         estimate = float(estimate_match.group(1) or estimate_match.group(2) or estimate_match.group(3)) if estimate_match else None
                         if estimate is not None:
                             pips_diff = int((cpr - estimate) * 10000)
@@ -967,9 +848,7 @@ def fetch_cpr_from_x():
                         return cpr, estimate, pips_diff
             print(f"❌ DEBUG - fetch_cpr_from_x: No CPR post found from @{account}")
         except Exception as e:
-            print(f"- fetch_cpr_from_x: Failed to fetch CPR from @{account}: {str(e)}")
-            continue
-    print(f"DEBUG - fetch_cpr_from_x: No CPR found from any source")
+            print(f"❌ ERROR - fetch_cpr_from_x: Failed to fetch from @{account}: {str(e)}")
     return None, None, None
 
 def fetch_cpr_usdcny():
@@ -1148,11 +1027,10 @@ def generate_briefing():
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} ({pct_change:+.2f} %) vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line with pct_change: {cpr_line}")
-                    briefing.append(cpr_line)
                 else:
                     cpr_line = f"• CPR (CNY/USD): {cpr:.4f} vs. Est.: {estimate:.4f} ({pips_formatted} {spread_arrow}, {usd_cny_interpretation})"
                     print(f"DEBUG - generate_briefing: CPR line without pct_change: {cpr_line}")
-                    briefing.append(cpr_line)
+                briefing.append(cpr_line)
             else:
                 if prev_cpr is not None:
                     pct_change = ((cpr - prev_cpr) / prev_cpr) * 100 if prev_cpr != 0 else 0
@@ -1173,8 +1051,8 @@ def generate_briefing():
         else:
             briefing.append(currency_data.get("USDCNY"))
         if isinstance(currency_data.get("USDCNH"), tuple):
-            val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
-            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
+            val_cny, arrow_cny, pct_cny = currency_data["USDCNH"]
+            briefing.append(f"• CNH/USD (Offshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
         if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
@@ -1186,35 +1064,32 @@ def generate_briefing():
             spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
-    # Frachtraten Indizies
-    briefing.append("\n## 📈 Frachtraten Indizies")
+    # Frachtraten Indizes
     try:
         scfi_value, pct_change, scfi_date, warning_message = fetch_scfi()
         if warning_message:
             send_warning_email(warning_message)
 
         arrow = "→"
-        pct_change_str = "0.00%"
+        pct_change_str = "0.00"
         if pct_change is not None:
-            pct_change_str = f"{pct_change:.2f}%"
+            pct_change_str = f"{pct_change:.2f}"
             if pct_change > 0:
                 arrow = "↑"
             elif pct_change < 0:
                 arrow = "↓"
-
-        scfi_line = f"• [SCFI](https://en.sse.net.cn/indices/scfinew.jsp): {scfi_value:.2f} {arrow} ({pct_change_str}, Stand {scfi_date})"
-        wci_line = f"• WCI: 2584.00 ↓ (-8.00%, Stand {date.today().strftime('%d.%m.%Y')})"
-        iaca_line = f"• IACA: 875.00 ↑ (+2.00%, Stand {date.today().strftime('%d.%m.%Y')})"
-
-        briefing.extend([scfi_line, wci_line, iaca_line])
+        scfi_line = f"• [SCFI](https://en.sse.net.cn/indices/scfinew.jsp): {scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
     except Exception as e:
-        print(f"❌ ERROR - generate_briefing: Failed to fetch SCFI data: {str(e)}")
-        briefing.append("• ❌ Fehler beim Abrufen der Frachtraten-Indizes.")
+        scfi_line = "• SCFI: Fehler beim Abrufen"
+    wci_line = f"• WCI: 2584.00 ↓ (-8.00%, Stand {date.today().strftime('%d.%m.%Y')})"
+    iaca_line = f"• IACA: 875.00 ↑ (+2.00%, Stand {date.today().strftime('%d.%m.%Y')})"
+    briefing.append("\n## 📈 Frachtraten Indizies")
+    briefing.extend([scfi_line, wci_line, iaca_line])
 
     # Wirtschaftskalender
     briefing.append("")  # Leerzeile für Abstand
-    briefing.extend(fetch_economic_calendar())  # Korrigierter Aufruf
-
+    briefing.extend(fetch_economic_calendar())
+    
     # Top 5 China-Stories
     briefing.append("\n## 🏆 Top 5 China-Stories laut Google News")
     for source, url in feeds_topchina.items():
@@ -1239,8 +1114,8 @@ def generate_briefing():
         "ASIA": defaultdict(list),
         "OTHER": defaultdict(list)
     }
-    for lang, source_url in feeds_google_news.items():
-        feed = feedparser.parse(source_url)
+    for lang, url in feeds_google_news.items():
+        feed = feedparser.parse(url)
         for entry in feed.entries:
             title = entry.get("title", "").strip()
             summary = entry.get("summary", "").strip()
@@ -1260,7 +1135,7 @@ def generate_briefing():
             elif f"- {source}" in title:
                 clean_title = title.split(f"- {source}")[0].strip()
             if clean_title.lower().endswith(source.lower()):
-                clean_title = clean_title[:-(len(source))].strip("- :").strip()
+                clean_title = clean_title[:-(len(source))].strip("- :— ").strip()
             all_articles[category][source].append((score, f'• <a href="{link}">{clean_title}</a>'))
     category_titles = {
         "EN": "🇺🇸 Englischsprachige Medien",
@@ -1285,6 +1160,7 @@ def generate_briefing():
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
     # Caixin
+    # Caixin
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
         briefing.append("\n## 📜 Caixin – Top-Themen")
@@ -1308,111 +1184,136 @@ def generate_briefing():
                 if caixin_posts:
                     briefing.append("\n## 📜 Caixin – Top-Themen")
                     briefing.extend(caixin_posts)
-                else:
-                    briefing.append("\n## 📜 Caixin – Top-Themen")
-                    briefing.append("• Keine neuen Caixin-Artikel gefunden.")
-        except Exception as e:
+        except ValueError as e:
             briefing.append("\n## 📜 Caixin – Top-Themen")
-            briefing.append(f"❌ Fehler beim Abrufen der Caixin-Artikel: {str(e)}")
+            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK: {str(e)}")
 
-    # Substack
-    briefing.append("\n## 🗞️ Substack – China-Beiträge")
-    try:
-        if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
-            briefing.append("❌ Fehler: GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK.")
-        else:
-            substack_posts = fetch_substack_from_email(
-                email_user=mail_config["GMAIL_USER"],
-                email_password=mail_config["GMAIL_PASS"]
-            )
-            if substack_posts:
-                briefing.extend(render_markdown(substack_posts))
+    # China Update YouTube
+    youtube_episodes = fetch_youtube_endpoint()
+    if youtube_episodes:
+        briefing.append("\n### China Update")
+        for episode in youtube_episodes:
+            title = episode["title"]
+            link = episode["link"]
+            thumbnail = episode["thumbnail"]
+            if thumbnail:
+                # Maskierter Link mit JS-Umleitung
+                briefing.append(f'<a href="#" onclick="window.location.href=\'{link}\'; return false;"><img src="{thumbnail}" alt="{title}" style="max-width: 320px; height: auto; display: block; margin: 10px 0; border: none;" class="no-preview"></a>')
             else:
-                briefing.append("• Keine neuen Substack-Beiträge gefunden.")
-    except Exception as e:
-        briefing.append(f"❌ Fehler beim Abrufen der Substack-Beiträge: {str(e)}")
+                briefing.append(f'• <a href="{link}">{title}</a>')
 
-    # China Update
-    briefing.append("\n## 📺 China Update – Neuester Beitrag")
-    youtube_posts = fetch_youtube_endpoint()
-    if youtube_posts:
-        for post in youtube_posts:
-            title = post["title"]
-            link = post["link"]
-            briefing.append(f'• <a href="{link}">{title}</a>')
+    # Substack-Abschnitt
+    briefing.append("\n## 📬 Aktuelle Substack-Artikel")
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    if not substack_mail:
+        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
     else:
-        briefing.append("• Kein neuer China Update Beitrag verfügbar.")
+        try:
+            mail_pairs = substack_mail.split(";")
+            mail_config = {}
+            for pair in mail_pairs:
+                if "=" in pair:
+                    key, value = pair.split("=", 1)
+                    mail_config[key] = value
+            if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
+                missing_keys = [k for k in ["GMAIL_USER", "GMAIL_PASS"] if k not in mail_config]
+                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK:{', '.join(missing_keys)}")
+            else:
+                email_user = mail_config["GMAIL_USER"]
+                email_password = mail_config["GMAIL_PASS"]
+                posts = fetch_substack_from_email(email_user, email_password)
+                briefing.extend(render_markdown(posts))
+        except ValueError as e:
+            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
 
-    # Think Tanks
-    briefing.append("\n## 🧠 Think Tanks & Institute")
-    for source, url in feeds_thinktanks.items():
-        briefing.append(f"\n### {source}")
-        articles = fetch_ranked_articles(url, max_items=20, top_n=3)
-        if articles:
-            briefing.extend(articles)
-        else:
-            briefing.append(f"• Keine aktuellen Artikel von {source}.")
+    briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
-    # Abschluss
-    briefing.append("\n---\n")
-    briefing.append("Das war dein China-Briefing für heute! Bleib dran, Hado. 🚀")
-    print(f"DEBUG - generate_briefing: Generated briefing with {len(briefing)} lines")
-    return "\n".join(briefing)
+    print("DEBUG - generate_briefing: Briefing generated successfully")
+    # Debugging: HTML-Output speichern
+    with open("newsletter.html", "w", encoding="utf-8") as f:
+        f.write(f"""\
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta property="og:image" content="">
+    <meta property="og:image:secure_url" content="">
+    <meta property="og:image:type" content="">
+    <meta property="og:image:width" content="">
+    <meta property="og:image:height" content="">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Daily China Briefing">
+    <meta property="og:description" content="">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="">
+    <meta name="twitter:image:alt" content="">
+    <meta name="twitter:title" content="Daily China Briefing">
+    <meta name="twitter:description" content="">
+    <style>
+        .no-preview {{ pointer-events: auto; }}
+        a[href="#"] img {{ border: none !important; }}
+    </style>
+</head>
+<body style="margin: 0; padding: 0;">
+    <div style="background-color: #ffffff; padding: 20px;">
+        <pre style="font-family: Arial, sans-serif; margin: 0;">
+{chr(10).join(briefing)}\n
+        </pre>
+    </div>
+</body>
+</html>""")
+    return f"""\
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta property="og:image" content="">
+    <meta property="og:image:secure_url" content="">
+    <meta property="og:image:type" content="">
+    <meta property="og:image:width" content="">
+    <meta property="og:image:height" content="">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Daily China Briefing">
+    <meta property="og:description" content="">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="">
+    <meta name="twitter:image:alt" content="">
+    <meta name="twitter:title" content="Daily China Briefing">
+    <meta name="twitter:description" content="">
+    <style>
+        .no-preview {{ pointer-events: auto; }}
+        a[href="#"] img {{ border: none !important; }}
+    </style>
+</head>
+<body style="margin: 0; padding: 0;">
+    <div style="background-color: #ffffff; padding: 20px;">
+        <pre style="font-family: Arial, sans-serif; margin: 0;">
+{chr(10).join(briefing)}\n
+        </pre>
+    </div>
+</body>
+</html>"""
 
-# === Briefing per E-Mail versenden ===
+# === E-Mail senden ===
 def send_briefing():
-    print("📤 DEBUG - send_briefing: Starting to generate and send briefing")
+    print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
+    briefing_content = generate_briefing()
+
+    msg = MIMEText(briefing_content, "html", "utf-8")
+    msg["Subject"] = "📰 Dein tägliches China-Briefing"
+    msg["From"] = config_dict["EMAIL_USER"]
+    msg["To"] = config_dict["EMAIL_TO"]
+
+    print("📤 DEBUG - send_briefing: Sending email")
     try:
-        briefing = generate_briefing()
-        print(f"DEBUG - send_briefing: Briefing content:\n{briefing[:500]}...")
-
-        config = os.getenv("CONFIG")
-        if not config:
-            print("❌ ERROR - send_briefing: CONFIG environment variable not found")
-            raise Exception("Missing CONFIG")
-
-        pairs = config.split(";")
-        config_dict = dict(pair.split("=", 1) for pair in pairs)
-        msg = MIMEText(briefing, "plain", "utf-8")
-        msg["Subject"] = "📰 Dein tägliches China-Briefing"
-        msg["From"] = config_dict["EMAIL_USER"]
-        msg["To"] = config_dict["EMAIL_TO"]
-
-        print("DEBUG - send_briefing: Connecting to SMTP server")
         with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
             server.starttls()
-            print("DEBUG - send_briefing: Logging in to SMTP server")
             server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
-            print("DEBUG - send_briefing: Sending email")
             server.send_message(msg)
-            print("✅ DEBUG - send_briefing: Email sent successfully")
+        print("✅ DEBUG - send_briefing: Email sent successfully")
     except Exception as e:
         print(f"❌ ERROR - send_briefing: Failed to send email: {str(e)}")
-        raise
 
-# === Hauptfunktion ===
-def main():
-    print("DEBUG - main: Starting script execution")
-    try:
-        briefing = generate_briefing()
-        print(f"DEBUG - main: Briefing content:\n{briefing[:500]}...")
-        with open("china_briefing.txt", "w", encoding="utf-8") as f:
-            f.write(briefing)
-        print("DEBUG - main: Briefing written to china_briefing.txt")
-        
-        # Cache-Dateien prüfen
-        for cache_file in [CPR_CACHE_FILE, SCFI_CACHE_FILE]:
-            if os.path.exists(cache_file):
-                print(f"DEBUG - main: Cache file {cache_file} exists")
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    print(f"DEBUG - main: Cache content: {f.read()}")
-            else:
-                print(f"DEBUG - main: Cache file {cache_file} does not exist")
-        
-        send_briefing()
-    except Exception as e:
-        print(f"❌ ERROR - main: Script failed: {str(e)}")
-        raise
-
+# === Hauptskript ===
 if __name__ == "__main__":
-    main()
+    send_briefing()
