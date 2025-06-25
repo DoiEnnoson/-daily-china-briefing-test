@@ -1,24 +1,24 @@
 name: Daily China Briefing
 
 on:
-  schedule:
-    - cron: '0 5 * * *'  # 06:00 UTC
   workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *' # täglich um 06:00 UTC
 
 jobs:
-  run-briefing:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: read
+      contents: write # Ermöglicht Schreibrechte für das Repository
+      actions: read  # Standard-Berechtigung für Actions
 
     steps:
-      - name: Repository auschecken
+      - name: Repository klonen
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Python setzen
+      - name: Python installieren
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -26,7 +26,7 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
 
       - name: Briefing-Skript ausführen
         run: python briefing.py
@@ -35,13 +35,35 @@ jobs:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
 
-      - name: Inhalt von scfi_cache.json vor dem Commit anzeigen
+      - name: cpr_cache.json Inhalt prüfen (vor Commit)
+        run: |
+          echo "Inhalt von cpr_cache.json vor dem Commit:"
+          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: Änderungen an cpr_cache.json committen und pushen
+        run: |
+          git config --local user.email "action@gmx.com"
+          git config --local user.name "GitHub Action"
+          git add cpr_cache.json
+          git commit -m "Update cpr_cache.json with latest CPR value" || echo "Keine Änderungen zu committen"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: cpr_cache.json Inhalt prüfen (nach Commit)
+        run: |
+          echo "Inhalt von cpr_cache.json nach dem Commit:"
+          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: scfi_cache.json Inhalt prüfen (vor Commit)
         run: |
           echo "Inhalt von scfi_cache.json vor dem Commit:"
           cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
         continue-on-error: true
 
-      - name: Änderungen committen
+      - name: Änderungen an scfi_cache.json committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
@@ -56,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      - name: Inhalt von scfi_cache.json nach dem Commit anzeigen
+      - name: scfi_cache.json Inhalt prüfen (nach Commit)
         run: |
           echo "Inhalt von scfi_cache.json nach dem Commit:"
           cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
