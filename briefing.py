@@ -745,14 +745,13 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                     if part.get_content_type() == "text/html":
                         html = part.get_payload(decode=True).decode(errors="ignore")
                         break
-            elif msg.get_content_type() == " | html":
+            elif msg.get_content_type() == "text/html":
                 html = msg.get_payload(decode=True).decode(errors="ignore")
             # Perspective: Siehe hier: https://docs.python.org/3/library/email.html#email.utils.parsedate_to_datetime
-            # Kommentar hinzugefügt, um den SyntaxError zu beheben
             if not html:
                 print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
                 continue
-            with open(f"caixin_email_{eid}.html", "w", encoding="utf-Background: #ffffff; padding: 20px;") as f:
+            with open(f"caixin_email_{eid}.html", "w", encoding="utf-8") as f:
                 f.write(html)
             print(f"DEBUG - fetch_caixin_from_email: Saved HTML for mail {eid} to caixin_email_{eid}.html")
             soup = BeautifulSoup(html, "lxml")
@@ -794,83 +793,44 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 
                 link = link_tag.get("href", "#").strip()
                 if not link or link == "#" or "unsubscribe" in link.lower() or "subscribe" in link.lower():
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid
-    
-# === China Update aus YT abrufen ===
-def fetch_youtube_endpoint():
-    print("DEBUG - fetch_youtube_endpoint: Fetching latest China Update episode via API")
-    api_key = os.getenv("YOUTUBE_API_KEY")
-    if not api_key:
-        print("❌ ERROR - fetch_youtube_endpoint: YOUTUBE_API_KEY not found in environment variables")
-        return []
-    try:
-        youtube = build("youtube", "v3", developerKey=api_key)
-        request = youtube.search().list(
-            part="snippet",
-            channelId="UCy287hC44mRWpFLj4hK8gKA",
-            maxResults=1,
-            order="date",
-            type="video"
-        )
-        response = request.execute()
-        print(f"DEBUG - fetch_youtube_endpoint: Full API response: {response}")
-        if not response.get("items"):
-            print("DEBUG - fetch_youtube_endpoint: No videos found in API response")
-            return []
-        video = response["items"][0]
-        title = video["snippet"]["title"].strip()
-        video_id = video["id"]["videoId"]
-        link = f"https://youtu.be/{video_id}"  # Verkürzter YouTube-Link
-        thumbnail = video["snippet"].get("thumbnails", {}).get("high", {}).get("url", "")
-        if not thumbnail:
-            thumbnail = video["snippet"].get("thumbnails", {}).get("medium", {}).get("url", "")
-        if not thumbnail:
-            thumbnail = video["snippet"].get("thumbnails", {}).get("default", {}).get("url", "")
-        date_str = video["snippet"]["publishedAt"]
-        try:
-            pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
-            two_days_ago = datetime.now() - timedelta(days=2)
-            print(f"DEBUG - fetch_youtube_endpoint: Parsed date: {pub_date}, Two days ago: {two_days_ago}")
-            if pub_date < two_days_ago:
-                print(f"DEBUG - fetch_youtube_endpoint: Latest video ({title}) is older than 2 days")
-                return []
-        except ValueError as e:
-            print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
-            return []
-        print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link}), Thumbnail: {thumbnail}")
-        return [{
-            "title": title,
-            "link": link,
-            "thumbnail": thumbnail
-        }]
-    except HttpError as e:
-        print(f"❌ ERROR - fetch_youtube_endpoint: HTTP error from YouTube API: {str(e)}")
-        return []
-    except Exception as e:
-        print(f"❌ ERROR - fetch_youtube_endpoint: Failed to fetch YouTube episode: {str(e)}")
-        return []
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid or footer link)")
+                    continue
+                
+                # Resolve URL
+                try:
+                    response = requests.head(link, allow_redirects=True, timeout=5)
+                    final_url = response.url
+                    print(f"DEBUG - fetch_caixin_from_email: Resolved URL {link[:50]}... to {final_url[:50]}...")
+                except Exception as e:
+                    print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
+                    final_url = link
+                
+                if "caixinglobal.com" not in final_url.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
+                    continue
+                
+                score = score_caixin_article(title)
+                print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
+                
+                if score > 0:
+                    scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
+                else:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
 
-# === NBS-Daten abrufen ===
-def fetch_latest_nbs_data():
-    print("DEBUG - fetch_latest_nbs_data: Fetching NBS data")
-    url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        items = []
-        for li in soup.select("ul.list_009 li")[:5]:
-            a = li.find("a")
-            if a and a.text:
-                title = a.text.strip()
-                link = "https://www.stats.gov.cn" + a["href"]
-                items.append(f"• {title} ({link})")
-        print(f"DEBUG - fetch_latest_nbs_data: Found {len(items)} NBS items")
-        return items or ["Keine aktuellen Veröffentlichungen gefunden."]
+        scored_posts.sort(reverse=True, key=lambda x: x[0])
+        posts = [item[1] for item in scored_posts[:max_results]]
+        if not posts:
+            print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
+            imap.logout()
+            return []  # Leere Liste für Live-Umgebung
+
+        imap.logout()
+        print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
+        return posts
     except Exception as e:
-        print(f"ERROR - fetch_latest_nbs_data: Failed to fetch NBS data: {str(e)}")
-        return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
+        print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
+        imap.logout()
+        return []
 
 # === Börsendaten & Wechselkurse abrufen ===
 def fetch_index_data():
