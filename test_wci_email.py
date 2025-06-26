@@ -2,6 +2,9 @@ import os
 import glob
 import re
 import logging
+import imaplib
+import email
+from email.header import decode_header
 from datetime import datetime
 from bs4 import BeautifulSoup
 
@@ -10,11 +13,111 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('briefing_log.txt', encoding='utf-8'),
+        logging.FileHandler('wci_test_log.txt', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger()
+
+def fetch_wci_email():
+    """Holt die neueste Drewry-E-Mail und speichert den HTML-Inhalt."""
+    logger.debug("Starting email fetch")
+    try:
+        # Umgebungsvariablen für Gmail-Zugangsdaten
+        env_vars = os.getenv('DREWRY')
+        if not env_vars:
+            logger.error("DREWRY environment variable not set")
+            return None
+        
+        # Parse Umgebungsvariablen
+        gmail_user = None
+        gmail_pass = None
+        for var in env_vars.split(';'):
+            key, value = var.split('=')
+            if key == 'GMAIL_USER':
+                gmail_user = value
+            elif key == 'GMAIL_PASS':
+                gmail_pass = value
+        
+        if not gmail_user or not gmail_pass:
+            logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
+            return None
+
+        # Verbindung zu Gmail herstellen
+        logger.debug("Connecting to Gmail IMAP")
+        mail = imaplib.IMAP4_SSL('imap.gmail.com')
+        mail.login(gmail_user, gmail_pass)
+        mail.select('inbox')
+        
+        # Suche nach E-Mails von noreply@drewry.co.uk
+        today = datetime.now().strftime("%d-%b-%Y")
+        search_criteria = f'(FROM "noreply@drewry.co.uk" ON "{today}")'
+        logger.debug(f"Searching emails with criteria: {search_criteria}")
+        result, data = mail.search(None, search_criteria)
+        
+        if result != 'OK':
+            logger.error("Failed to search emails")
+            mail.logout()
+            return None
+        
+        email_ids = data[0].split()
+        if not email_ids:
+            logger.error("No emails found from noreply@drewry.co.uk")
+            mail.logout()
+            return None
+        
+        # Hole die neueste E-Mail
+        latest_email_id = email_ids[-1]
+        logger.debug(f"Fetching email ID: {latest_email_id}")
+        result, data = mail.fetch(latest_email_id, '(RFC822)')
+        
+        if result != 'OK':
+            logger.error("Failed to fetch email")
+            mail.logout()
+            return None
+        
+        # E-Mail parsen
+        raw_email = data[0][1]
+        email_message = email.message_from_bytes(raw_email)
+        
+        # Betreff dekodieren
+        subject, encoding = decode_header(email_message['subject'])[0]
+        if isinstance(subject, bytes):
+            subject = subject.decode(encoding if encoding else 'utf-8')
+        logger.debug(f"Email subject: {subject}")
+        
+        # HTML-Inhalt extrahieren
+        html_content = None
+        if email_message.is_multipart():
+            for part in email_message.walk():
+                if part.get_content_type() == 'text/html':
+                    html_content = part.get_payload(decode=True).decode('utf-8')
+                    break
+        else:
+            if email_message.get_content_type() == 'text/html':
+                html_content = email_message.get_payload(decode=True).decode('utf-8')
+        
+        if not html_content:
+            logger.error("No HTML content found in email")
+            mail.logout()
+            return None
+        
+        # Speichere HTML-Inhalt
+        email_id_str = latest_email_id.decode('utf-8')
+        html_filename = f'wci_email_{email_id_str}.html'
+        logger.debug(f"Saving HTML content to {html_filename}")
+        with open(html_filename, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        logger.info(f"Successfully saved email content to {html_filename}")
+        mail.logout()
+        return html_filename
+    
+    except Exception as e:
+        logger.error(f"Error fetching email: {str(e)}")
+        if 'mail' in locals():
+            mail.logout()
+        return None
 
 def extract_wci_from_html(html_file):
     """Extrahiert den WCI-Wert und den Prozentsatz aus der HTML-Datei."""
@@ -64,46 +167,4 @@ def generate_briefing():
         return "Daily China Briefing: No WCI data available"
     
     # Wähle die neueste Datei (nach Dateiname oder Änderungszeit)
-    latest_html = max(html_files, key=os.path.getmtime)
-    logger.debug(f"Using latest HTML file: {latest_html}")
-    
-    # Extrahiere WCI-Wert und Prozentsatz
-    wci_value, percent_change = extract_wci_from_html(latest_html)
-    if not wci_value:
-        logger.error("Failed to extract WCI value")
-        return "Daily China Briefing: Failed to extract WCI data"
-    
-    # Erstelle den Bericht
-    report_date = datetime.now().strftime("%d %b %Y")
-    wci_text = f"WCI: {wci_value}"
-    if percent_change:
-        wci_text += f", {percent_change} w/w"
-    
-    report = f"""Daily China Briefing - {report_date}
-{'=' * 50}
-World Container Index
-{'-' * 20}
-{wci_text}
-{'-' * 20}
-[Weitere Inhalte hier einfügen]
-"""
-    
-    logger.info("Generated briefing report")
-    logger.debug(f"Report content:\n{report}")
-    
-    # Speichere den Bericht
-    try:
-        with open('daily_briefing.md', 'w', encoding='utf-8') as f:
-            f.write(report)
-        logger.info("Saved briefing to daily_briefing.md")
-    except Exception as e:
-        logger.error(f"Failed to save briefing: {str(e)}")
-        return "Daily China Briefing: Error saving report"
-    
-    return report
-
-if __name__ == "__main__":
-    logger.debug("Starting main execution")
-    report = generate_briefing()
-    print(report)
-    logger.debug("Briefing generation completed")
+    latest_html = max(html_files, key
