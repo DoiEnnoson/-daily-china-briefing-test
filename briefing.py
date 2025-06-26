@@ -683,7 +683,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        # Suche nur E-Mails vom letzten Tag
+        # Suche nur E-Mails vom letzten Tag ACHTUNG: DAYS auf 1 gesetzt
         since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
@@ -747,7 +747,6 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                         break
             elif msg.get_content_type() == "text/html":
                 html = msg.get_payload(decode=True).decode(errors="ignore")
-            # Perspective: Siehe hier: https://docs.python.org/3/library/email.html#email.utils.parsedate_to_datetime
             if not html:
                 print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
                 continue
@@ -757,46 +756,22 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             soup = BeautifulSoup(html, "lxml")
             links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
-
             for link_tag in links:
-                # Extrahiere den Titel aus dem <a>-Tag
                 title = link_tag.get_text(strip=True)
                 title_lower = title.lower()
-                print(f"DEBUG - fetch_caixin_from_email: Found link with text: '{title[:100]}' (length: {len(title)}, words: {len(title.split())})")
-                
-                # Prüfe, ob der Titel gültig ist
-                if not title or len(title) < 15 or len(title.split()) < 5:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' (too short or too few words)")
-                    # Versuche, den Titel aus einem benachbarten Tag zu extrahieren
-                    parent = link_tag.find_parent(["p", "h1", "h2", "h3", "div"])
-                    if parent:
-                        parent_text = parent.get_text(strip=True)
-                        if len(parent_text) > len(title) and len(parent_text.split()) >= 5:
-                            title = parent_text
-                            print(f"DEBUG - fetch_caixin_from_email: Replaced title with parent text: '{title[:100]}' (length: {len(title)}, words: {len(title.split())})")
-                    else:
-                        # Fallback auf Betreff oder andere Attribute
-                        title = (link_tag.get("title", "") or link_tag.get("aria-label", "") or subject).strip()
-                        print(f"DEBUG - fetch_caixin_from_email: Fallback to link attributes or subject: '{title[:100]}'")
-
-                # Erneute Prüfung nach Titelaktualisierung
-                title_lower = title.lower()
+                if not title or len(title) < 5:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
+                    continue
                 if title_lower in generic_titles:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title[:100]}'")
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}'")
                     continue
-                if len(title.split()) < 5 or len(title) < 15:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' after update (still too short or too few words)")
+                if len(title.split()) < 3:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title}' (less than 3 words)")
                     continue
-                if any(phrase in title_lower for phrase in ["click here", "read more", "view online", "unsubscribe", "subscribe"]):
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' (contains footer phrases)")
-                    continue
-                
                 link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower() or "subscribe" in link.lower():
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid or footer link)")
+                if not link or link == "#" or "unsubscribe" in link.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
                     continue
-                
-                # Resolve URL
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
@@ -804,14 +779,11 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
                     final_url = link
-                
                 if "caixinglobal.com" not in final_url.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
                     continue
-                
                 score = score_caixin_article(title)
                 print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
-                
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
                 else:
@@ -831,6 +803,82 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
         imap.logout()
         return []
+    
+# === China Update aus YT abrufen ===
+def fetch_youtube_endpoint():
+    print("DEBUG - fetch_youtube_endpoint: Fetching latest China Update episode via API")
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        print("❌ ERROR - fetch_youtube_endpoint: YOUTUBE_API_KEY not found in environment variables")
+        return []
+    try:
+        youtube = build("youtube", "v3", developerKey=api_key)
+        request = youtube.search().list(
+            part="snippet",
+            channelId="UCy287hC44mRWpFLj4hK8gKA",
+            maxResults=1,
+            order="date",
+            type="video"
+        )
+        response = request.execute()
+        print(f"DEBUG - fetch_youtube_endpoint: Full API response: {response}")
+        if not response.get("items"):
+            print("DEBUG - fetch_youtube_endpoint: No videos found in API response")
+            return []
+        video = response["items"][0]
+        title = video["snippet"]["title"].strip()
+        video_id = video["id"]["videoId"]
+        link = f"https://youtu.be/{video_id}"  # Verkürzter YouTube-Link
+        thumbnail = video["snippet"].get("thumbnails", {}).get("high", {}).get("url", "")
+        if not thumbnail:
+            thumbnail = video["snippet"].get("thumbnails", {}).get("medium", {}).get("url", "")
+        if not thumbnail:
+            thumbnail = video["snippet"].get("thumbnails", {}).get("default", {}).get("url", "")
+        date_str = video["snippet"]["publishedAt"]
+        try:
+            pub_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
+            two_days_ago = datetime.now() - timedelta(days=2)
+            print(f"DEBUG - fetch_youtube_endpoint: Parsed date: {pub_date}, Two days ago: {two_days_ago}")
+            if pub_date < two_days_ago:
+                print(f"DEBUG - fetch_youtube_endpoint: Latest video ({title}) is older than 2 days")
+                return []
+        except ValueError as e:
+            print(f"DEBUG - fetch_youtube_endpoint: Invalid date format: {date_str}, Error: {str(e)}")
+            return []
+        print(f"DEBUG - fetch_youtube_endpoint: Found episode: {title} ({link}), Thumbnail: {thumbnail}")
+        return [{
+            "title": title,
+            "link": link,
+            "thumbnail": thumbnail
+        }]
+    except HttpError as e:
+        print(f"❌ ERROR - fetch_youtube_endpoint: HTTP error from YouTube API: {str(e)}")
+        return []
+    except Exception as e:
+        print(f"❌ ERROR - fetch_youtube_endpoint: Failed to fetch YouTube episode: {str(e)}")
+        return []
+
+# === NBS-Daten abrufen ===
+def fetch_latest_nbs_data():
+    print("DEBUG - fetch_latest_nbs_data: Fetching NBS data")
+    url = "http://www.stats.gov.cn/english/PressRelease/rss.xml"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        items = []
+        for li in soup.select("ul.list_009 li")[:5]:
+            a = li.find("a")
+            if a and a.text:
+                title = a.text.strip()
+                link = "https://www.stats.gov.cn" + a["href"]
+                items.append(f"• {title} ({link})")
+        print(f"DEBUG - fetch_latest_nbs_data: Found {len(items)} NBS items")
+        return items or ["Keine aktuellen Veröffentlichungen gefunden."]
+    except Exception as e:
+        print(f"ERROR - fetch_latest_nbs_data: Failed to fetch NBS data: {str(e)}")
+        return [f"❌ Fehler beim Abrufen der NBS-Daten: {e}"]
 
 # === Börsendaten & Wechselkurse abrufen ===
 def fetch_index_data():
@@ -1206,6 +1254,9 @@ def generate_briefing():
         briefing.append(f"\n### {source}")
         briefing.extend(fetch_news(url, max_items=30, top_n=5))
 
+    # NBS-Daten
+    briefing.append("\n## 📈 NBS – Nationale Statistikdaten")
+    briefing.extend(fetch_latest_nbs_data())
 
     # X-Stimmen
     briefing.append("\n## 📡 Stimmen & Perspektiven von X")
