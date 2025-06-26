@@ -26,7 +26,7 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4 feedparser requests
+          pip install beautifulsoup4
 
       - name: Test-WCI-Skript ausführen
         run: python test_wci_email.py
@@ -58,18 +58,12 @@ jobs:
           cat WCI/wci_cache.json || echo "Datei WCI/wci_cache.json existiert nicht"
         continue-on-error: true
 
-      - name: scfi_cache.json Inhalt prüfen
-        run: |
-          echo "Inhalt von scfi_cache.json:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
-        continue-on-error: true
-
       - name: Änderungen an Ausgabedateien committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json scfi_cache.json
-          git commit -m "Update briefing with WCI and SCFI values" || echo "Keine Änderungen zu committen"
+          git add wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json
+          git commit -m "Update briefing with WCI values" || echo "Keine Änderungen zu committen"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
