@@ -27,13 +27,14 @@ logger = logging.getLogger()
 
 # Pfade
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WCI_CACHE_FILE = os.path.join(BASE_DIR, "WCI", "wci_cache.json")
+WCI_CACHE_DIR = os.path.join(BASE_DIR, "WCI")
+WCI_CACHE_FILE = os.path.join(WCI_CACHE_DIR, "wci_cache.json")
 
 def load_wci_cache():
     """Lädt den WCI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
     logger.debug(f"Loading cache from {WCI_CACHE_FILE}")
     try:
-        os.makedirs(os.path.dirname(WCI_CACHE_FILE), exist_ok=True)
+        os.makedirs(WCI_CACHE_DIR, exist_ok=True)
         if os.path.exists(WCI_CACHE_FILE):
             with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
@@ -44,19 +45,25 @@ def load_wci_cache():
         save_wci_cache(cache)  # Leere Cache-Datei erstellen
         return cache
     except Exception as e:
-        logger.error(f"Failed to load cache: {str(e)}, initializing empty cache")
+        logger.error(f"Failed to load or create cache: {str(e)}")
         cache = {}
-        save_wci_cache(cache)
+        save_wci_cache(cache)  # Versuchen, Cache zu erstellen, auch bei Fehlern
         return cache
 
 def save_wci_cache(cache):
-    """Speichert den WCI-Cache."""
+    """Speichert den WCI-Cache und prüft, ob die Datei erstellt wurde."""
     logger.debug(f"Saving cache to {WCI_CACHE_FILE}: {cache}")
     try:
-        os.makedirs(os.path.dirname(WCI_CACHE_FILE), exist_ok=True)
+        os.makedirs(WCI_CACHE_DIR, exist_ok=True)
         with open(WCI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
-        logger.info(f"Successfully wrote cache to {WCI_CACHE_FILE}")
+        if os.path.exists(WCI_CACHE_FILE):
+            logger.info(f"Successfully wrote cache to {WCI_CACHE_FILE}")
+            with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
+                logger.debug(f"Cache file content after save: {f.read()}")
+        else:
+            logger.error(f"Cache file {WCI_CACHE_FILE} was not created")
+            raise Exception(f"Cache file {WCI_CACHE_FILE} was not created")
     except Exception as e:
         logger.error(f"Failed to save cache: {str(e)}")
         raise
