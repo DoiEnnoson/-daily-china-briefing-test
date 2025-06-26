@@ -453,6 +453,7 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
+# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
     posts = []
@@ -550,42 +551,15 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                         else:
                             title = msg["Subject"].strip() if msg["Subject"] else "Unbenannter Beitrag"
                     else:
-                        title = title_tag.text.strip()
-                    print(f"DEBUG - fetch_substack_from_email: Title for {sender_name}: {title}")
-                    link_tag = soup.find("a", href=lambda x: x and ("app-link/post" in x or "/post/" in x))
-                    if not link_tag:
-                        link_tag = soup.find("a", href=lambda x: x and "https://" in x)
-                    link = link_tag["href"].strip() if link_tag else "#"
-                    teaser = ""
-                    if title_tag or link_tag:
-                        start_tag = title_tag or link_tag
-                        content_candidates = start_tag.find_all_next(string=True)
-                        found_title = False
-                        teaser_parts = []
-                        for text in content_candidates:
-                            stripped = text.strip()
-                            if not found_title and stripped and (stripped in title or stripped in link):
-                                found_title = True
-                                continue
-                            if (found_title and 30 < len(stripped) < 500 and 
-                                "dear reader" not in stripped.lower() and 
-                                "subscribe" not in stripped.lower() and 
-                                "view in browser" not in stripped.lower()):
-                                teaser_parts.append(stripped)
-                                if len(" ".join(teaser_parts)) > 100:
-                                    break
-                        teaser = " ".join(teaser_parts).strip()[:300]
-                    print(f"DEBUG - fetch_substack_from_email: Teaser for {sender_name}: {teaser}")
-                    sender_posts.append((sender_name, title, link, teaser, sender_order, mail_date))
-                sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
-                posts.extend(sender_posts)
-            except Exception as e:
-                print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
-                continue
-        imap.logout()
-    except Exception as e:
-        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999))
-    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999)]
+                        title = title_sortiert = sorted(posts, key=lambda x: (x[4], -(x[5] or datetime(1970, 1, 1)).timestamp()))
+                    for sender_name, title, link, teaser, sender_order, mail_date in sorted_posts:
+                        if sender_name != current_sender:
+                            markdown.append(f"\n### {sender_name}")
+                            current_sender = sender_name
+                        markdown.append(f'• <a href="{link}">{title}</a>')
+                        if teaser:
+                            markdown.append(f'  {teaser}')
+                    return markdown
 
 # === Caixin Newsletter ===
 def score_caixin_article(title):
