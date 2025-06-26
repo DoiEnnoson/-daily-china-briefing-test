@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
+      actions: write
 
     steps:
       - name: Repository klonen
@@ -62,8 +62,9 @@ jobs:
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json
+          git add --ignore-errors wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json
           git commit -m "Update briefing with WCI values" || echo "Keine Änderungen zu committen"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
