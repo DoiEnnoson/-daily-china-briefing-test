@@ -453,6 +453,7 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
+# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails at {datetime.now()}")
     posts = []
@@ -481,13 +482,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         if duplicates:
             print(f"⚠️ Warning: Duplicate email addresses in substacks.json: {duplicates}")
     except FileNotFoundError:
-        print("❌ ERROR: substacks.json not found! Using empty list.")
+        print("ERROR: substacks.json not found! Using empty list.")
         substack_senders = []
-        posts.append(("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999, datetime.min))
+        posts.append(("Allgemein", "Fehler: substacks.json nicht gefunden.", "#", "", 999, datetime.min))
     except json.JSONDecodeError:
-        print("❌ ERROR: substacks.json invalid!")
+        print("ERROR: substacks.json invalid!")
         substack_senders = []
-        posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999, datetime.min))
+        posts.append(("Allgemein", "Fehler: substacks.json ungültig.", "#", "", 999, datetime.min))
     
     try:
         imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -498,9 +499,9 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 print(f"DEBUG - fetch_substack_from_email: Successfully logged in to Gmail, selected folder {folder}")
                 break
             except Exception as e:
-                print(f"❌ ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
+                print(f"ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
                 if attempt == 2:
-                    return [("Allgemeinprinting(f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999, datetime.min)]
+                    return [("Allgemein", f"Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999, datetime.min)]
                 time.sleep(2)
         
         try:
@@ -512,7 +513,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 sender_order = sender.get("order", 999)
                 print(f"DEBUG - fetch_substack_from_email: Processing sender: {sender_name}, email: {sender_email}, order: {sender_order}")
                 if not sender_email:
-                    print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
+                    print(f"ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                     continue
                 try:
                     search_query = f'(FROM "{sender_email}" SINCE {since_date})'
@@ -596,17 +597,20 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
                     posts.extend(sender_posts)
                 except Exception as e:
-                    print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
+                    print(f"ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
                     continue
             imap.logout()
             print(f"DEBUG - fetch_substack_from_email: Successfully logged out from Gmail")
         except Exception as e:
-            print(f"❌ ERROR: Unexpected error in fetch_substack_from_email: {str(e)}")
-            posts.append(("Allgemein", f"❌ Fehler beim Verarbeiten der Substack-E-Mails: {str(e)}", "#", "", 999, datetime.min))
+            print(f"ERROR: Unexpected error in fetch_substack_from_email: {str(e)}")
+            posts.append(("Allgemein", f"Fehler beim Verarbeiten der Substack-E-Mails: {str(e)}", "#", "", 999, datetime.min))
     except Exception as e:
-        print(f"❌ ERROR: Failed to connect to Gmail: {str(e)}")
-        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
+        print(f"ERROR: Failed to connect to Gmail: {str(e)}")
+        posts.append(("Allgemein", f"Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
     print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts: {[ (p[0], p[4], p[5]) for p in posts ]}")
+    with open("substack_posts_raw.txt", "w", encoding="utf-8") as f:
+        f.write(f"Raw posts: {[ (p[0], p[4], p[5]) for p in posts ]}")
+    print(f"DEBUG - fetch_substack_from_email: Saved raw posts to substack_posts_raw.txt")
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999, datetime.min)]
 
 # === Markdown rendern ===
@@ -630,7 +634,7 @@ def render_markdown(posts):
         f.write("\n".join(markdown))
     print(f"DEBUG - render_markdown: Saved raw markdown to substack_markdown_raw.txt")
     return markdown
-
+    
 # === Caixin Newsletter ===
 def score_caixin_article(title):
     title_lower = title.lower()
