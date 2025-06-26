@@ -1210,6 +1210,35 @@ def generate_briefing():
             spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
+        # Frachtraten Indizies
+    briefing.append("\n## 🚢 Frachtraten Indizies")
+    try:
+        scfi_value, pct_change, scfi_date, warning_message = fetch_scfi()
+        if warning_message:
+            send_warning_email(warning_message)
+        arrow = "→"
+        pct_change_str = "0.00"
+        if pct_change is not None:
+            pct_change_str = f"{pct_change:.2f}"
+            if pct_change > 0:
+                arrow = "↑"
+            elif pct_change < 0:
+                arrow = "↓"
+        scfi_line = f"• <a href=\"https://en.sse.net.cn/indices/scfinew.jsp\">SCFI</a>: {scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
+        # Dummy-Werte für WCI und IACA
+        wci_line = f"• WCI: 2584.00 ↓ (-8.00%, Stand {date.today().strftime('%d.%m.%Y')})"
+        iaca_line = f"• IACA: 875.00 ↑ (+2.00%, Stand {date.today().strftime('%d.%m.%Y')})"
+        briefing.extend([scfi_line, wci_line, iaca_line])
+        try:
+            with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_content = json.load(f)
+                print(f"DEBUG - generate_briefing: SCFI cache content after fetch: {cache_content}")
+        except Exception as e:
+            print(f"ERROR - generate_briefing: Failed to read SCFI cache after fetch: {str(e)}")
+    except Exception as e:
+        print(f"ERROR - generate_briefing: Failed to fetch SCFI data: {str(e)}")
+        briefing.append(f"❌ Fehler beim Abrufen der Frachtraten: {str(e)}")
+
     # Wirtschaftskalender
     briefing.append("")  # Leerzeile für Abstand
     briefing.extend(fetch_economic_calendar())
