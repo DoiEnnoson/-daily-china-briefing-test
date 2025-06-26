@@ -1,5 +1,3 @@
-SCFI-Fuktion:
-
 import requests
 import json
 import os
