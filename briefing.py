@@ -453,6 +453,7 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
+# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails at {datetime.now()}")
     posts = []
@@ -461,6 +462,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
+        # Überprüfe und konvertiere order-Werte zu int
+        for sender in substack_senders:
+            try:
+                sender["order"] = int(sender.get("order", 999))
+            except (TypeError, ValueError):
+                print(f"⚠️ Warning: Invalid order value for {sender.get('name', 'Unknown')}: {sender.get('order')}. Using 999.")
+                sender["order"] = 999
         print(f"DEBUG - fetch_substack_from_email: Loaded substacks.json: {[ (s['name'], s['email'], s['order']) for s in substack_senders ]}")
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
         print(f"DEBUG - fetch_substack_from_email: Sorted senders by order: {[ (s['name'], s['order']) for s in substack_senders ]}")
