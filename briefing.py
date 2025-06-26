@@ -1206,9 +1206,6 @@ def generate_briefing():
         briefing.append(f"\n### {source}")
         briefing.extend(fetch_news(url, max_items=30, top_n=5))
 
-    # NBS-Daten
-    briefing.append("\n## 📈 NBS – Nationale Statistikdaten")
-    briefing.extend(fetch_latest_nbs_data())
 
     # X-Stimmen
     briefing.append("\n## 📡 Stimmen & Perspektiven von X")
