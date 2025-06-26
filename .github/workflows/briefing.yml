@@ -14,12 +14,12 @@ jobs:
 
     steps:
       - name: Repository klonen
-        uses: actions/checkout@v4 # Aktualisiert auf v4 für bessere Kompatibilität
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Python installieren
-        uses: actions/setup-python@v5 # Aktualisiert auf v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -28,56 +28,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
 
-      - name: Briefing-Skript ausführen
-        run: python briefing.py
+      - name: Test-Skript für WCI-E-Mail ausführen
+        run: python test_wci_email.py
         env:
-          CONFIG: ${{ secrets.CONFIG }}
-          SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          DREWRY: ${{ secrets.DREWRY }} # Neues Secret für WCI-E-Mail-Zugang
+          DREWRY: ${{ secrets.DREWRY }}
 
-      - name: cpr_cache.json Inhalt prüfen (vor Commit)
+      - name: wci_test_log.txt Inhalt prüfen
         run: |
-          echo "Inhalt von cpr_cache.json vor dem Commit:"
-          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+          echo "Inhalt von wci_test_log.txt:"
+          cat wci_test_log.txt || echo "Datei wci_test_log.txt existiert nicht"
         continue-on-error: true
 
-      - name: scfi_cache.json Inhalt prüfen (vor Commit)
+      - name: wci_email_*.html Inhalt prüfen
         run: |
-          echo "Inhalt von scfi_cache.json vor dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
+          echo "Inhalt von wci_email_*.html:"
+          cat wci_email_*.html || echo "Keine wci_email_*.html Dateien gefunden"
         continue-on-error: true
 
-      - name: wci_cache.json Inhalt prüfen (vor Commit)
-        run: |
-          echo "Inhalt von wci_cache.json vor dem Commit:"
-          cat wci_cache.json || echo "Datei wci_cache.json existiert nicht"
-        continue-on-error: true
-
-      - name: Änderungen an Cache-Dateien committen und pushen
+      - name: Änderungen an Log- und HTML-Dateien committen und pushen
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add cpr_cache.json scfi_cache.json wci_cache.json
-          git commit -m "Update cpr_cache.json, scfi_cache.json, and wci_cache.json with latest values" || echo "Keine Änderungen zu committen"
+          git add wci_test_log.txt wci_email_*.html
+          git commit -m "Add wci_test_log.txt and wci_email_*.html from test run" || echo "Keine Änderungen zu committen"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: cpr_cache.json Inhalt prüfen (nach Commit)
-        run: |
-          echo "Inhalt von cpr_cache.json nach dem Commit:"
-          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
-        continue-on-error: true
-
-      - name: scfi_cache.json Inhalt prüfen (nach Commit)
-        run: |
-          echo "Inhalt von scfi_cache.json nach dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
-        continue-on-error: true
-
-      - name: wci_cache.json Inhalt prüfen (nach Commit)
-        run: |
-          echo "Inhalt von wci_cache.json nach dem Commit:"
-          cat wci_cache.json || echo "Datei wci_cache.json existiert nicht"
-        continue-on-error: true
