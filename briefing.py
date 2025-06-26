@@ -683,7 +683,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        # Suche nur E-Mails vom letzten Tag ACHTUNG: DAYS auf 1 gesetzt
+        # Suche nur E-Mails vom letzten Tag
         since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
@@ -747,6 +747,8 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                         break
             elif msg.get_content_type() == "text/html":
                 html = msg.get_payload(decode=True).decode(errors="ignore")
+            Perspective: Siehe hier: https://docs.python.org/3/library/email.html#email.utils.parsedate_to_datetime
+
             if not html:
                 print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
                 continue
@@ -756,22 +758,46 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             soup = BeautifulSoup(html, "lxml")
             links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
+
             for link_tag in links:
+                # Extrahiere den Titel aus dem <a>-Tag
                 title = link_tag.get_text(strip=True)
                 title_lower = title.lower()
-                if not title or len(title) < 5:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
-                    continue
+                print(f"DEBUG - fetch_caixin_from_email: Found link with text: '{title[:100]}' (length: {len(title)}, words: {len(title.split())})")
+                
+                # Prüfe, ob der Titel gültig ist
+                if not title or len(title) < 15 or len(title.split()) < 5:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' (too short or too few words)")
+                    # Versuche, den Titel aus einem benachbarten Tag zu extrahieren
+                    parent = link_tag.find_parent(["p", "h1", "h2", "h3", "div"])
+                    if parent:
+                        parent_text = parent.get_text(strip=True)
+                        if len(parent_text) > len(title) and len(parent_text.split()) >= 5:
+                            title = parent_text
+                            print(f"DEBUG - fetch_caixin_from_email: Replaced title with parent text: '{title[:100]}' (length: {len(title)}, words: {len(title.split())})")
+                    else:
+                        # Fallback auf Betreff oder andere Attribute
+                        title = (link_tag.get("title", "") or link_tag.get("aria-label", "") or subject).strip()
+                        print(f"DEBUG - fetch_caixin_from_email: Fallback to link attributes or subject: '{title[:100]}'")
+
+                # Erneute Prüfung nach Titelaktualisierung
+                title_lower = title.lower()
                 if title_lower in generic_titles:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}'")
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title[:100]}'")
                     continue
-                if len(title.split()) < 3:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title}' (less than 3 words)")
+                if len(title.split()) < 5 or len(title) < 15:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' after update (still too short or too few words)")
                     continue
+                if any(phrase in title_lower for phrase in ["click here", "read more", "view online", "unsubscribe", "subscribe"]):
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title[:100]}' (contains footer phrases)")
+                    continue
+                
                 link = link_tag.get("href", "#").strip()
-                if not link or link == "#" or "unsubscribe" in link.lower():
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
+                if not link or link == "#" or "unsubscribe" in link.lower() or "subscribe" in link.lower():
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid or footer link)")
                     continue
+                
+                # Resolve URL
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
@@ -779,11 +805,14 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
                     final_url = link
+                
                 if "caixinglobal.com" not in final_url.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
                     continue
+                
                 score = score_caixin_article(title)
                 print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
+                
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
                 else:
