@@ -683,7 +683,6 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        # Suche nur E-Mails vom letzten Tag ACHTUNG: DAYS auf 1 gesetzt
         since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
         search_query = f'FROM caixinglobal.team@102113822.mailchimpapp.com SINCE {since_date}'
         print(f"DEBUG - fetch_caixin_from_email: Executing search query: {search_query}")
@@ -722,11 +721,16 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             imap.logout()
             return []  # Leere Liste für Live-Umgebung
 
-        # Liste von generischen Titeln, die ignoriert werden sollen
         generic_titles = {
             "in depth", "cover story", "analysis", "finance", "economy", "business", "tech",
             "briefing", "news graphics", "opinion", "world", "podcast", "the wall street journal",
             "weekend long read"
+        }
+        
+        # Neue Liste für irrelevante Link-Texte
+        irrelevant_phrases = {
+            "read more", "click here", "official says", "official said", "a chinese official",
+            "learn more", "view online", "subscribe now", "full story", "continue reading"
         }
 
         scored_posts = []
@@ -756,22 +760,45 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
             soup = BeautifulSoup(html, "lxml")
             links = soup.find_all("a", href=lambda x: x and "caixinglobal" in x.lower())
             print(f"DEBUG - fetch_caixin_from_email: Found {len(links)} links with 'caixinglobal' in email ID {eid}")
+            
             for link_tag in links:
+                # Standard-Titel aus dem Link-Text
                 title = link_tag.get_text(strip=True)
                 title_lower = title.lower()
-                if not title or len(title) < 5:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short or empty)")
+                
+                # Prüfe, ob der Titel irrelevant ist
+                if not title or len(title) < 10 or title_lower in generic_titles or title_lower in irrelevant_phrases or len(title.split()) < 5:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with title '{title}' (too short, generic, or irrelevant)")
                     continue
-                if title_lower in generic_titles:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping generic title '{title}'")
+                
+                # Versuche, einen besseren Titel aus der Umgebung zu finden
+                better_title = None
+                parent = link_tag.find_parent(["p", "h1", "h2", "h3", "div"])
+                if parent:
+                    # Suche nach einem Titel in einem übergeordneten Element
+                    title_tag = parent.find_previous(["h1", "h2", "h3", "p"]) or parent
+                    candidate = title_tag.get_text(strip=True)
+                    candidate_lower = candidate.lower()
+                    if (candidate and len(candidate) >= 10 and len(candidate.split()) >= 5 and 
+                        candidate_lower not in generic_titles and candidate_lower not in irrelevant_phrases):
+                        better_title = candidate
+                        print(f"DEBUG - fetch_caixin_from_email: Found better title '{better_title[:50]}...' from parent element")
+                
+                # Fallback auf Betreff, wenn kein besserer Titel gefunden wurde
+                final_title = better_title or title or subject
+                if final_title == subject:
+                    print(f"DEBUG - fetch_caixin_from_email: Using email subject as title: '{final_title[:50]}...'")
+                
+                # Weitere Validierung
+                if final_title.lower() in generic_titles or final_title.lower() in irrelevant_phrases or len(final_title.split()) < 5:
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping final title '{final_title[:50]}...' (generic or too short)")
                     continue
-                if len(title.split()) < 3:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping title '{title}' (less than 3 words)")
-                    continue
+                
                 link = link_tag.get("href", "#").strip()
                 if not link or link == "#" or "unsubscribe" in link.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link}' (invalid or unsubscribe)")
                     continue
+                
                 try:
                     response = requests.head(link, allow_redirects=True, timeout=5)
                     final_url = response.url
@@ -779,15 +806,17 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
                     final_url = link
+                
                 if "caixinglobal.com" not in final_url.lower():
                     print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
                     continue
-                score = score_caixin_article(title)
-                print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
+                
+                score = score_caixin_article(final_title)
+                print(f"DEBUG - fetch_caixin_from_email: Article '{final_title[:50]}...' scored {score}")
                 if score > 0:
-                    scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
+                    scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
                 else:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
+                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{final_title[:50]}...' with score 0")
 
         scored_posts.sort(reverse=True, key=lambda x: x[0])
         posts = [item[1] for item in scored_posts[:max_results]]
