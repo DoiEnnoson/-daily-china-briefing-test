@@ -167,4 +167,53 @@ def generate_briefing():
         return "Daily China Briefing: No WCI data available"
     
     # Wähle die neueste Datei (nach Dateiname oder Änderungszeit)
-    latest_html = max(html_files, key
+    latest_html = max(html_files, key=os.path.getmtime)
+    logger.debug(f"Using latest HTML file: {latest_html}")
+    
+    # Extrahiere WCI-Wert und Prozentsatz
+    wci_value, percent_change = extract_wci_from_html(latest_html)
+    if not wci_value:
+        logger.error("Failed to extract WCI value")
+        return "Daily China Briefing: Failed to extract WCI data"
+    
+    # Erstelle den Bericht
+    report_date = datetime.now().strftime("%d %b %Y")
+    wci_text = f"WCI: {wci_value}"
+    if percent_change:
+        wci_text += f", {percent_change} w/w"
+    
+    report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+World Container Index
+{'-' * 20}
+{wci_text}
+{'-' * 20}
+[Weitere Inhalte hier einfügen]
+"""
+    
+    logger.info("Generated briefing report")
+    logger.debug(f"Report content:\n{report}")
+    
+    # Speichere den Bericht
+    try:
+        with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+            f.write(report)
+        logger.info("Saved briefing to daily_briefing.md")
+    except Exception as e:
+        logger.error(f"Failed to save briefing: {str(e)}")
+        return "Daily China Briefing: Error saving report"
+    
+    return report
+
+if __name__ == "__main__":
+    logger.debug("Starting main execution")
+    # Hole die neueste Drewry-E-Mail
+    html_file = fetch_wci_email()
+    if html_file:
+        # Generiere den Bericht, wenn die E-Mail erfolgreich abgerufen wurde
+        report = generate_briefing()
+        print(report)
+    else:
+        logger.error("Failed to fetch email, skipping briefing generation")
+        print("Daily China Briefing: Failed to fetch WCI email")
+    logger.debug("Main execution completed")
