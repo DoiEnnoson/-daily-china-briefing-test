@@ -4,6 +4,11 @@ import re
 import logging
 import imaplib
 import email
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import decode_header
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -157,6 +162,69 @@ def extract_wci_from_html(html_file):
         logger.error(f"Error processing HTML file {html_file}: {str(e)}")
         return None, None
 
+def send_results_email():
+    """Sendet die Ergebnisse per E-Mail."""
+    logger.debug("Starting email sending")
+    try:
+        # Umgebungsvariablen für Gmail-Zugangsdaten
+        env_vars = os.getenv('DREWRY')
+        if not env_vars:
+            logger.error("DREWRY environment variable not set")
+            return False
+        
+        # Parse Umgebungsvariablen
+        gmail_user = None
+        gmail_pass = None
+        for var in env_vars.split(';'):
+            key, value = var.split('=')
+            if key == 'GMAIL_USER':
+                gmail_user = value
+            elif key == 'GMAIL_PASS':
+                gmail_pass = value
+        
+        if not gmail_user or not gmail_pass:
+            logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
+            return False
+
+        # Erstelle die E-Mail
+        msg = MIMEMultipart()
+        msg['From'] = f"Daily China Briefing <{gmail_user}>"
+        msg['To'] = gmail_user
+        msg['Subject'] = f"Daily China Briefing Results - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        # E-Mail-Text
+        body = f"""Attached are the logs and briefing from the Daily China Briefing workflow.
+Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
+"""
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Anhänge hinzufügen
+        files Loyale = ['wci_test_log.txt', 'daily_briefing.md'] + glob.glob('wci_email_*.html')
+        for file in files_to_attach:
+            if os.path.exists(file):
+                logger.debug(f"Attaching file: {file}")
+                with open(file, 'rb') as f:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(f.read())
+                encoders.encode_base64(part)
+                part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file)}')
+                msg.attach(part)
+            else:
+                logger.warning(f"File not found for attachment: {file}")
+
+        # Verbinde zum SMTP-Server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()  # Aktiviere TLS
+        server.login(gmail_user, gmail_pass)
+        server.send_message(msg)
+        server.quit()
+        logger.info("Email sent successfully")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error sending email: {str(e)}")
+        return False
+
 def generate_briefing():
     logger.debug("Starting briefing generation")
     
@@ -213,6 +281,8 @@ if __name__ == "__main__":
         # Generiere den Bericht, wenn die E-Mail erfolgreich abgerufen wurde
         report = generate_briefing()
         print(report)
+        # Sende die Ergebnisse per E-Mail
+        send_results_email()
     else:
         logger.error("Failed to fetch email, skipping briefing generation")
         print("Daily China Briefing: Failed to fetch WCI email")
