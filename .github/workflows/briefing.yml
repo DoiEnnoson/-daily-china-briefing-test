@@ -38,14 +38,6 @@ jobs:
           echo "Inhalt von wci_email_*.html:"
           cat wci_email_*.html || echo "No wci_email_*.html files found"
 
-      - name: Run briefing.py
-        run: python briefing.py
-
-      - name: Show briefing_log.txt content
-        run: |
-          echo "Inhalt von briefing_log.txt:"
-          cat briefing_log.txt || echo "No briefing_log.txt found"
-
       - name: Show daily_briefing.md content
         run: |
           echo "Inhalt von daily_briefing.md:"
@@ -66,13 +58,13 @@ jobs:
             Run ID: ${{ github.run_id }}
             Date: ${{ github.event.schedule || 'Manual Run' }}
           attachments: |
-            wci_test_log.txt,briefing_log.txt,daily_briefing.md,wci_email_*.html
+            wci_test_log.txt,daily_briefing.md,wci_email_*.html
           secure: true
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add wci_test_log.txt wci_email_*.html briefing_log.txt daily_briefing.md
+          git add wci_test_log.txt wci_email_*.html daily_briefing.md
           git commit -m "Add WCI email, logs, and briefing from test run" || echo "No changes to commit"
           git push
