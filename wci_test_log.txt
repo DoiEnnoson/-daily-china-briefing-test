@@ -116,3 +116,33 @@ Daily China Briefing - 26 Jun 2025
 2025-06-26 21:02:54,825 - DEBUG - Attaching file: wci_email_7904.html
 2025-06-26 21:02:56,873 - INFO - Email sent successfully
 2025-06-26 21:02:56,873 - DEBUG - Main execution completed
+2025-06-26 21:19:07,180 - DEBUG - Starting main execution
+2025-06-26 21:19:07,180 - DEBUG - Starting briefing generation
+2025-06-26 21:19:07,180 - DEBUG - Loading cache from /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json
+2025-06-26 21:19:07,180 - DEBUG - Successfully loaded cache: {'2025-06-26': {'value': 2983.0, 'api_date': '26.06.2025'}}
+2025-06-26 21:19:07,180 - DEBUG - Starting email fetch
+2025-06-26 21:19:07,180 - DEBUG - Gmail user: hadobrockmeyer@gmail.com, pass: ****************
+2025-06-26 21:19:08,504 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "26-Jun-2025")
+2025-06-26 21:19:08,708 - DEBUG - Fetching email ID: b'7904'
+2025-06-26 21:19:09,017 - DEBUG - Email subject: Drewry World Container Index: Thursday, 26 June 2025
+2025-06-26 21:19:09,017 - DEBUG - Saving HTML content to wci_email_7904.html
+2025-06-26 21:19:09,018 - INFO - Successfully saved email content to wci_email_7904.html
+2025-06-26 21:19:09,196 - DEBUG - Attempting to read HTML file: wci_email_7904.html
+2025-06-26 21:19:09,203 - DEBUG - Extracted text (first 500 chars): Drewry World Container Index - Weekly assessmentDear Hado26 June 2025World Container Index - 26 Jun26 Jun 2025: Drewry’s World Container Index decreased 9% to $2,983 per 40ft container this week.Read moreContainer Freight Rate Insight - spot rates against 6,300 global lanesTrusted by many of the world's leading brands- Search rates across 6,300 global port pairs- All lanes updated monthly (top 1,900 lanes updated fortnightly)- Monthly Insight report, providing commentary and analysis of key mark
+2025-06-26 21:19:09,216 - INFO - Extracted WCI: 2983.00, Date: 26.06.2025
+2025-06-26 21:19:09,217 - DEBUG - Saving cache to /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json: {'2025-06-26': {'value': 2983.0, 'email_date': '26.06.2025'}}
+2025-06-26 21:19:09,217 - INFO - Successfully wrote cache to /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json
+2025-06-26 21:19:09,217 - DEBUG - Report content:
+Daily China Briefing - 26 Jun 2025
+==================================================
+## 🚢 Frachtraten Indizies
+• WCI: 2983.00 (Stand 26.06.2025)
+
+2025-06-26 21:19:09,217 - INFO - Saved briefing to daily_briefing.md
+2025-06-26 21:19:09,217 - DEBUG - Starting email sending
+2025-06-26 21:19:09,217 - DEBUG - Attaching file: wci_test_log.txt
+2025-06-26 21:19:09,218 - DEBUG - Attaching file: daily_briefing.md
+2025-06-26 21:19:09,218 - DEBUG - Attaching file: WCI/wci_cache.json
+2025-06-26 21:19:09,218 - DEBUG - Attaching file: wci_email_7904.html
+2025-06-26 21:19:11,176 - INFO - Email sent successfully
+2025-06-26 21:19:11,176 - DEBUG - Main execution completed
