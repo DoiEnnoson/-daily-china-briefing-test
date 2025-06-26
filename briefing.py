@@ -464,6 +464,17 @@ import json
 import time
 
 # === Substack aus E-Mails abrufen ===
+from collections import defaultdict
+from datetime import datetime, timedelta
+import imaplib
+import email
+from email.utils import parsedate_to_datetime
+from bs4 import BeautifulSoup
+import os
+import json
+import time
+
+# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
     posts = []
@@ -621,7 +632,6 @@ def render_markdown(posts):
         if teaser:
             markdown.append(f'  {teaser}')
     return markdown
-
 # === Caixin Newsletter ===
 def score_caixin_article(title):
     title_lower = title.lower()
