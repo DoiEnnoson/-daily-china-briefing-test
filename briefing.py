@@ -461,6 +461,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
+        print(f"DEBUG - fetch_substack_from_email: Loaded substacks.json: {[ (s['name'], s['email'], s['order']) for s in substack_senders ]}")
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
         email_counts = defaultdict(int)
         for sender in substack_senders:
@@ -497,6 +498,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 sender_email = sender.get("email")
                 sender_name = sender.get("name")
                 sender_order = sender.get("order", 999)
+                print(f"DEBUG - fetch_substack_from_email: Processing sender: {sender_name}, email: {sender_email}, order: {sender_order}")
                 if not sender_email:
                     print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                     continue
@@ -592,6 +594,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         print(f"❌ ERROR: Failed to connect to Gmail: {str(e)}")
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
+    print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts")
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999, datetime.min)]
 
 # === Markdown rendern ===
@@ -609,7 +612,10 @@ def render_markdown(posts):
         markdown.append(f'• <a href="{link}">{title}</a>')
         if teaser:
             markdown.append(f'  {teaser}')
+    print(f"DEBUG - render_markdown: Generated markdown with {len(markdown)} lines")
     return markdown
+
+
 # === Caixin Newsletter ===
 def score_caixin_article(title):
     title_lower = title.lower()
