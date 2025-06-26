@@ -454,7 +454,7 @@ def extract_source(title):
 
 # === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
-    print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
+    print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails at {datetime.now()}")
     posts = []
     try:
         print(f"DEBUG - fetch_substack_from_email: Current working directory: {os.getcwd()}")
@@ -463,6 +463,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             substack_senders = json.load(f)
         print(f"DEBUG - fetch_substack_from_email: Loaded substacks.json: {[ (s['name'], s['email'], s['order']) for s in substack_senders ]}")
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
+        print(f"DEBUG - fetch_substack_from_email: Sorted senders by order: {[ (s['name'], s['order']) for s in substack_senders ]}")
         email_counts = defaultdict(int)
         for sender in substack_senders:
             email_counts[sender.get("email")] += 1
@@ -494,6 +495,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         
         try:
             since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
+            print(f"DEBUG - fetch_substack_from_email: Searching emails since {since_date}")
             for sender in substack_senders:
                 sender_email = sender.get("email")
                 sender_name = sender.get("name")
@@ -594,12 +596,12 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except Exception as e:
         print(f"❌ ERROR: Failed to connect to Gmail: {str(e)}")
         posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
-    print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts")
+    print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts: {[ (p[0], p[4], p[5]) for p in posts ]}")
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999, datetime.min)]
 
 # === Markdown rendern ===
 def render_markdown(posts):
-    print(f"DEBUG - render_markdown: Processing {len(posts)} posts")
+    print(f"DEBUG - render_markdown: Processing {len(posts)} posts at {datetime.now()}")
     markdown = []
     current_sender = None
     # Sortiere primär nach sender_order (aufsteigend) und sekundär nach mail_date (absteigend)
@@ -614,7 +616,6 @@ def render_markdown(posts):
             markdown.append(f'  {teaser}')
     print(f"DEBUG - render_markdown: Generated markdown with {len(markdown)} lines")
     return markdown
-
 
 # === Caixin Newsletter ===
 def score_caixin_article(title):
