@@ -453,6 +453,16 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
+from collections import defaultdict
+from datetime import datetime, timedelta
+import imaplib
+import email
+from email.utils import parsedate_to_datetime
+from bs4 import BeautifulSoup
+import os
+import json
+import time
+
 # === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails")
@@ -472,94 +482,145 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
     except FileNotFoundError:
         print("❌ ERROR: substacks.json not found! Using empty list.")
         substack_senders = []
-        posts.append(("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999))
+        posts.append(("Allgemein", "❌ Fehler: substacks.json nicht gefunden.", "#", "", 999, datetime.min))
     except json.JSONDecodeError:
         print("❌ ERROR: substacks.json invalid!")
         substack_senders = []
-        posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999))
-    
-    for attempt in range(3):
-        try:
-            imap = imaplib.IMAP4_SSL("imap.gmail.com")
-            imap.login(email_user, email_password)
-            imap.select(folder)
-            break
-        except Exception as e:
-            print(f"❌ ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
-            if attempt == 2:
-                return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999)]
-            time.sleep(2)
+        posts.append(("Allgemein", "❌ Fehler: substacks.json ungültig.", "#", "", 999, datetime.min))
     
     try:
-        since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
-        for sender in substack_senders:
-            sender_email = sender.get("email")
-            sender_name = sender.get("name")
-            sender_order = sender.get("order", 999)
-            if not sender_email:
-                print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
-                continue
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        for attempt in range(3):
             try:
-                search_query = f'(FROM "{sender_email}" SINCE {since_date})'
-                print(f"DEBUG - fetch_substack_from_email: Searching for: {search_query}")
-                typ, data = imap.search(None, search_query)
-                if typ != "OK":
-                    print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
+                imap.login(email_user, email_password)
+                imap.select(folder)
+                print(f"DEBUG - fetch_substack_from_email: Successfully logged in to Gmail, selected folder {folder}")
+                break
+            except Exception as e:
+                print(f"❌ ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
+                if attempt == 2:
+                    return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999, datetime.min)]
+                time.sleep(2)
+        
+        try:
+            since_date = (datetime.now() - timedelta(days=2)).strftime("%d-%b-%Y")
+            for sender in substack_senders:
+                sender_email = sender.get("email")
+                sender_name = sender.get("name")
+                sender_order = sender.get("order", 999)
+                if not sender_email:
+                    print(f"❌ ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
                     continue
-                email_ids = data[0].split()[-max_results_per_sender:]
-                print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
-                if not email_ids:
-                    print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
-                    continue
-                sender_posts = []
-                for eid in email_ids:
-                    typ, msg_data = imap.fetch(eid, "(RFC822)")
+                try:
+                    search_query = f'(FROM "{sender_email}" SINCE {since_date})'
+                    print(f"DEBUG - fetch_substack_from_email: Searching for: {search_query}")
+                    typ, data = imap.search(None, search_query)
                     if typ != "OK":
-                        print(f"DEBUG - fetch_substack_from_email: Error fetching mail {eid} for {sender_name}.")
+                        print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
                         continue
-                    msg = email.message_from_bytes(msg_data[0][1])
-                    date_str = msg["Date"]
-                    mail_date = None
-                    if date_str:
-                        try:
-                            mail_date = parsedate_to_datetime(date_str)
-                            print(f"DEBUG - fetch_substack_from_email: Date for mail {eid} from {sender_name}: {mail_date}")
-                        except (TypeError, ValueError) as e:
-                            print(f"DEBUG - fetch_substack_from_email: Invalid date in mail {eid} from {sender_name}: {date_str}, Error: {str(e)}")
-                    html = None
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/html":
-                                html = part.get_payload(decode=True).decode(errors="ignore")
-                                break
-                    elif msg.get_content_type() == "text/html":
-                        html = msg.get_payload(decode=True).decode(errors="ignore")
-                    if not html:
-                        print(f"DEBUG - fetch_substack_from_email: No HTML content in mail {eid} from {sender_name}.")
+                    email_ids = data[0].split()[-max_results_per_sender:]
+                    print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
+                    if not email_ids:
+                        print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
                         continue
-                    soup = BeautifulSoup(html, "lxml")
-                    title_tag = (soup.find("h1") or 
-                                soup.find("h2") or 
-                                soup.find("h3") or 
-                                soup.find("p", class_=lambda x: x and "title" in x.lower()) or
-                                soup.find("div", class_=lambda x: x and "title" in x.lower()) or
-                                soup.find("span", class_=lambda x: x and "title" in x.lower()))
-                    if not title_tag:
-                        link_tag = soup.find("a", href=lambda x: x and "/post/" in x)
-                        if link_tag and link_tag.text.strip():
-                            title = link_tag.text.strip()
+                    sender_posts = []
+                    for eid in email_ids:
+                        typ, msg_data = imap.fetch(eid, "(RFC822)")
+                        if typ != "OK":
+                            print(f"DEBUG - fetch_substack_from_email: Error fetching mail {eid} for {sender_name}.")
+                            continue
+                        msg = email.message_from_bytes(msg_data[0][1])
+                        date_str = msg["Date"]
+                        mail_date = None
+                        if date_str:
+                            try:
+                                mail_date = parsedate_to_datetime(date_str)
+                                print(f"DEBUG - fetch_substack_from_email: Date for mail {eid} from {sender_name}: {mail_date}")
+                            except (TypeError, ValueError) as e:
+                                print(f"DEBUG - fetch_substack_from_email: Invalid date in mail {eid} from {sender_name}: {date_str}, Error: {str(e)}")
+                        html = None
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == "text/html":
+                                    html = part.get_payload(decode=True).decode(errors="ignore")
+                                    break
+                        elif msg.get_content_type() == "text/html":
+                            html = msg.get_payload(decode=True).decode(errors="ignore")
+                        if not html:
+                            print(f"DEBUG - fetch_substack_from_email: No HTML content in mail {eid} from {sender_name}.")
+                            continue
+                        soup = BeautifulSoup(html, "lxml")
+                        title_tag = (soup.find("h1") or 
+                                    soup.find("h2") or 
+                                    soup.find("h3") or 
+                                    soup.find("p", class_=lambda x: x and "title" in x.lower()) or
+                                    soup.find("div", class_=lambda x: x and "title" in x.lower()) or
+                                    soup.find("span", class_=lambda x: x and "title" in x.lower()))
+                        if not title_tag:
+                            link_tag = soup.find("a", href=lambda x: x and "/post/" in x)
+                            if link_tag and link_tag.text.strip():
+                                title = link_tag.text.strip()
+                            else:
+                                title = msg["Subject"].strip() if msg["Subject"] else "Unbenannter Beitrag"
                         else:
-                            title = msg["Subject"].strip() if msg["Subject"] else "Unbenannter Beitrag"
-                    else:
-                        title = title_sortiert = sorted(posts, key=lambda x: (x[4], -(x[5] or datetime(1970, 1, 1)).timestamp()))
-                    for sender_name, title, link, teaser, sender_order, mail_date in sorted_posts:
-                        if sender_name != current_sender:
-                            markdown.append(f"\n### {sender_name}")
-                            current_sender = sender_name
-                        markdown.append(f'• <a href="{link}">{title}</a>')
-                        if teaser:
-                            markdown.append(f'  {teaser}')
-                    return markdown
+                            title = title_tag.text.strip()
+                        print(f"DEBUG - fetch_substack_from_email: Title for {sender_name}: {title}")
+                        link_tag = soup.find("a", href=lambda x: x and ("app-link/post" in x or "/post/" in x))
+                        if not link_tag:
+                            link_tag = soup.find("a", href=lambda x: x and "https://" in x)
+                        link = link_tag["href"].strip() if link_tag else "#"
+                        teaser = ""
+                        if title_tag or link_tag:
+                            start_tag = title_tag or link_tag
+                            content_candidates = start_tag.find_all_next(string=True)
+                            found_title = False
+                            teaser_parts = []
+                            for text in content_candidates:
+                                stripped = text.strip()
+                                if not found_title and stripped and (stripped in title or stripped in link):
+                                    found_title = True
+                                    continue
+                                if (found_title and 30 < len(stripped) < 500 and 
+                                    "dear reader" not in stripped.lower() and 
+                                    "subscribe" not in stripped.lower() and 
+                                    "view in browser" not in stripped.lower()):
+                                    teaser_parts.append(stripped)
+                                    if len(" ".join(teaser_parts)) > 100:
+                                        break
+                            teaser = " ".join(teaser_parts).strip()[:300]
+                        print(f"DEBUG - fetch_substack_from_email: Teaser for {sender_name}: {teaser}")
+                        sender_posts.append((sender_name, title, link, teaser, sender_order, mail_date))
+                    sender_posts.sort(key=lambda x: x[5] or datetime(1970, 1, 1), reverse=True)
+                    posts.extend(sender_posts)
+                except Exception as e:
+                    print(f"❌ ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
+                    continue
+            imap.logout()
+            print(f"DEBUG - fetch_substack_from_email: Successfully logged out from Gmail")
+        except Exception as e:
+            print(f"❌ ERROR: Unexpected error in fetch_substack_from_email: {str(e)}")
+            posts.append(("Allgemein", f"❌ Fehler beim Verarbeiten der Substack-E-Mails: {str(e)}", "#", "", 999, datetime.min))
+    except Exception as e:
+        print(f"❌ ERROR: Failed to connect to Gmail: {str(e)}")
+        posts.append(("Allgemein", f"❌ Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
+    return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999, datetime.min)]
+
+# === Markdown rendern ===
+def render_markdown(posts):
+    print(f"DEBUG - render_markdown: Processing {len(posts)} posts")
+    markdown = []
+    current_sender = None
+    # Sortiere primär nach sender_order (aufsteigend) und sekundär nach mail_date (absteigend)
+    sorted_posts = sorted(posts, key=lambda x: (x[4], -(x[5] or datetime(1970, 1, 1)).timestamp()))
+    print(f"DEBUG - render_markdown: Sorted posts: {[ (p[0], p[4], p[5]) for p in sorted_posts ]}")
+    for sender_name, title, link, teaser, sender_order, mail_date in sorted_posts:
+        if sender_name != current_sender:
+            markdown.append(f"\n### {sender_name}")
+            current_sender = sender_name
+        markdown.append(f'• <a href="{link}">{title}</a>')
+        if teaser:
+            markdown.append(f'  {teaser}')
+    return markdown
 
 # === Caixin Newsletter ===
 def score_caixin_article(title):
