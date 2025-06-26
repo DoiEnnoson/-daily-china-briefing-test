@@ -453,7 +453,6 @@ def extract_source(title):
     return "Unknown Source"
 
 # === Substack aus E-Mails abrufen ===
-# === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
     print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails at {datetime.now()}")
     posts = []
@@ -462,10 +461,13 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
         print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
-        # Überprüfe und konvertiere order-Werte zu int
+        # Validierung der order-Werte
         for sender in substack_senders:
             try:
                 sender["order"] = int(sender.get("order", 999))
+                if sender["order"] < 1:
+                    print(f"⚠️ Warning: Invalid order value {sender['order']} for {sender.get('name', 'Unknown')}. Setting to 999.")
+                    sender["order"] = 999
             except (TypeError, ValueError):
                 print(f"⚠️ Warning: Invalid order value for {sender.get('name', 'Unknown')}: {sender.get('order')}. Using 999.")
                 sender["order"] = 999
@@ -498,7 +500,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             except Exception as e:
                 print(f"❌ ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
                 if attempt == 2:
-                    return [("Allgemein", f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999, datetime.min)]
+                    return [("Allgemeinprinting(f"❌ Fehler beim Verbinden mit Gmail nach 3 Versuchen: {str(e)}", "#", "", 999, datetime.min)]
                 time.sleep(2)
         
         try:
@@ -623,6 +625,10 @@ def render_markdown(posts):
         if teaser:
             markdown.append(f'  {teaser}')
     print(f"DEBUG - render_markdown: Generated markdown with {len(markdown)} lines")
+    # Speichere rohe Markdown-Ausgabe für Debugging
+    with open("substack_markdown_raw.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(markdown))
+    print(f"DEBUG - render_markdown: Saved raw markdown to substack_markdown_raw.txt")
     return markdown
 
 # === Caixin Newsletter ===
