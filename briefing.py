@@ -455,11 +455,11 @@ def extract_source(title):
 # === Substack aus E-Mails abrufen ===
 # === Substack aus E-Mails abrufen ===
 def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_results_per_sender=5):
-    print(f"DEBUG - fetch_substack_from_email: Starting to fetch Substack emails at {datetime.now()}")
+    print(f"DEBUG - fetch_substack_from_email: Starting at {datetime.now()}")
     posts = []
     try:
-        print(f"DEBUG - fetch_substack_from_email: Current working directory: {os.getcwd()}")
-        print(f"DEBUG - fetch_substack_from_email: Does substacks.json exist?: {os.path.exists('substacks.json')}")
+        print(f"DEBUG - fetch_substack_from_email: CWD: {os.getcwd()}")
+        print(f"DEBUG - fetch_substack_from_email: substacks.json exists?: {os.path.exists('substacks.json')}")
         with open("substacks.json", "r") as f:
             substack_senders = json.load(f)
         # Validierung der order-Werte
@@ -467,22 +467,22 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             try:
                 sender["order"] = int(sender.get("order", 999))
                 if sender["order"] < 1:
-                    print(f"⚠️ Warning: Invalid order value {sender['order']} for {sender.get('name', 'Unknown')}. Setting to 999.")
+                    print(f"WARNING: Invalid order {sender['order']} for {sender.get('name', 'Unknown')}. Setting to 999.")
                     sender["order"] = 999
             except (TypeError, ValueError):
-                print(f"⚠️ Warning: Invalid order value for {sender.get('name', 'Unknown')}: {sender.get('order')}. Using 999.")
+                print(f"WARNING: Invalid order for {sender.get('name', 'Unknown')}: {sender.get('order')}. Using 999.")
                 sender["order"] = 999
         print(f"DEBUG - fetch_substack_from_email: Loaded substacks.json: {[ (s['name'], s['email'], s['order']) for s in substack_senders ]}")
         substack_senders = sorted(substack_senders, key=lambda x: x["order"])
-        print(f"DEBUG - fetch_substack_from_email: Sorted senders by order: {[ (s['name'], s['order']) for s in substack_senders ]}")
+        print(f"DEBUG - fetch_substack_from_email: Sorted senders: {[ (s['name'], s['order']) for s in substack_senders ]}")
         email_counts = defaultdict(int)
         for sender in substack_senders:
             email_counts[sender.get("email")] += 1
         duplicates = [email for email, count in email_counts.items() if count > 1 and email]
         if duplicates:
-            print(f"⚠️ Warning: Duplicate email addresses in substacks.json: {duplicates}")
+            print(f"WARNING: Duplicate emails in substacks.json: {duplicates}")
     except FileNotFoundError:
-        print("ERROR: substacks.json not found! Using empty list.")
+        print("ERROR: substacks.json not found!")
         substack_senders = []
         posts.append(("Allgemein", "Fehler: substacks.json nicht gefunden.", "#", "", 999, datetime.min))
     except json.JSONDecodeError:
@@ -496,7 +496,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
             try:
                 imap.login(email_user, email_password)
                 imap.select(folder)
-                print(f"DEBUG - fetch_substack_from_email: Successfully logged in to Gmail, selected folder {folder}")
+                print(f"DEBUG - fetch_substack_from_email: Logged in to Gmail, folder: {folder}")
                 break
             except Exception as e:
                 print(f"ERROR: Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
@@ -511,21 +511,21 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                 sender_email = sender.get("email")
                 sender_name = sender.get("name")
                 sender_order = sender.get("order", 999)
-                print(f"DEBUG - fetch_substack_from_email: Processing sender: {sender_name}, email: {sender_email}, order: {sender_order}")
+                print(f"DEBUG - fetch_substack_from_email: Processing: {sender_name}, email: {sender_email}, order: {sender_order}")
                 if not sender_email:
-                    print(f"ERROR: Keine E-Mail-Adresse für {sender_name} angegeben.")
+                    print(f"ERROR: No email for {sender_name}.")
                     continue
                 try:
                     search_query = f'(FROM "{sender_email}" SINCE {since_date})'
-                    print(f"DEBUG - fetch_substack_from_email: Searching for: {search_query}")
+                    print(f"DEBUG - fetch_substack_from_email: Search query: {search_query}")
                     typ, data = imap.search(None, search_query)
                     if typ != "OK":
-                        print(f"DEBUG - fetch_substack_from_email: IMAP search error for {sender_name} ({sender_email}): {data}")
+                        print(f"DEBUG - fetch_substack_from_email: IMAP error for {sender_name} ({sender_email}): {data}")
                         continue
                     email_ids = data[0].split()[-max_results_per_sender:]
-                    print(f"DEBUG - fetch_substack_from_email: Found email IDs for {sender_name}: {email_ids}")
+                    print(f"DEBUG - fetch_substack_from_email: Found {len(email_ids)} emails for {sender_name}: {email_ids}")
                     if not email_ids:
-                        print(f"DEBUG - fetch_substack_from_email: No emails found for {sender_name} in the last 2 days.")
+                        print(f"DEBUG - fetch_substack_from_email: No emails for {sender_name} in last 2 days.")
                         continue
                     sender_posts = []
                     for eid in email_ids:
@@ -551,7 +551,7 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                         elif msg.get_content_type() == "text/html":
                             html = msg.get_payload(decode=True).decode(errors="ignore")
                         if not html:
-                            print(f"DEBUG - fetch_substack_from_email: No HTML content in mail {eid} from {sender_name}.")
+                            print(f"DEBUG - fetch_substack_from_email: No HTML in mail {eid} from {sender_name}.")
                             continue
                         soup = BeautifulSoup(html, "lxml")
                         title_tag = (soup.find("h1") or 
@@ -600,16 +600,16 @@ def fetch_substack_from_email(email_user, email_password, folder="INBOX", max_re
                     print(f"ERROR: Error processing {sender_name} ({sender_email}): {str(e)}")
                     continue
             imap.logout()
-            print(f"DEBUG - fetch_substack_from_email: Successfully logged out from Gmail")
+            print(f"DEBUG - fetch_substack_from_email: Logged out from Gmail")
         except Exception as e:
             print(f"ERROR: Unexpected error in fetch_substack_from_email: {str(e)}")
             posts.append(("Allgemein", f"Fehler beim Verarbeiten der Substack-E-Mails: {str(e)}", "#", "", 999, datetime.min))
     except Exception as e:
         print(f"ERROR: Failed to connect to Gmail: {str(e)}")
         posts.append(("Allgemein", f"Fehler beim Verbinden mit Gmail: {str(e)}", "#", "", 999, datetime.min))
-    print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts: {[ (p[0], p[4], p[5]) for p in posts ]}")
+    print(f"DEBUG - fetch_substack_from_email: Returning {len(posts)} posts: {[ (p[0], p[4], str(p[5])) for p in posts ]}")
     with open("substack_posts_raw.txt", "w", encoding="utf-8") as f:
-        f.write(f"Raw posts: {[ (p[0], p[4], p[5]) for p in posts ]}")
+        f.write(json.dumps([(p[0], p[4], str(p[5])) for p in posts], indent=2))
     print(f"DEBUG - fetch_substack_from_email: Saved raw posts to substack_posts_raw.txt")
     return posts if posts else [("Allgemein", "Keine neuen Substack-Mails gefunden.", "#", "", 999, datetime.min)]
 
@@ -620,7 +620,10 @@ def render_markdown(posts):
     current_sender = None
     # Sortiere primär nach sender_order (aufsteigend) und sekundär nach mail_date (absteigend)
     sorted_posts = sorted(posts, key=lambda x: (x[4], -(x[5] or datetime(1970, 1, 1)).timestamp()))
-    print(f"DEBUG - render_markdown: Sorted posts: {[ (p[0], p[4], p[5]) for p in sorted_posts ]}")
+    print(f"DEBUG - render_markdown: Sorted posts: {[ (p[0], p[4], str(p[5])) for p in sorted_posts ]}")
+    # Prüfe, ob die Sortierung korrekt ist
+    if sorted_posts and sorted_posts[0][0] != "China Business Spotlight":
+        print(f"WARNING: First post is from {sorted_posts[0][0]} (order: {sorted_posts[0][4]}), expected 'China Business Spotlight' (order: 1)")
     for sender_name, title, link, teaser, sender_order, mail_date in sorted_posts:
         if sender_name != current_sender:
             markdown.append(f"\n### {sender_name}")
@@ -629,7 +632,6 @@ def render_markdown(posts):
         if teaser:
             markdown.append(f'  {teaser}')
     print(f"DEBUG - render_markdown: Generated markdown with {len(markdown)} lines")
-    # Speichere rohe Markdown-Ausgabe für Debugging
     with open("substack_markdown_raw.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(markdown))
     print(f"DEBUG - render_markdown: Saved raw markdown to substack_markdown_raw.txt")
