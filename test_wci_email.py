@@ -21,6 +21,7 @@ def test_wci_email():
     
     # Secret aus Umgebungsvariablen laden
     drewry_config = os.getenv("DREWRY")
+    logger.debug(f"DREWRY environment variable: {drewry_config if drewry_config else 'Not found'}")
     if not drewry_config:
         logger.error("DREWRY environment variable not found")
         return
@@ -31,22 +32,24 @@ def test_wci_email():
         email_user = mail_config.get("GMAIL_USER")
         email_password = mail_config.get("GMAIL_PASS")
         if not email_user or not email_password:
-            logger.error("Missing GMAIL_USER or GMAIL_PASS in DREWRY secret")
+            logger.error(f"Missing GMAIL_USER or GMAIL_PASS in DREWRY secret. Config: {mail_config}")
             return
-        logger.debug(f"Successfully parsed DREWRY secret: GMAIL_USER={email_user}")
+        logger.debug(f"Successfully parsed DREWRY secret: GMAIL_USER={email_user}, GMAIL_PASS={'*' * len(email_password)}")
     except Exception as e:
         logger.error(f"Failed to parse DREWRY secret: {str(e)}")
         return
 
     # Verbindung zu Gmail herstellen
     try:
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        logger.debug("Connecting to Gmail IMAP server")
+        logger.debug("Attempting to connect to Gmail IMAP server (imap.gmail.com:993)")
+        imap = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        logger.debug(f"Connecting to Gmail with user: {email_user}")
         for attempt in range(3):
             try:
                 imap.login(email_user, email_password)
+                logger.debug("Successfully logged in to Gmail")
                 imap.select("INBOX")
-                logger.debug("Successfully logged in to Gmail and selected INBOX")
+                logger.debug("Selected INBOX folder")
                 break
             except Exception as e:
                 logger.error(f"Gmail connection failed (Attempt {attempt+1}/3): {str(e)}")
@@ -56,17 +59,18 @@ def test_wci_email():
                 import time
                 time.sleep(2)
     except Exception as e:
-        logger.error(f"Failed to connect to Gmail: {str(e)}")
+        logger.error(f"Failed to initialize IMAP connection: {str(e)}")
         return
 
     try:
         # Suche nach E-Mails von Drewry in den letzten 3 Tagen
         since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
-        search_query = 'FROM noreply@drewry.co.uk "Drewry World Container Index" SINCE ' + since_date
+        # Vereinfachte Suchabfrage: Nur FROM und SINCE, dann Betreff separat
+        search_query = f'FROM noreply@drewry.co.uk SINCE {since_date}'
         logger.debug(f"Executing IMAP search query: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
         if typ != "OK":
-            logger.error(f"IMAP search failed: {data}")
+            logger.error(f"IMAP search failed: Type={typ}, Data={data}")
             imap.logout()
             return
 
@@ -78,28 +82,36 @@ def test_wci_email():
             imap.logout()
             return
 
-        # E-Mails nach Datum sortieren (neueste zuerst)
+        # E-Mails nach Datum sortieren und Betreff prüfen
         email_data = []
         for eid in email_ids:
-            typ, msg_data = imap.fetch(eid, "(BODY[HEADER.FIELDS (DATE SUBJECT FROM)])")
-            if typ == "OK":
+            try:
+                typ, msg_data = imap.fetch(eid, "(BODY[HEADER.FIELDS (DATE SUBJECT FROM)])")
+                if typ != "OK":
+                    logger.error(f"Failed to fetch header for email ID {eid}: {msg_data}")
+                    continue
                 msg = email.message_from_bytes(msg_data[0][1])
                 date_str = msg.get("Date", "No Date")
                 subject = msg.get("Subject", "No Subject")
                 from_str = msg.get("From", "No From")
                 try:
                     parsed_date = parsedate_to_datetime(date_str)
-                    logger.debug(f"Email ID {eid}: Subject='{subject}', Date='{date_str}', From='{from_str}'")
+                    logger.debug(f"Email ID {eid}: Subject='{subject}', Date='{date_str}', From='{from_str}', Parsed Date={parsed_date}")
+                    # Prüfe, ob Betreff "Drewry World Container Index" enthält
+                    if "Drewry World Container Index" in subject:
+                        email_data.append((eid, parsed_date, subject, from_str))
+                    else:
+                        logger.debug(f"Email ID {eid} skipped: Subject does not contain 'Drewry World Container Index'")
                 except Exception as e:
-                    parsed_date = datetime.min
                     logger.debug(f"Failed to parse date for email ID {eid}: {date_str}, Error: {str(e)}")
-                email_data.append((eid, parsed_date, subject, from_str))
+            except Exception as e:
+                logger.error(f"Error processing email ID {eid}: {str(e)}")
         
         email_data.sort(key=lambda x: x[1], reverse=True)
-        logger.debug(f"Sorted {len(email_data)} emails by date (newest first)")
+        logger.debug(f"Sorted {len(email_data)} emails by date (newest first): {[f'ID={x[0]}, Date={x[1]}, Subject={x[2]}' for x in email_data]}")
 
         if not email_data:
-            logger.debug("No emails after sorting")
+            logger.debug("No emails with 'Drewry World Container Index' in subject found")
             imap.logout()
             return
 
@@ -109,7 +121,7 @@ def test_wci_email():
         
         typ, msg_data = imap.fetch(eid, "(RFC822)")
         if typ != "OK":
-            logger.error(f"Error fetching mail {eid}")
+            logger.error(f"Error fetching mail {eid}: {msg_data}")
             imap.logout()
             return
         
@@ -119,9 +131,11 @@ def test_wci_email():
             for part in msg.walk():
                 if part.get_content_type() == "text/html":
                     html = part.get_payload(decode=True).decode(errors="ignore")
+                    logger.debug("Found HTML content in multipart email")
                     break
         elif msg.get_content_type() == "text/html":
             html = msg.get_payload(decode=True).decode(errors="ignore")
+            logger.debug("Found HTML content in single-part email")
         
         if not html:
             logger.error(f"No HTML content in mail {eid}")
@@ -129,10 +143,14 @@ def test_wci_email():
             return
         
         # HTML speichern (für Debugging)
-        with open(f"wci_email_{eid}.html", "w", encoding="utf-8") as f:
-            f.write(html)
-        logger.debug(f"Saved HTML for mail {eid} to wci_email_{eid}.html")
-        logger.debug(f"Email HTML content (first 500 chars): {html[:500]}")
+        try:
+            html_filename = f"wci_email_{eid.decode('utf-8')}.html"
+            with open(html_filename, "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.debug(f"Saved HTML for mail {eid} to {html_filename}")
+            logger.debug(f"Email HTML content (first 500 chars): {html[:500]}")
+        except Exception as e:
+            logger.error(f"Failed to save HTML for mail {eid}: {str(e)}")
         
         # Kurze Zusammenfassung
         logger.info(f"Successfully processed newest Drewry email: ID={eid}, Subject='{subject}', Date='{parsed_date}'")
