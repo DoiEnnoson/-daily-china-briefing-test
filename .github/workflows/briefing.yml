@@ -28,6 +28,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install beautifulsoup4
 
+      - name: Verzeichnis WCI erstellen
+        run: |
+          mkdir -p WCI
+        continue-on-error: true
+
       - name: Test-WCI-Skript ausführen
         run: python test_wci_email.py
         env:
@@ -58,13 +63,11 @@ jobs:
           cat WCI/wci_cache.json || echo "Datei WCI/wci_cache.json existiert nicht"
         continue-on-error: true
 
-      - name: Änderungen an Ausgabedateien committen und pushen
+      - name: Commit and push changes
         run: |
-          git config --local user.email "action@gmx.com"
-          git config --local user.name "GitHub Action"
-          git add --ignore-errors wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json
-          git commit -m "Update briefing with WCI values" || echo "Keine Änderungen zu committen"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add WCI/wci_cache.json wci_email_*.html daily_briefing.md wci_test_log.txt || echo "No files to add"
+          git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
+          git push origin main
         continue-on-error: true
