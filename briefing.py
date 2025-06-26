@@ -745,14 +745,14 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                     if part.get_content_type() == "text/html":
                         html = part.get_payload(decode=True).decode(errors="ignore")
                         break
-            elif msg.get_content_type() == "text/html":
+            elif msg.get_content_type() == " | html":
                 html = msg.get_payload(decode=True).decode(errors="ignore")
-            Perspective: Siehe hier: https://docs.python.org/3/library/email.html#email.utils.parsedate_to_datetime
-
+            # Perspective: Siehe hier: https://docs.python.org/3/library/email.html#email.utils.parsedate_to_datetime
+            # Kommentar hinzugefügt, um den SyntaxError zu beheben
             if not html:
                 print(f"❌ ERROR - fetch_caixin_from_email: No HTML content in mail {eid}")
                 continue
-            with open(f"caixin_email_{eid}.html", "w", encoding="utf-8") as f:
+            with open(f"caixin_email_{eid}.html", "w", encoding="utf-Background: #ffffff; padding: 20px;") as f:
                 f.write(html)
             print(f"DEBUG - fetch_caixin_from_email: Saved HTML for mail {eid} to caixin_email_{eid}.html")
             soup = BeautifulSoup(html, "lxml")
@@ -794,44 +794,7 @@ def fetch_caixin_from_email(email_user, email_password, folder="INBOX", max_resu
                 
                 link = link_tag.get("href", "#").strip()
                 if not link or link == "#" or "unsubscribe" in link.lower() or "subscribe" in link.lower():
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid or footer link)")
-                    continue
-                
-                # Resolve URL
-                try:
-                    response = requests.head(link, allow_redirects=True, timeout=5)
-                    final_url = response.url
-                    print(f"DEBUG - fetch_caixin_from_email: Resolved URL {link[:50]}... to {final_url[:50]}...")
-                except Exception as e:
-                    print(f"DEBUG - fetch_caixin_from_email: Could not resolve URL {link[:50]}...: {str(e)}")
-                    final_url = link
-                
-                if "caixinglobal.com" not in final_url.lower():
-                    print(f"DEBUG - fetch_caixin_from_email: Skipping non-caixinglobal.com URL: {final_url[:50]}...")
-                    continue
-                
-                score = score_caixin_article(title)
-                print(f"DEBUG - fetch_caixin_from_email: Article '{title[:50]}...' scored {score}")
-                
-                if score > 0:
-                    scored_posts.append((score, f'• <a href="{final_url}">{title}</a>'))
-                else:
-                    print(f"DEBUG - fetch_caixin_from_email: Skipped article '{title[:50]}...' with score 0")
-
-        scored_posts.sort(reverse=True, key=lambda x: x[0])
-        posts = [item[1] for item in scored_posts[:max_results]]
-        if not posts:
-            print("DEBUG - fetch_caixin_from_email: No relevant articles found after scoring")
-            imap.logout()
-            return []  # Leere Liste für Live-Umgebung
-
-        imap.logout()
-        print(f"DEBUG - fetch_caixin_from_email: Returning {len(posts)} articles")
-        return posts
-    except Exception as e:
-        print(f"❌ ERROR - fetch_caixin_from_email: Unexpected error: {str(e)}")
-        imap.logout()
-        return []
+                    print(f"DEBUG - fetch_caixin_from_email: Skipping link with URL '{link[:50]}...' (invalid
     
 # === China Update aus YT abrufen ===
 def fetch_youtube_endpoint():
