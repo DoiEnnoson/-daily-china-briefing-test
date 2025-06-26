@@ -82,6 +82,8 @@ def save_cpr_cache(cache):
 def load_scfi_cache():
     print(f"DEBUG - load_scfi_cache: Starting to load cache from {SCFI_CACHE_FILE}")
     try:
+        # Stelle sicher, dass das Verzeichnis existiert
+        os.makedirs(os.path.dirname(SCFI_CACHE_FILE), exist_ok=True)
         if os.path.exists(SCFI_CACHE_FILE):
             with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
@@ -102,6 +104,7 @@ def save_scfi_cache(cache):
     print(f"DEBUG - save_scfi_cache: Starting to save cache to {SCFI_CACHE_FILE}")
     print(f"DEBUG - save_scfi_cache: Cache content: {cache}")
     try:
+        # Stelle sicher, dass das Verzeichnis existiert
         os.makedirs(os.path.dirname(SCFI_CACHE_FILE), exist_ok=True)
         with open(SCFI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
