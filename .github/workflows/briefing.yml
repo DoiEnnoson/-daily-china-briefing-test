@@ -1,56 +1,78 @@
 name: Daily China Briefing
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *' # täglich um 06:00 UTC
+    - cron: '0 6 * * *'  # Läuft täglich um 06:00 UTC (08:00 CEST)
+  workflow_dispatch:  # Ermöglicht manuelles Auslösen
 
 jobs:
-  build:
+  fetch-and-generate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Ermöglicht Schreibrechte für das Repository
-      actions: read  # Standard-Berechtigung für Actions
 
     steps:
-      - name: Repository klonen
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Python installieren
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.9'
 
-      - name: Abhängigkeiten installieren
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
+          pip install beautifulsoup4
 
-      - name: Test-Skript für WCI-E-Mail ausführen
-        run: python test_wci_email.py
+      - name: Run test_wci_email.py
         env:
           DREWRY: ${{ secrets.DREWRY }}
+        run: python test_wci_email.py
 
-      - name: wci_test_log.txt Inhalt prüfen
+      - name: Show wci_test_log.txt content
         run: |
           echo "Inhalt von wci_test_log.txt:"
-          cat wci_test_log.txt || echo "Datei wci_test_log.txt existiert nicht"
-        continue-on-error: true
+          cat wci_test_log.txt || echo "No wci_test_log.txt found"
 
-      - name: wci_email_*.html Inhalt prüfen
+      - name: Show wci_email_*.html content
         run: |
           echo "Inhalt von wci_email_*.html:"
-          cat wci_email_*.html || echo "Keine wci_email_*.html Dateien gefunden"
-        continue-on-error: true
+          cat wci_email_*.html || echo "No wci_email_*.html files found"
 
-      - name: Änderungen an Log- und HTML-Dateien committen und pushen
+      - name: Run briefing.py
+        run: python briefing.py
+
+      - name: Show briefing_log.txt content
+        run: |
+          echo "Inhalt von briefing_log.txt:"
+          cat briefing_log.txt || echo "No briefing_log.txt found"
+
+      - name: Show daily_briefing.md content
+        run: |
+          echo "Inhalt von daily_briefing.md:"
+          cat daily_briefing.md || echo "No daily_briefing.md found"
+
+      - name: Send email with results
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: 'Daily China Briefing Results - ${{ github.run_id }}'
+          to: hadobrockmeyer@gmail.com
+          from: Daily China Briefing <hadobrockmeyer@gmail.com>
+          body: |
+            Attached are the logs and briefing from the Daily China Briefing workflow.
+            Run ID: ${{ github.run_id }}
+            Date: ${{ github.event.schedule || 'Manual Run' }}
+          attachments: |
+            wci_test_log.txt,briefing_log.txt,daily_briefing.md,wci_email_*.html
+          secure: true
+
+      - name: Commit and push changes
         run: |
           git config --local user.email "action@gmx.com"
           git config --local user.name "GitHub Action"
-          git add wci_test_log.txt wci_email_*.html
-          git commit -m "Add wci_test_log.txt and wci_email_*.html from test run" || echo "Keine Änderungen zu committen"
+          git add wci_test_log.txt wci_email_*.html briefing_log.txt daily_briefing.md
+          git commit -m "Add WCI email, logs, and briefing from test run" || echo "No changes to commit"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
