@@ -47,3 +47,40 @@ WCI: $2,983, decreased 9% w/w
 2025-06-26 17:56:30,679 - DEBUG - Attaching file: wci_email_7904.html
 2025-06-26 17:56:32,304 - INFO - Email sent successfully
 2025-06-26 17:56:32,304 - DEBUG - Main execution completed
+2025-06-26 20:52:25,372 - DEBUG - Starting main execution
+2025-06-26 20:52:25,372 - DEBUG - Starting email fetch
+2025-06-26 20:52:25,373 - DEBUG - Connecting to Gmail IMAP
+2025-06-26 20:52:26,384 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "26-Jun-2025")
+2025-06-26 20:52:26,653 - DEBUG - Fetching email ID: b'7904'
+2025-06-26 20:52:26,953 - DEBUG - Email subject: Drewry World Container Index: Thursday, 26 June 2025
+2025-06-26 20:52:26,953 - DEBUG - Saving HTML content to wci_email_7904.html
+2025-06-26 20:52:26,954 - INFO - Successfully saved email content to wci_email_7904.html
+2025-06-26 20:52:27,134 - DEBUG - Starting briefing generation
+2025-06-26 20:52:27,134 - DEBUG - Using latest HTML file: wci_email_7904.html
+2025-06-26 20:52:27,135 - DEBUG - Attempting to read HTML file: wci_email_7904.html
+2025-06-26 20:52:27,142 - DEBUG - Found WCI text: 26 Jun 2025: Drewry’s World Container Index decreased 9% to $2,983 per 40ft container this week.
+2025-06-26 20:52:27,142 - INFO - Extracted WCI: $2,983, Change: decreased 9%
+2025-06-26 20:52:27,142 - DEBUG - Starting news fetch
+2025-06-26 20:52:27,848 - INFO - Fetched 3 news items
+2025-06-26 20:52:27,848 - INFO - Generated briefing report
+2025-06-26 20:52:27,849 - DEBUG - Report content:
+Daily China Briefing - 26 Jun 2025
+==================================================
+World Container Index
+--------------------
+WCI: $2,983, decreased 9% w/w
+--------------------
+News
+--------------------
+- China has begun issuing rare earth export licences to European firms: EU sources (Thu, 26 Jun 2025 17:35:32 +0000): https://www.scmp.com/news/china/science/article/3315999/china-has-begun-issuing-rare-earth-export-licenses-european-firms-eu-sources-say?utm_source=rss_feed
+- Chinese energy firms say Brazil must clarify rules or face loss of investments (Thu, 26 Jun 2025 17:31:12 +0000): https://www.scmp.com/news/china/article/3315998/chinese-energy-firms-say-brazil-must-clarify-regulations-or-face-loss-investments?utm_source=rss_feed
+- Carmakers GM, Tesla and Ford lead list of US companies in China exposure: report (Thu, 26 Jun 2025 16:33:47 +0000): https://www.scmp.com/news/china/article/3315994/carmakers-gm-tesla-and-ford-lead-list-us-companies-china-exposure-report?utm_source=rss_feed
+
+
+2025-06-26 20:52:27,849 - INFO - Saved briefing to daily_briefing.md
+2025-06-26 20:52:27,849 - DEBUG - Starting email sending
+2025-06-26 20:52:27,849 - DEBUG - Attaching file: wci_test_log.txt
+2025-06-26 20:52:27,849 - DEBUG - Attaching file: daily_briefing.md
+2025-06-26 20:52:27,849 - DEBUG - Attaching file: wci_email_7904.html
+2025-06-26 20:52:29,787 - INFO - Email sent successfully
+2025-06-26 20:52:29,787 - DEBUG - Main execution completed
