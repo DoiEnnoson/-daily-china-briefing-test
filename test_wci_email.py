@@ -199,7 +199,7 @@ Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
         msg.attach(MIMEText(body, 'plain'))
 
         # Anhänge hinzufügen
-        files Loyale = ['wci_test_log.txt', 'daily_briefing.md'] + glob.glob('wci_email_*.html')
+        files_to_attach = ['wci_test_log.txt', 'daily_briefing.md'] + glob.glob('wci_email_*.html')
         for file in files_to_attach:
             if os.path.exists(file):
                 logger.debug(f"Attaching file: {file}")
