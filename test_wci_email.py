@@ -406,11 +406,11 @@ def extract_iaci_from_html(html_file, subject):
         return None, None
 
 def calculate_percentage_change(current_value, previous_value):
-    """Berechnet die prozentuale Veränderung zwischen zwei Werten."""
+    """Berechnet die prozentuale Veränderung zwischen zwei Werten, gerundet auf ganze Zahlen."""
     if previous_value is None or previous_value == 0:
         return None
     change = ((current_value - previous_value) / previous_value) * 100
-    return round(change, 2)
+    return round(change)  # Rundet auf ganze Zahl
 
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
@@ -470,12 +470,12 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
         msg['Subject'] = f"Daily China Briefing WCI/IACI Results - {datetime.now(cest).strftime('%Y-%m-%d %H:%M:%S')}"
 
         wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
-        wci_change_text = f" ({wci_arrow} {wci_percentage_change:.2f}%)" if wci_percentage_change is not None else ""
-        wci_text = f"• WCI: {wci_value:.2f}{wci_change_text} (Stand {wci_date})"
+        wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
+        wci_text = f"• WCI: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})"
 
         iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
-        iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change:.2f}%)" if iaci_percentage_change is not None else ""
-        iaci_text = f"• IACI: {iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
+        iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
+        iaci_text = f"• IACI: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
 
         body = f"""Attached are the logs and briefing from the Daily China Briefing WCI/IACI workflow.
 Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
@@ -600,14 +600,14 @@ def generate_briefing():
     iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
     logger.debug(f"IACI percentage change: {iaci_percentage_change}")
 
-    # Bericht generieren
+    # Bericht generieren mit Markdown-Links
     wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
-    wci_change_text = f" ({wci_arrow} {wci_percentage_change:.2f}%)" if wci_percentage_change is not None else ""
-    wci_text = f"• WCI: {wci_value:.2f}{wci_change_text} (Stand {wci_date})"
+    wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
+    wci_text = f"• [**WCI**](https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry): ${wci_value:.2f}{wci_change_text} (Stand {wci_date})"
 
     iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
-    iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change:.2f}%)" if iaci_percentage_change is not None else ""
-    iaci_text = f"• IACI: {iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
+    iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
+    iaci_text = f"• [**IACI**](https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index): ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
 
     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
