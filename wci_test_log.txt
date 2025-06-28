@@ -296,3 +296,47 @@ Daily China Briefing - 28 Jun 2025
 2025-06-28 10:12:34,793 - DEBUG - Attaching file: wci_email_7904.html
 2025-06-28 10:12:36,861 - INFO - Email sent successfully
 2025-06-28 10:12:36,862 - DEBUG - Main execution completed
+2025-06-28 10:28:26,827 - DEBUG - Starting main execution
+2025-06-28 10:28:26,827 - DEBUG - Starting briefing generation
+2025-06-28 10:28:26,827 - DEBUG - Loading cache from /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json
+2025-06-28 10:28:26,827 - DEBUG - Successfully loaded cache: {'2025-06-19': {'value': 3279.0, 'email_date': '19.06.2025'}, '2025-06-26': {'value': 2983.0, 'email_date': '26.06.2025'}, '2025-06-28': {'value': 2983.0, 'email_date': '26.06.2025'}}
+2025-06-28 10:28:26,827 - DEBUG - Starting email fetch
+2025-06-28 10:28:26,827 - DEBUG - Gmail user: hadobrockmeyer@gmail.com, pass: ****************
+2025-06-28 10:28:27,847 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "28-Jun-2025")
+2025-06-28 10:28:28,028 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "27-Jun-2025")
+2025-06-28 10:28:28,186 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "26-Jun-2025")
+2025-06-28 10:28:28,384 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "25-Jun-2025")
+2025-06-28 10:28:28,584 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "24-Jun-2025")
+2025-06-28 10:28:28,706 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "23-Jun-2025")
+2025-06-28 10:28:28,880 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "22-Jun-2025")
+2025-06-28 10:28:29,004 - DEBUG - Fetching email ID: b'7904'
+2025-06-28 10:28:29,182 - DEBUG - Email subject: Drewry World Container Index: Thursday, 26 June 2025
+2025-06-28 10:28:29,182 - DEBUG - Saving HTML content to wci_email_7904.html
+2025-06-28 10:28:29,182 - INFO - Successfully saved email content to wci_email_7904.html
+2025-06-28 10:28:29,301 - DEBUG - Attempting to read HTML file: wci_email_7904.html
+2025-06-28 10:28:29,308 - DEBUG - Extracted text (first 500 chars): Drewry World Container Index - Weekly assessmentDear Hado26 June 2025World Container Index - 26 Jun26 Jun 2025: Drewry’s World Container Index decreased 9% to $2,983 per 40ft container this week.Read moreContainer Freight Rate Insight - spot rates against 6,300 global lanesTrusted by many of the world's leading brands- Search rates across 6,300 global port pairs- All lanes updated monthly (top 1,900 lanes updated fortnightly)- Monthly Insight report, providing commentary and analysis of key mark
+2025-06-28 10:28:29,361 - INFO - Extracted WCI: 2983.00, Date: 26.06.2025
+2025-06-28 10:28:29,362 - WARNING - Invalid date format in cache: 2025-06-19
+2025-06-28 10:28:29,362 - WARNING - Invalid date format in cache: 2025-06-26
+2025-06-28 10:28:29,362 - WARNING - Invalid date format in cache: 2025-06-28
+2025-06-28 10:28:29,362 - DEBUG - Saving cache to /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json: {'26.06.2025': {'value': 2983.0}}
+2025-06-28 10:28:29,362 - INFO - Successfully wrote cache to /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json
+2025-06-28 10:28:29,362 - DEBUG - Cache file content after save: {
+  "26.06.2025": {
+    "value": 2983.0
+  }
+}
+2025-06-28 10:28:29,362 - DEBUG - Report content:
+Daily China Briefing - 28 Jun 2025
+==================================================
+## 🚢 Frachtraten Indizies
+• WCI: 2983.00 (Stand 26.06.2025)
+
+2025-06-28 10:28:29,362 - INFO - Saved briefing to daily_briefing.md
+2025-06-28 10:28:29,362 - DEBUG - Starting email sending
+2025-06-28 10:28:29,363 - DEBUG - Attaching file: wci_test_log.txt
+2025-06-28 10:28:29,363 - DEBUG - Attaching file: daily_briefing.md
+2025-06-28 10:28:29,364 - DEBUG - Attaching file: WCI/wci_cache.json
+2025-06-28 10:28:29,364 - DEBUG - Attaching file: wci_email_7904.html
+2025-06-28 10:28:31,045 - INFO - Email sent successfully
+2025-06-28 10:28:31,045 - DEBUG - Main execution completed
