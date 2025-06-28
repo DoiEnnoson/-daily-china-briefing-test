@@ -140,15 +140,16 @@ def fetch_wci_email():
 
         # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
-        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(7)]
-        email_ids = []
-        for date in date_range:
-            search_criteria = 'FROM noreply@drewry.co.uk "World Container Index"'
-            logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
-            result, data = mail.search(None, search_criteria)
-            if result == 'OK' and data[0]:
-                email_ids.extend(data[0].split())
+        since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
+        search_criteria = f'FROM noreply@drewry.co.uk "World Container Index" SINCE {since_date}'
+        logger.debug(f"Searching W985CI emails with criteria: {search_criteria}")
+        result, data = mail.search(None, search_criteria)
+        if result != 'OK':
+            logger.error(f"Failed to search WCI emails: {result}")
+            raise Exception(f"IMAP search failed: {result}")
 
+        email_ids = data[0].split()
+        logger.debug(f"Found WCI email IDs: {email_ids}")
         if not email_ids:
             logger.error("No WCI emails found from noreply@drewry.co.uk in the last 7 days")
             raise Exception("No WCI emails found")
@@ -232,15 +233,16 @@ def fetch_iaci_email():
 
         # Suche für die letzten 20 Tage in CEST
         today = datetime.now(cest)
-        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(20)]
-        email_ids = []
-        for date in date_range:
-            search_criteria = 'FROM noreply@drewry.co.uk "Intra-Asia Container Index"'
-            logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
-            result, data = mail.search(None, search_criteria)
-            if result == 'OK' and data[0]:
-                email_ids.extend(data[0].split())
+        since_date = (today - timedelta(days=20)).strftime("%d-%b-%Y")
+        search_criteria = f'FROM noreply@drewry.co.uk "Intra-Asia Container Index" SINCE {since_date}'
+        logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
+        result, data = mail.search(None, search_criteria)
+        if result != 'OK':
+            logger.error(f"Failed to search IACI emails: {result}")
+            raise Exception(f"IMAP search failed: {result}")
 
+        email_ids = data[0].split()
+        logger.debug(f"Found IACI email IDs: {email_ids}")
         if not email_ids:
             logger.error("No IACI emails found from noreply@drewry.co.uk in the last 20 days")
             raise Exception("No IACI emails found")
