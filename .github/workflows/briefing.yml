@@ -31,9 +31,9 @@ jobs:
           pip install beautifulsoup4
         continue-on-error: false
 
-      - name: Verzeichnis WCI erstellen
+      - name: Verzeichnis freight_indicies erstellen
         run: |
-          mkdir -p WCI
+          mkdir -p freight_indicies
         continue-on-error: true
 
       - name: Test-WCI-Skript ausführen
@@ -51,15 +51,15 @@ jobs:
           cat wci_email_*.html >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_email_*.html existiert nicht" >> $GITHUB_STEP_SUMMARY
           echo "### daily_briefing.md" >> $GITHUB_STEP_SUMMARY
           cat daily_briefing.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei daily_briefing.md existiert nicht" >> $GITHUB_STEP_SUMMARY
-          echo "### WCI/wci_cache.json" >> $GITHUB_STEP_SUMMARY
-          cat WCI/wci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei WCI/wci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### freight_indicies/wci_cache.json" >> $GITHUB_STEP_SUMMARY
+          cat freight_indicies/wci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei freight_indicies/wci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
         continue-on-error: true
 
       - name: Commit and push changes
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add wci_test_log_*.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json || echo "No files to add"
+          git add wci_test_log_*.txt wci_email_*.html daily_briefing.md freight_indicies/wci_cache.json || echo "No files to add"
           git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
@@ -73,5 +73,5 @@ jobs:
             wci_test_log_*.txt
             wci_email_*.html
             daily_briefing.md
-            WCI/wci_cache.json
+            freight_indicies/wci_cache.json
         continue-on-error: true
