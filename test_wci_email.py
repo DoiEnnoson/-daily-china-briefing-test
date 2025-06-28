@@ -5,7 +5,7 @@ import imaplib
 import email
 import smtplib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -13,6 +13,9 @@ from email import encoders
 from email.header import decode_header
 from bs4 import BeautifulSoup
 import glob
+
+# CEST ist UTC+2
+cest = timezone(timedelta(hours=2))
 
 # Logging einrichten
 logging.basicConfig(
@@ -95,8 +98,8 @@ def fetch_wci_email():
         mail.login(gmail_user, gmail_pass)
         mail.select('inbox')
 
-        # Suche für die letzten 5 Tage
-        today = datetime.now()
+        # Suche für die letzten 5 Tage in CEST
+        today = datetime.now(cest)
         date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(5)]
         email_ids = []
         for date in date_range:
@@ -187,7 +190,7 @@ def extract_wci_from_html(html_file, subject):
                 except ValueError:
                     continue
         if wci_date is None:
-            wci_date = datetime.now().strftime("%d.%m.%Y")
+            wci_date = datetime.now(cest).strftime("%d.%m.%Y")
             logger.debug(f"Could not parse date, using today: {wci_date}")
 
         logger.info(f"Extracted WCI: {wci_value:.2f}, Date: {wci_date}")
@@ -202,7 +205,7 @@ def calculate_percentage_change(current_value, previous_value):
     if previous_value is None or previous_value == 0:
         return None
     change = ((current_value - previous_value) / previous_value) * 100
-    return round change, 2)
+    return round(change, 2)  # Korrigierte Syntax
 
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
@@ -216,7 +219,7 @@ def send_warning_email(warning_message):
         pairs = env_vars.split(";")
         config_dict = dict(pair.split("=", 1) for pair in pairs)
         msg = MIMEText(
-            f"Problem: WCI data issue\nDetails: {warning_message}\nDate: {datetime.now().strftime('%Y-%m-%d')}",
+            f"Problem: WCI data issue\nDetails: {warning_message}\nDate: {datetime.now(cest).strftime('%Y-%m-%d')}",
             "plain",
             "utf-8"
         )
@@ -259,14 +262,14 @@ def send_results_email(wci_value, wci_date, percentage_change=None):
         msg = MIMEMultipart()
         msg['From'] = f"Daily China Briefing <{gmail_user}>"
         msg['To'] = gmail_user
-        msg['Subject'] = f"Daily China Briefing WCI Results - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        msg['Subject'] = f"Daily China Briefing WCI Results - {datetime.now(cest).strftime('%Y-%m-%d %H:%M:%S')}"
 
         arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
         change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
         wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {wci_date})"
 
         body = f"""Attached are the logs and briefing from the Daily China Briefing WCI workflow.
-Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
+Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
 {wci_text}
 """
         msg.attach(MIMEText(body, 'plain'))
@@ -298,8 +301,8 @@ Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
 
 def generate_briefing():
     logger.debug("Starting briefing generation")
-    report_date = datetime.now().strftime("%d %b %Y")
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    report_date = datetime.now(cest).strftime("%d %b %Y")
+    today_str = datetime.now(cest).strftime("%Y-%m-%d")
     cache = load_wci_cache()
 
     # Vorherigen Wert für prozentuale Veränderung finden
@@ -313,7 +316,7 @@ def generate_briefing():
     if not html_file:
         logger.error("Failed to fetch WCI email")
         latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        ten_days_ago = (datetime.now(cest) - timedelta(days=10)).strftime("%Y-%m-%d")
         if latest_cache_date:
             latest_entry = cache[latest_cache_date]
             wci_value = latest_entry["value"]
@@ -343,7 +346,7 @@ def generate_briefing():
             except ValueError:
                 warning_message = f"E-Mail not reachable, invalid cache date (Date: {email_date_str})"
         wci_value = 0.0
-        wci_date = datetime.now().strftime("%d.%m.%Y")
+        wci_date = datetime.now(cest).strftime("%d.%m.%Y")
         warning_message = warning_message or "E-Mail not reachable, no valid cache available"
         send_warning_email(warning_message)
         wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
@@ -362,7 +365,7 @@ def generate_briefing():
     if not wci_value:
         logger.error("Failed to extract WCI value")
         latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        ten_days_ago = (datetime.now(cest) - timedelta(days=10)).strftime("%Y-%m-%d")
         if latest_cache_date:
             latest_entry = cache[latest_cache_date]
             wci_value = latest_entry["value"]
@@ -392,7 +395,7 @@ def generate_briefing():
             except ValueError:
                 warning_message = f"Could not extract WCI value, invalid cache date (Date: {email_date_str})"
         wci_value = 0.0
-        wci_date = datetime.now().strftime("%d.%m.%Y")
+        wci_date = datetime.now(cest).strftime("%d.%m.%Y")
         warning_message = warning_message or "Could not extract WCI value, no valid cache available"
         send_warning_email(warning_message)
         wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
