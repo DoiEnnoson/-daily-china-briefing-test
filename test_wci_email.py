@@ -305,7 +305,7 @@ def clean_old_cache(cache):
     cleaned_cache = {}
     for date_str, data in cache.items():
         try:
-            cache_date = datetime.strptime(date_str, "%d.%m.%Y")
+            cache_date = datetime.strptime(date_str, "%d.%m.%Y").replace(tzinfo=cest)  # CEST-Zeitzone hinzufügen
             if cache_date >= thirty_days_ago:
                 cleaned_cache[date_str] = data
         except ValueError:
