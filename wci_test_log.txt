@@ -340,3 +340,38 @@ Daily China Briefing - 28 Jun 2025
 2025-06-28 10:28:29,364 - DEBUG - Attaching file: wci_email_7904.html
 2025-06-28 10:28:31,045 - INFO - Email sent successfully
 2025-06-28 10:28:31,045 - DEBUG - Main execution completed
+2025-06-28 10:36:32,733 - DEBUG - Starting main execution
+2025-06-28 10:36:32,733 - DEBUG - Starting briefing generation
+2025-06-28 10:36:32,733 - DEBUG - Loading cache from /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/WCI/wci_cache.json
+2025-06-28 10:36:32,734 - DEBUG - Successfully loaded cache: {'26.06.2025': {'value': 2983.0}}
+2025-06-28 10:36:32,734 - DEBUG - Starting email fetch
+2025-06-28 10:36:32,734 - DEBUG - Gmail user: hadobrockmeyer@gmail.com, pass: ****************
+2025-06-28 10:36:34,549 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "28-Jun-2025")
+2025-06-28 10:36:34,728 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "27-Jun-2025")
+2025-06-28 10:36:34,917 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "26-Jun-2025")
+2025-06-28 10:36:35,140 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "25-Jun-2025")
+2025-06-28 10:36:35,318 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "24-Jun-2025")
+2025-06-28 10:36:35,596 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "23-Jun-2025")
+2025-06-28 10:36:35,774 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "22-Jun-2025")
+2025-06-28 10:36:35,960 - DEBUG - Fetching email ID: b'7904'
+2025-06-28 10:36:36,184 - DEBUG - Email subject: Drewry World Container Index: Thursday, 26 June 2025
+2025-06-28 10:36:36,184 - DEBUG - Saving HTML content to wci_email_7904.html
+2025-06-28 10:36:36,184 - INFO - Successfully saved email content to wci_email_7904.html
+2025-06-28 10:36:36,327 - DEBUG - Attempting to read HTML file: wci_email_7904.html
+2025-06-28 10:36:36,334 - DEBUG - Extracted text (first 500 chars): Drewry World Container Index - Weekly assessmentDear Hado26 June 2025World Container Index - 26 Jun26 Jun 2025: Drewry’s World Container Index decreased 9% to $2,983 per 40ft container this week.Read moreContainer Freight Rate Insight - spot rates against 6,300 global lanesTrusted by many of the world's leading brands- Search rates across 6,300 global port pairs- All lanes updated monthly (top 1,900 lanes updated fortnightly)- Monthly Insight report, providing commentary and analysis of key mark
+2025-06-28 10:36:36,347 - INFO - Extracted WCI: 2983.00, Date: 26.06.2025
+2025-06-28 10:36:36,347 - DEBUG - Cache entry for 26.06.2025 already exists, skipping save
+2025-06-28 10:36:36,347 - DEBUG - Report content:
+Daily China Briefing - 28 Jun 2025
+==================================================
+## 🚢 Frachtraten Indizies
+• WCI: 2983.00 (Stand 26.06.2025)
+
+2025-06-28 10:36:36,347 - INFO - Saved briefing to daily_briefing.md
+2025-06-28 10:36:36,347 - DEBUG - Starting email sending
+2025-06-28 10:36:36,348 - DEBUG - Attaching file: wci_test_log.txt
+2025-06-28 10:36:36,348 - DEBUG - Attaching file: daily_briefing.md
+2025-06-28 10:36:36,348 - DEBUG - Attaching file: WCI/wci_cache.json
+2025-06-28 10:36:36,348 - DEBUG - Attaching file: wci_email_7904.html
+2025-06-28 10:36:38,956 - INFO - Email sent successfully
+2025-06-28 10:36:38,957 - DEBUG - Main execution completed
