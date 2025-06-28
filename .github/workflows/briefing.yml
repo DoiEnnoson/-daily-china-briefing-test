@@ -36,7 +36,7 @@ jobs:
           mkdir -p freight_indicies
         continue-on-error: true
 
-      - name: Test-WCI-Skript ausführen
+      - name: Test-WCI/IACI-Skript ausführen
         run: python test_wci_email.py
         env:
           DREWRY: ${{ secrets.DREWRY }}
@@ -49,18 +49,22 @@ jobs:
           ls wci_test_log_*.txt | sort -r | head -n 1 | xargs cat >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Keine Log-Datei gefunden" >> $GITHUB_STEP_SUMMARY
           echo "### wci_email_*.html" >> $GITHUB_STEP_SUMMARY
           cat wci_email_*.html >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_email_*.html existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### iaci_email_*.html" >> $GITHUB_STEP_SUMMARY
+          cat iaci_email_*.html >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei iaci_email_*.html existiert nicht" >> $GITHUB_STEP_SUMMARY
           echo "### daily_briefing.md" >> $GITHUB_STEP_SUMMARY
           cat daily_briefing.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei daily_briefing.md existiert nicht" >> $GITHUB_STEP_SUMMARY
           echo "### freight_indicies/wci_cache.json" >> $GITHUB_STEP_SUMMARY
           cat freight_indicies/wci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei freight_indicies/wci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### freight_indicies/iaci_cache.json" >> $GITHUB_STEP_SUMMARY
+          cat freight_indicies/iaci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei freight_indicies/iaci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
         continue-on-error: true
 
       - name: Commit and push changes
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add wci_test_log_*.txt wci_email_*.html daily_briefing.md freight_indicies/wci_cache.json || echo "No files to add"
-          git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
+          git add wci_test_log_*.txt wci_email_*.html iaci_email_*.html daily_briefing.md freight_indicies/wci_cache.json freight_indicies/iaci_cache.json || echo "No files to add"
+          git commit -m "Update WCI/IACI cache and briefing" || echo "Nothing to commit"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
         continue-on-error: true
@@ -68,10 +72,12 @@ jobs:
       - name: Artefakte hochladen
         uses: actions/upload-artifact@v4
         with:
-          name: wci-files
+          name: wci-iaci-files
           path: |
             wci_test_log_*.txt
             wci_email_*.html
+            iaci_email_*.html
             daily_briefing.md
             freight_indicies/wci_cache.json
+            freight_indicies/iaci_cache.json
         continue-on-error: true
