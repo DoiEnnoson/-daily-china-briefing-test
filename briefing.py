@@ -1984,6 +1984,7 @@ except Exception as e:
         f.write(html_content)
     return html_content
 
+
 # === E-Mail senden ===
 def send_briefing():
     print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
