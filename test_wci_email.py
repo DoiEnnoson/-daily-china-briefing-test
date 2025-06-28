@@ -12,18 +12,15 @@ from email.mime.base import MIMEBase
 from email import encoders
 from email.header import decode_header
 from bs4 import BeautifulSoup
-import glob
 
 # CEST ist UTC+2
 cest = timezone(timedelta(hours=2))
 
-# Logging einrichten mit eindeutigem Dateinamen
-log_filename = f'wci_test_log_{datetime.now(cest).strftime("%Y%m%d_%H%M%S")}.txt'
+# Logging einrichten, nur auf Konsole, keine Dateien
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # Nur INFO und ERROR
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_filename, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -37,15 +34,14 @@ IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
 
 def load_wci_cache():
     """Lädt den WCI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
-    logger.debug(f"Loading WCI cache from {WCI_CACHE_FILE}")
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
         if os.path.exists(WCI_CACHE_FILE):
             with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
-                logger.debug(f"Successfully loaded WCI cache: {cache}")
+                logger.info(f"Successfully loaded WCI cache")
                 return cache
-        logger.debug(f"No WCI cache file found at {WCI_CACHE_FILE}, initializing empty cache")
+        logger.info(f"No WCI cache file found at {WCI_CACHE_FILE}, initializing empty cache")
         cache = {}
         save_wci_cache(cache)
         return cache
@@ -57,15 +53,12 @@ def load_wci_cache():
 
 def save_wci_cache(cache):
     """Speichert den WCI-Cache und prüft, ob die Datei erstellt wurde."""
-    logger.debug(f"Saving WCI cache to {WCI_CACHE_FILE}: {cache}")
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
         with open(WCI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         if os.path.exists(WCI_CACHE_FILE):
             logger.info(f"Successfully wrote WCI cache to {WCI_CACHE_FILE}")
-            with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
-                logger.debug(f"WCI cache file content after save: {f.read()}")
         else:
             logger.error(f"WCI cache file {WCI_CACHE_FILE} was not created")
             raise Exception(f"WCI cache file {WCI_CACHE_FILE} was not created")
@@ -75,15 +68,14 @@ def save_wci_cache(cache):
 
 def load_iaci_cache():
     """Lädt den IACI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
-    logger.debug(f"Loading IACI cache from {IACI_CACHE_FILE}")
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
         if os.path.exists(IACI_CACHE_FILE):
             with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
-                logger.debug(f"Successfully loaded IACI cache: {cache}")
+                logger.info(f"Successfully loaded IACI cache")
                 return cache
-        logger.debug(f"No IACI cache file found at {IACI_CACHE_FILE}, initializing empty cache")
+        logger.info(f"No IACI cache file found at {IACI_CACHE_FILE}, initializing empty cache")
         cache = {}
         save_iaci_cache(cache)
         return cache
@@ -100,28 +92,22 @@ def load_iaci_cache():
 
 def save_iaci_cache(cache):
     """Speichert den IACI-Cache und prüft, ob die Datei erstellt wurde."""
-    logger.debug(f"Saving IACI cache to {IACI_CACHE_FILE}: {cache}")
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
-        # Lade den bestehenden Cache, um ihn nicht zu überschreiben
         existing_cache = {}
         if os.path.exists(IACI_CACHE_FILE):
             try:
                 with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
                     existing_cache = json.load(f)
-                    logger.debug(f"Existing IACI cache loaded: {existing_cache}")
             except json.JSONDecodeError:
                 logger.error(f"Corrupted IACI cache file, overwriting with new data")
         
-        # Füge neue Einträge hinzu, ohne bestehende zu löschen
         existing_cache.update(cache)
         with open(IACI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(existing_cache, f, ensure_ascii=False, indent=2)
         
         if os.path.exists(IACI_CACHE_FILE):
             logger.info(f"Successfully wrote IACI cache to {IACI_CACHE_FILE}")
-            with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
-                logger.debug(f"IACI cache file content after save: {f.read()}")
         else:
             logger.error(f"IACI cache file {IACI_CACHE_FILE} was not created")
             raise Exception(f"IACI cache file {IACI_CACHE_FILE} was not created")
@@ -130,8 +116,7 @@ def save_iaci_cache(cache):
         raise
 
 def fetch_wci_email():
-    """Holt die neueste Drewry WCI-E-Mail aus den letzten 7 Tagen und speichert den HTML-Inhalt."""
-    logger.debug("Starting WCI email fetch")
+    """Holt die neueste Drewry WCI-E-Mail aus den letzten 7 Tagen und gibt den HTML-Inhalt zurück."""
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -147,7 +132,6 @@ def fetch_wci_email():
             elif key.strip() == 'GMAIL_PASS':
                 gmail_pass = value.strip()
 
-        logger.debug(f"Gmail user: {gmail_user}, pass: {'*' * len(gmail_pass) if gmail_pass else 'None'}")
         if not gmail_user or not gmail_pass:
             logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
             raise Exception("GMAIL credentials missing")
@@ -155,33 +139,25 @@ def fetch_wci_email():
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
         
-        # Wähle den Ordner "inbox"
         result, data = mail.select('inbox')
-        logger.debug(f"SELECT inbox result: {result}, data: {data}")
         if result != 'OK':
             logger.error(f"Failed to select inbox: {result}, data: {data}")
             raise Exception(f"IMAP select failed: {result}")
 
-        # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         search_criteria = f'FROM noreply@drewry.co.uk'
-        logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
         result, data = mail.search(None, search_criteria)
-        logger.debug(f"SEARCH result: {result}, data: {data}")
-
         if result != 'OK':
             logger.error(f"Failed to search WCI emails: {result}, data: {data}")
             raise Exception(f"IMAP search failed: {result}")
 
         email_ids = data[0].split()
-        logger.debug(f"Found WCI email IDs: {email_ids}")
         if not email_ids:
             logger.error("No WCI emails found from noreply@drewry.co.uk in the last 7 days")
             raise Exception("No WCI emails found")
 
-        # Prüfe Betreffzeilen aller gefundenen E-Mails
-        for email_id in email_ids[::-1]:  # Neueste zuerst
+        for email_id in email_ids[::-1]:
             result, data = mail.fetch(email_id, '(RFC822)')
             if result != 'OK':
                 logger.error(f"Failed to fetch WCI email ID {email_id}")
@@ -193,10 +169,8 @@ def fetch_wci_email():
             subject, encoding = decode_header(email_message['subject'])[0]
             if isinstance(subject, bytes):
                 subject = subject.decode(encoding if encoding else 'utf-8')
-            logger.debug(f"WCI email ID {email_id} subject: {subject}")
 
             if "World Container Index" in subject:
-                logger.debug(f"Fetching WCI email ID: {email_id}")
                 html_content = None
                 if email_message.is_multipart():
                     for part in email_message.walk():
@@ -211,15 +185,9 @@ def fetch_wci_email():
                     logger.error(f"No HTML content found in WCI email ID {email_id}")
                     continue
 
-                email_id_str = email_id.decode('utf-8')
-                html_filename = f'wci_email_{email_id_str}.html'
-                logger.debug(f"Saving WCI HTML content to {html_filename}")
-                with open(html_filename, 'w', encoding='utf-8') as f:
-                    f.write(html_content)
-
-                logger.info(f"Successfully saved WCI email content to {html_filename}")
+                logger.info(f"Successfully fetched WCI email content")
                 mail.logout()
-                return html_filename, subject
+                return html_content, subject
 
         logger.error("No matching WCI email found")
         raise Exception("No matching WCI email found")
@@ -231,8 +199,7 @@ def fetch_wci_email():
         return None, None
 
 def fetch_iaci_email():
-    """Holt die neueste Drewry IACI-E-Mail aus den letzten 10 Tagen und speichert den HTML-Inhalt."""
-    logger.debug("Starting IACI email fetch")
+    """Holt die neueste Drewry IACI-E-Mail aus den letzten 10 Tagen und gibt den HTML-Inhalt zurück."""
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -248,7 +215,6 @@ def fetch_iaci_email():
             elif key.strip() == 'GMAIL_PASS':
                 gmail_pass = value.strip()
 
-        logger.debug(f"Gmail user: {gmail_user}, pass: {'*' * len(gmail_pass) if gmail_pass else 'None'}")
         if not gmail_user or not gmail_pass:
             logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
             raise Exception("GMAIL credentials missing")
@@ -256,33 +222,25 @@ def fetch_iaci_email():
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
         
-        # Wähle den Ordner "inbox"
         result, data = mail.select('inbox')
-        logger.debug(f"SELECT inbox result: {result}, data: {data}")
         if result != 'OK':
             logger.error(f"Failed to select inbox: {result}, data: {data}")
             raise Exception(f"IMAP select failed: {result}")
 
-        # Suche für die letzten 10 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=10)).strftime("%d-%b-%Y")
         search_criteria = f'FROM noreply@drewry.co.uk'
-        logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
         result, data = mail.search(None, search_criteria)
-        logger.debug(f"SEARCH result: {result}, data: {data}")
-
         if result != 'OK':
             logger.error(f"Failed to search IACI emails: {result}, data: {data}")
             raise Exception(f"IMAP search failed: {result}")
 
         email_ids = data[0].split()
-        logger.debug(f"Found IACI email IDs: {email_ids}")
         if not email_ids:
             logger.error("No IACI emails found from noreply@drewry.co.uk in the last 10 days")
             raise Exception("No IACI emails found")
 
-        # Prüfe Betreffzeilen aller gefundenen E-Mails
-        for email_id in email_ids[::-1]:  # Neueste zuerst
+        for email_id in email_ids[::-1]:
             result, data = mail.fetch(email_id, '(RFC822)')
             if result != 'OK':
                 logger.error(f"Failed to fetch IACI email ID {email_id}")
@@ -294,10 +252,8 @@ def fetch_iaci_email():
             subject, encoding = decode_header(email_message['subject'])[0]
             if isinstance(subject, bytes):
                 subject = subject.decode(encoding if encoding else 'utf-8')
-            logger.debug(f"IACI email ID {email_id} subject: {subject}")
 
             if "Intra-Asia" in subject:
-                logger.debug(f"Fetching IACI email ID: {email_id}")
                 html_content = None
                 if email_message.is_multipart():
                     for part in email_message.walk():
@@ -312,15 +268,9 @@ def fetch_iaci_email():
                     logger.error(f"No HTML content found in IACI email ID {email_id}")
                     continue
 
-                email_id_str = email_id.decode('utf-8')
-                html_filename = f'iaci_email_{email_id_str}.html'
-                logger.debug(f"Saving IACI HTML content to {html_filename}")
-                with open(html_filename, 'w', encoding='utf-8') as f:
-                    f.write(html_content)
-
-                logger.info(f"Successfully saved IACI email content to {html_filename}")
+                logger.info(f"Successfully fetched IACI email content")
                 mail.logout()
-                return html_filename, subject
+                return html_content, subject
 
         logger.error("No matching IACI email found")
         raise Exception("No matching IACI email found")
@@ -331,15 +281,11 @@ def fetch_iaci_email():
             mail.logout()
         return None, None
 
-def extract_wci_from_html(html_file, subject):
-    """Extrahiert den WCI-Wert und das Datum aus der HTML-Datei."""
-    logger.debug(f"Attempting to read WCI HTML file: {html_file}")
+def extract_wci_from_html(html_content, subject):
+    """Extrahiert den WCI-Wert und das Datum aus dem HTML-Inhalt."""
     try:
-        with open(html_file, 'r', encoding='utf-8') as f:
-            soup = BeautifulSoup(f, 'html.parser')
-
+        soup = BeautifulSoup(html_content, 'html.parser')
         wci_text = soup.get_text(strip=True)
-        logger.debug(f"Extracted WCI text (first 500 chars): {wci_text[:500]}")
 
         wci_match = re.search(r'\$(\d{1,3}(,\d{3})*)\s*per 40ft container', wci_text)
         if not wci_match:
@@ -359,24 +305,20 @@ def extract_wci_from_html(html_file, subject):
                     continue
         if wci_date is None:
             wci_date = datetime.now(cest).strftime("%d.%m.%Y")
-            logger.debug(f"Could not parse WCI date, using today: {wci_date}")
+            logger.info(f"Could not parse WCI date, using today: {wci_date}")
 
         logger.info(f"Extracted WCI: {wci_value:.2f}, Date: {wci_date}")
         return wci_value, wci_date
 
     except Exception as e:
-        logger.error(f"Error processing WCI HTML file {html_file}: {str(e)}")
+        logger.error(f"Error processing WCI HTML content: {str(e)}")
         return None, None
 
-def extract_iaci_from_html(html_file, subject):
-    """Extrahiert den IACI-Wert und das Datum aus der HTML-Datei."""
-    logger.debug(f"Attempting to read IACI HTML file: {html_file}")
+def extract_iaci_from_html(html_content, subject):
+    """Extrahiert den IACI-Wert und das Datum aus dem HTML-Inhalt."""
     try:
-        with open(html_file, 'r', encoding='utf-8') as f:
-            soup = BeautifulSoup(f, 'html.parser')
-
+        soup = BeautifulSoup(html_content, 'html.parser')
         iaci_text = soup.get_text(strip=True)
-        logger.debug(f"Extracted IACI text (first 500 chars): {iaci_text[:500]}")
 
         iaci_match = re.search(r'\$(\d{1,3}(,\d{3})*)\s*per 40ft container', iaci_text)
         if not iaci_match:
@@ -396,13 +338,13 @@ def extract_iaci_from_html(html_file, subject):
                     continue
         if iaci_date is None:
             iaci_date = datetime.now(cest).strftime("%d.%m.%Y")
-            logger.debug(f"Could not parse IACI date, using today: {iaci_date}")
+            logger.info(f"Could not parse IACI date, using today: {iaci_date}")
 
         logger.info(f"Extracted IACI: {iaci_value:.2f}, Date: {iaci_date}")
         return iaci_value, iaci_date
 
     except Exception as e:
-        logger.error(f"Error processing IACI HTML file {html_file}: {str(e)}")
+        logger.error(f"Error processing IACI HTML content: {str(e)}")
         return None, None
 
 def calculate_percentage_change(current_value, previous_value):
@@ -410,11 +352,10 @@ def calculate_percentage_change(current_value, previous_value):
     if previous_value is None or previous_value == 0:
         return None
     change = ((current_value - previous_value) / previous_value) * 100
-    return round(change)  # Rundet auf ganze Zahl
+    return round(change)
 
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
-    logger.debug("Preparing to send warning email")
     try:
         env_vars = os.getenv("CONFIG")
         if not env_vars:
@@ -432,7 +373,6 @@ def send_warning_email(warning_message):
         msg["From"] = config_dict["EMAIL_USER"]
         msg["To"] = "hadobrockmeyer@gmail.com"
 
-        logger.debug("Connecting to SMTP server")
         with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
             server.starttls()
             server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
@@ -444,7 +384,6 @@ def send_warning_email(warning_message):
 
 def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change=None, iaci_percentage_change=None):
     """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail mit klickbaren Links."""
-    logger.debug("Starting email sending")
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -489,10 +428,10 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
 </html>"""
         msg.attach(MIMEText(body, 'html', 'utf-8'))
 
-        files_to_attach = [log_filename, 'daily_briefing.md', 'freight_indicies/wci_cache.json', 'freight_indicies/iaci_cache.json'] + glob.glob('wci_email_*.html') + glob.glob('iaci_email_*.html')
+        files_to_attach = ['daily_briefing.md', 'freight_indicies/wci_cache.json', 'freight_indicies/iaci_cache.json']
         for file in files_to_attach:
             if os.path.exists(file):
-                logger.debug(f"Attaching file: {file}")
+                logger.info(f"Attaching file: {file}")
                 with open(file, 'rb') as f:
                     part = MIMEBase('application', 'octet-stream')
                     part.set_payload(f.read())
@@ -500,7 +439,7 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
                 part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file)}')
                 msg.attach(part)
             else:
-                logger.warning(f"File not found for attachment: {file}")
+                logger.error(f"File not found for attachment: {file}")
 
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
@@ -515,17 +454,17 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
         return False
 
 def generate_briefing():
-    logger.debug("Starting briefing generation")
+    logger.info("Starting briefing generation")
     report_date = datetime.now(cest).strftime("%d %b %Y")
     wci_cache = load_wci_cache()
     iaci_cache = load_iaci_cache()
 
     # WCI-Verarbeitung
-    wci_html_file, wci_subject = fetch_wci_email()
+    wci_html_content, wci_subject = fetch_wci_email()
     wci_value = None
     wci_date = None
-    if wci_html_file:
-        wci_value, wci_date = extract_wci_from_html(wci_html_file, wci_subject)
+    if wci_html_content:
+        wci_value, wci_date = extract_wci_from_html(wci_html_content, wci_subject)
     if not wci_value:
         logger.error("Failed to fetch or extract WCI value")
         latest_wci_cache_date = max(
@@ -550,14 +489,14 @@ def generate_briefing():
             wci_cache[wci_date] = {"value": wci_value}
             save_wci_cache(wci_cache)
         else:
-            logger.debug(f"WCI cache entry for {wci_date} already exists, skipping save")
+            logger.info(f"WCI cache entry for {wci_date} already exists, skipping save")
 
     # IACI-Verarbeitung
-    iaci_html_file, iaci_subject = fetch_iaci_email()
+    iaci_html_content, iaci_subject = fetch_iaci_email()
     iaci_value = None
     iaci_date = None
-    if iaci_html_file:
-        iaci_value, iaci_date = extract_iaci_from_html(iaci_html_file, iaci_subject)
+    if iaci_html_content:
+        iaci_value, iaci_date = extract_iaci_from_html(iaci_html_content, iaci_subject)
     if not iaci_value:
         logger.error("Failed to fetch or extract IACI value")
         latest_iaci_cache_date = max(
@@ -582,7 +521,7 @@ def generate_briefing():
             iaci_cache[iaci_date] = {"value": iaci_value}
             save_iaci_cache(iaci_cache)
         else:
-            logger.debug(f"IACI cache entry for {iaci_date} already exists, skipping save")
+            logger.info(f"IACI cache entry for {iaci_date} already exists, skipping save")
 
     # Prozentuale Veränderung
     wci_previous_value = None
@@ -601,9 +540,9 @@ def generate_briefing():
     )
     if sorted_iaci_dates:
         iaci_previous_value = iaci_cache[sorted_iaci_dates[-1]]["value"]
-        logger.debug(f"IACI previous value: {iaci_previous_value} for date {sorted_iaci_dates[-1]}")
+        logger.info(f"IACI previous value: {iaci_previous_value} for date {sorted_iaci_dates[-1]}")
     iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
-    logger.debug(f"IACI percentage change: {iaci_percentage_change}")
+    logger.info(f"IACI percentage change: {iaci_percentage_change}")
 
     # Bericht generieren mit Markdown-Links
     wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
@@ -620,7 +559,7 @@ def generate_briefing():
 {wci_text}
 {iaci_text}
 """
-    logger.debug(f"Report content:\n{report}")
+    logger.info(f"Report content:\n{report}")
     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
         f.write(report)
     logger.info("Saved briefing to daily_briefing.md")
@@ -629,6 +568,6 @@ def generate_briefing():
     return report
 
 if __name__ == "__main__":
-    logger.debug("Starting main execution")
+    logger.info("Starting main execution")
     report = generate_briefing()
-    logger.debug("Main execution completed")
+    logger.info("Main execution completed")
