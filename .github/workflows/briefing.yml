@@ -1,15 +1,16 @@
 name: Daily China Briefing
 
 on:
-  workflow_dispatch: # Für manuelles Auslösen über "Actions" → "Run Workflow"
+  workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *' # Täglich um 06:00 UTC (07:00 CEST)
+    - cron: '0 5 * * *' # täglich um 06:00 UTC (07:00 CEST)
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Ermöglicht Schreibrechte für das Repository
+      actions: read  # Standard-Berechtigung für Actions
 
     steps:
       - name: Repository klonen
@@ -25,24 +26,74 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4
+          pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
 
       - name: Verzeichnis freight_indicies erstellen
         run: |
           mkdir -p freight_indicies
 
-      - name: Test-WCI/IACI-Skript ausführen
-        run: python test_wci_email.py
+      - name: Briefing-Skript ausführen
+        run: python briefing.py
         env:
-          DREWRY: ${{ secrets.DREWRY }}
           CONFIG: ${{ secrets.CONFIG }}
+          SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          DREWRY: ${{ secrets.DREWRY }}
 
-      - name: Commit and push changes
+      - name: cpr_cache.json Inhalt prüfen (vor Commit)
+        run: |
+          echo "Inhalt von cpr_cache.json vor dem Commit:"
+          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: scfi_cache.json Inhalt prüfen (vor Commit)
+        run: |
+          echo "Inhalt von scfi_cache.json vor dem Commit:"
+          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: wci_cache.json Inhalt prüfen (vor Commit)
+        run: |
+          echo "Inhalt von wci_cache.json vor dem Commit:"
+          cat freight_indicies/wci_cache.json || echo "Datei wci_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: iaci_cache.json Inhalt prüfen (vor Commit)
+        run: |
+          echo "Inhalt von iaci_cache.json vor dem Commit:"
+          cat freight_indicies/iaci_cache.json || echo "Datei iaci_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: Änderungen an Cache-Dateien und Briefing committen und pushen
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add daily_briefing.md freight_indicies/wci_cache.json freight_indicies/iaci_cache.json
-          git commit -m "Update WCI/IACI cache and briefing" || echo "Nothing to commit"
+          git add cpr_cache.json scfi_cache.json freight_indicies/wci_cache.json freight_indicies/iaci_cache.json daily_briefing.md
+          git commit -m "Update cache files and briefing" || echo "Keine Änderungen zu committen"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
+        continue-on-error: true
+
+      - name: cpr_cache.json Inhalt prüfen (nach Commit)
+        run: |
+          echo "Inhalt von cpr_cache.json nach dem Commit:"
+          cat cpr_cache.json || echo "Datei cpr_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: scfi_cache.json Inhalt prüfen (nach Commit)
+        run: |
+          echo "Inhalt von scfi_cache.json nach dem Commit:"
+          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: wci_cache.json Inhalt prüfen (nach Commit)
+        run: |
+          echo "Inhalt von wci_cache.json nach dem Commit:"
+          cat freight_indicies/wci_cache.json || echo "Datei wci_cache.json existiert nicht"
+        continue-on-error: true
+
+      - name: iaci_cache.json Inhalt prüfen (nach Commit)
+        run: |
+          echo "Inhalt von iaci_cache.json nach dem Commit:"
+          cat freight_indicies/iaci_cache.json || echo "Datei iaci_cache.json existiert nicht"
         continue-on-error: true
