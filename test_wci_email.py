@@ -17,12 +17,13 @@ import glob
 # CEST ist UTC+2
 cest = timezone(timedelta(hours=2))
 
-# Logging einrichten
+# Logging einrichten mit eindeutigem Dateinamen
+log_filename = f'wci_test_log_{datetime.now(cest).strftime("%Y%m%d_%H%M%S")}.txt'
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('wci_test_log.txt', encoding='utf-8'),
+        logging.FileHandler(log_filename, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -274,7 +275,7 @@ Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
 """
         msg.attach(MIMEText(body, 'plain'))
 
-        files_to_attach = ['wci_test_log.txt', 'daily_briefing.md', 'WCI/wci_cache.json'] + glob.glob('wci_email_*.html')
+        files_to_attach = [log_filename, 'daily_briefing.md', 'WCI/wci_cache.json'] + glob.glob('wci_email_*.html')
         for file in files_to_attach:
             if os.path.exists(file):
                 logger.debug(f"Attaching file: {file}")
@@ -298,19 +299,6 @@ Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
     except Exception as e:
         logger.error(f"Error sending email: {str(e)}")
         return False
-
-def clean_old_cache(cache):
-    """Entfernt Cache-Einträge älter als 30 Tage."""
-    thirty_days_ago = datetime.now(cest) - timedelta(days=30)
-    cleaned_cache = {}
-    for date_str, data in cache.items():
-        try:
-            cache_date = datetime.strptime(date_str, "%d.%m.%Y").replace(tzinfo=cest)  # CEST-Zeitzone hinzufügen
-            if cache_date >= thirty_days_ago:
-                cleaned_cache[date_str] = data
-        except ValueError:
-            logger.warning(f"Invalid date format in cache: {date_str}")
-    return cleaned_cache
 
 def generate_briefing():
     logger.debug("Starting briefing generation")
@@ -424,9 +412,6 @@ def generate_briefing():
         logger.info("Saved briefing to daily_briefing.md")
         send_results_email(wci_value, wci_date)
         return report
-
-    # Cache bereinigen
-    cache = clean_old_cache(cache)
 
     # Cache nur aktualisieren, wenn email_date neu ist
     if wci_date not in cache:
