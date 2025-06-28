@@ -45,8 +45,8 @@ jobs:
       - name: Inhalte in Zusammenfassung schreiben
         run: |
           echo "## Workflow Output" >> $GITHUB_STEP_SUMMARY
-          echo "### wci_test_log.txt" >> $GITHUB_STEP_SUMMARY
-          cat wci_test_log.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_test_log.txt existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### wci_test_log_*.txt" >> $GITHUB_STEP_SUMMARY
+          ls wci_test_log_*.txt | sort -r | head -n 1 | xargs cat >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Keine Log-Datei gefunden" >> $GITHUB_STEP_SUMMARY
           echo "### wci_email_*.html" >> $GITHUB_STEP_SUMMARY
           cat wci_email_*.html >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_email_*.html existiert nicht" >> $GITHUB_STEP_SUMMARY
           echo "### daily_briefing.md" >> $GITHUB_STEP_SUMMARY
@@ -59,7 +59,7 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json || echo "No files to add"
+          git add wci_test_log_*.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json || echo "No files to add"
           git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
@@ -70,7 +70,7 @@ jobs:
         with:
           name: wci-files
           path: |
-            wci_test_log.txt
+            wci_test_log_*.txt
             wci_email_*.html
             daily_briefing.md
             WCI/wci_cache.json
