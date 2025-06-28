@@ -1,0 +1,35 @@
+2025-06-28 12:24:18,762 - DEBUG - Starting main execution
+2025-06-28 12:24:18,762 - DEBUG - Starting briefing generation
+2025-06-28 12:24:18,762 - DEBUG - Loading cache from /home/runner/work/-daily-china-briefing-test/-daily-china-briefing-test/freight_indicies/wci_cache.json
+2025-06-28 12:24:18,763 - DEBUG - Successfully loaded cache: {'19.06.2025': {'value': 3279.0}, '26.06.2025': {'value': 2983.0}}
+2025-06-28 12:24:18,763 - DEBUG - Starting email fetch
+2025-06-28 12:24:18,763 - DEBUG - Gmail user: hadobrockmeyer@gmail.com, pass: ****************
+2025-06-28 12:24:21,043 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "28-Jun-2025")
+2025-06-28 12:24:21,328 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "27-Jun-2025")
+2025-06-28 12:24:21,543 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "26-Jun-2025")
+2025-06-28 12:24:21,833 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "25-Jun-2025")
+2025-06-28 12:24:22,153 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "24-Jun-2025")
+2025-06-28 12:24:22,401 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "23-Jun-2025")
+2025-06-28 12:24:22,618 - DEBUG - Searching emails with criteria: (FROM "noreply@drewry.co.uk" ON "22-Jun-2025")
+2025-06-28 12:24:22,846 - DEBUG - Fetching email ID: b'7904'
+2025-06-28 12:24:23,178 - DEBUG - Email subject: Drewry World Container Index: Thursday, 26 June 2025
+2025-06-28 12:24:23,178 - DEBUG - Saving HTML content to wci_email_7904.html
+2025-06-28 12:24:23,179 - INFO - Successfully saved email content to wci_email_7904.html
+2025-06-28 12:24:23,343 - DEBUG - Attempting to read HTML file: wci_email_7904.html
+2025-06-28 12:24:23,350 - DEBUG - Extracted text (first 500 chars): Drewry World Container Index - Weekly assessmentDear Hado26 June 2025World Container Index - 26 Jun26 Jun 2025: Drewry’s World Container Index decreased 9% to $2,983 per 40ft container this week.Read moreContainer Freight Rate Insight - spot rates against 6,300 global lanesTrusted by many of the world's leading brands- Search rates across 6,300 global port pairs- All lanes updated monthly (top 1,900 lanes updated fortnightly)- Monthly Insight report, providing commentary and analysis of key mark
+2025-06-28 12:24:23,397 - INFO - Extracted WCI: 2983.00, Date: 26.06.2025
+2025-06-28 12:24:23,397 - DEBUG - Cache entry for 26.06.2025 already exists, skipping save
+2025-06-28 12:24:23,397 - DEBUG - Report content:
+Daily China Briefing - 28 Jun 2025
+==================================================
+## 🚢 Frachtraten Indizies
+• WCI: 2983.00 (↓ -9.03%) (Stand 26.06.2025)
+
+2025-06-28 12:24:23,397 - INFO - Saved briefing to daily_briefing.md
+2025-06-28 12:24:23,397 - DEBUG - Starting email sending
+2025-06-28 12:24:23,398 - DEBUG - Attaching file: wci_test_log_20250628_142418.txt
+2025-06-28 12:24:23,398 - DEBUG - Attaching file: daily_briefing.md
+2025-06-28 12:24:23,398 - DEBUG - Attaching file: freight_indicies/wci_cache.json
+2025-06-28 12:24:23,398 - DEBUG - Attaching file: wci_email_7904.html
+2025-06-28 12:24:25,210 - INFO - Email sent successfully
+2025-06-28 12:24:25,210 - DEBUG - Main execution completed
