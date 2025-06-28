@@ -272,7 +272,7 @@ def fetch_iaci_email():
         logger.debug(f"SEARCH result: {result}, data: {data}")
 
         if result != 'OK':
-            logger.error(f"Failed to search IACI emails: {result}, data: {data}")
+            logger.error(f"Failed to search IACI emails: {result},ży data: {data}")
             raise Exception(f"IMAP search failed: {result}")
 
         email_ids = data[0].split()
@@ -333,6 +333,9 @@ def fetch_iaci_email():
 
 def extract_wci_from_html(html_file, subject):
     """Extrahiert den WCI-Wert und das Datum aus der HTML-Datei."""
+   Korrigierter Code (Fortsetzung)
+
+```python
     logger.debug(f"Attempting to read WCI HTML file: {html_file}")
     try:
         with open(html_file, 'r', encoding='utf-8') as f:
@@ -563,7 +566,7 @@ def generate_briefing():
         if latest_iaci_cache_date:
             latest_entry = iaci_cache[latest_iaci_cache_date]
             iaci_value = latest_entry["value"]
-            iaci_date = latest_iaci_cache_date  # Korrigierter Fehler: Verwende iaci_date statt latest_wci_cache_date
+            iaci_date = latest_iaci_cache_date
             logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date})")
             warning_message = f"IACI: E-Mail not reachable or value not extracted, used cache value {iaci_value} (Date: {iaci_date})"
             send_warning_email(warning_message)
@@ -615,8 +618,7 @@ def generate_briefing():
 {wci_text}
 {iaci_text}
 """
-    lo
-System: gger.debug(f"Report content:\n{report}")
+    logger.debug(f"Report content:\n{report}")
     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
         f.write(report)
     logger.info("Saved briefing to daily_briefing.md")
