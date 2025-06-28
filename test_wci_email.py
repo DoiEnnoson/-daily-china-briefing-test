@@ -443,7 +443,7 @@ def send_warning_email(warning_message):
         raise
 
 def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change=None, iaci_percentage_change=None):
-    """Sendet die WCI- und IACI-Ergebnisse per E-Mail."""
+    """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail mit klickbaren Links."""
     logger.debug("Starting email sending")
     try:
         env_vars = os.getenv('DREWRY')
@@ -471,18 +471,23 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
 
         wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
         wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
-        wci_text = f"• WCI: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})"
+        wci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})</li>"
 
         iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
         iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
-        iaci_text = f"• IACI: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
+        iaci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})</li>"
 
-        body = f"""Attached are the logs and briefing from the Daily China Briefing WCI/IACI workflow.
-Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
+        body = f"""<html>
+<body>
+<p>Attached are the logs and briefing from the Daily China Briefing WCI/IACI workflow.</p>
+<p>Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}</p>
+<ul>
 {wci_text}
 {iaci_text}
-"""
-        msg.attach(MIMEText(body, 'plain'))
+</ul>
+</body>
+</html>"""
+        msg.attach(MIMEText(body, 'html', 'utf-8'))
 
         files_to_attach = [log_filename, 'daily_briefing.md', 'freight_indicies/wci_cache.json', 'freight_indicies/iaci_cache.json'] + glob.glob('wci_email_*.html') + glob.glob('iaci_email_*.html')
         for file in files_to_attach:
