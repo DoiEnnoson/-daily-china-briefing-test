@@ -37,7 +37,7 @@ def load_wci_cache():
         if os.path.exists(WCI_CACHE_FILE):
             with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
-                logger.info(f"Successfully loaded WCI cache")
+                logger.info("Successfully loaded WCI cache")
                 return cache
         logger.info(f"No WCI cache file found at {WCI_CACHE_FILE}, initializing empty cache")
         cache = {}
@@ -71,7 +71,7 @@ def load_iaci_cache():
         if os.path.exists(IACI_CACHE_FILE):
             with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
-                logger.info(f"Successfully loaded IACI cache")
+                logger.info("Successfully loaded IACI cache")
                 return cache
         logger.info(f"No IACI cache file found at {IACI_CACHE_FILE}, initializing empty cache")
         cache = {}
@@ -98,7 +98,7 @@ def save_iaci_cache(cache):
                 with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
                     existing_cache = json.load(f)
             except json.JSONDecodeError:
-                logger.error(f"Corrupted IACI cache file, overwriting with new data")
+                logger.error("Corrupted IACI cache file, overwriting with new data")
         
         existing_cache.update(cache)
         with open(IACI_CACHE_FILE, "w", encoding="utf-8") as f:
@@ -144,7 +144,7 @@ def fetch_wci_email():
 
         today = datetime.now(cest)
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
-        search_criteria = f'FROM noreply@drewry.co.uk'
+        search_criteria = 'FROM noreply@drewry.co.uk'
         result, data = mail.search(None, search_criteria)
         if result != 'OK':
             logger.error(f"Failed to search WCI emails: {result}, data: {data}")
@@ -183,7 +183,7 @@ def fetch_wci_email():
                     logger.error(f"No HTML content found in WCI email ID {email_id}")
                     continue
 
-                logger.info(f"Successfully fetched WCI email content")
+                logger.info("Successfully fetched WCI email content")
                 mail.logout()
                 return html_content, subject
 
@@ -227,7 +227,7 @@ def fetch_iaci_email():
 
         today = datetime.now(cest)
         since_date = (today - timedelta(days=10)).strftime("%d-%b-%Y")
-        search_criteria = f'FROM noreply@drewry.co.uk'
+        search_criteria = 'FROM noreply@drewry.co.uk'
         result, data = mail.search(None, search_criteria)
         if result != 'OK':
             logger.error(f"Failed to search IACI emails: {result}, data: {data}")
@@ -266,7 +266,7 @@ def fetch_iaci_email():
                     logger.error(f"No HTML content found in IACI email ID {email_id}")
                     continue
 
-                logger.info(f"Successfully fetched IACI email content")
+                logger.info("Successfully fetched IACI email content")
                 mail.logout()
                 return html_content, subject
 
