@@ -136,7 +136,19 @@ def fetch_wci_email():
 
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
-        mail.select('[Gmail]/Alle Nachrichten')  # Wechsel zu "Alle Nachrichten"
+        
+        # Versuche, den Ordner "[Gmail]/All Mail" auszuwählen
+        try:
+            result, data = mail.select('[Gmail]/All Mail')
+            logger.debug(f"SELECT [Gmail]/All Mail result: {result}, data: {data}")
+        except Exception as e:
+            logger.error(f"Failed to select [Gmail]/All Mail: {str(e)}, trying inbox")
+            result, data = mail.select('inbox')
+            logger.debug(f"SELECT inbox result: {result}, data: {data}")
+        
+        if result != 'OK':
+            logger.error(f"Failed to select mailbox: {result}, data: {data}")
+            raise Exception(f"IMAP select failed: {result}")
 
         # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
@@ -145,11 +157,13 @@ def fetch_wci_email():
         logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
         try:
             result, data = mail.search(None, search_criteria)
+            logger.debug(f"SEARCH result: {result}, data: {data}")
         except Exception as e:
             logger.error(f"Primary WCI search failed: {str(e)}, trying fallback search")
             search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
             logger.debug(f"Fallback WCI search with criteria: {search_criteria}")
             result, data = mail.search(None, search_criteria)
+            logger.debug(f"Fallback SEARCH result: {result}, data: {data}")
 
         if result != 'OK':
             logger.error(f"Failed to search WCI emails: {result}, data: {data}")
@@ -177,7 +191,7 @@ def fetch_wci_email():
             subject = subject.decode(encoding if encoding else 'utf-8')
         logger.debug(f"WCI email subject: {subject}")
 
-        if "Container Index" not in subject:  # Lockerere Bedingung
+        if "Container Index" not in subject:
             logger.error(f"WCI email ID {latest_email_id} does not match expected subject")
             raise Exception("No matching WCI email found")
 
@@ -236,7 +250,19 @@ def fetch_iaci_email():
 
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
-        mail.select('[Gmail]/Alle Nachrichten')  # Wechsel zu "Alle Nachrichten"
+        
+        # Versuche, den Ordner "[Gmail]/All Mail" auszuwählen
+        try:
+            result, data = mail.select('[Gmail]/All Mail')
+            logger.debug(f"SELECT [Gmail]/All Mail result: {result}, data: {data}")
+        except Exception as e:
+            logger.error(f"Failed to select [Gmail]/All Mail: {str(e)}, trying inbox")
+            result, data = mail.select('inbox')
+            logger.debug(f"SELECT inbox result: {result}, data: {data}")
+        
+        if result != 'OK':
+            logger.error(f"Failed to select mailbox: {result}, data: {data}")
+            raise Exception(f"IMAP select failed: {result}")
 
         # Suche für die letzten 20 Tage in CEST
         today = datetime.now(cest)
@@ -245,11 +271,13 @@ def fetch_iaci_email():
         logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
         try:
             result, data = mail.search(None, search_criteria)
+            logger.debug(f"SEARCH result: {result}, data: {data}")
         except Exception as e:
             logger.error(f"Primary IACI search failed: {str(e)}, trying fallback search")
             search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
             logger.debug(f"Fallback IACI search with criteria: {search_criteria}")
             result, data = mail.search(None, search_criteria)
+            logger.debug(f"Fallback SEARCH result: {result}, data: {data}")
 
         if result != 'OK':
             logger.error(f"Failed to search IACI emails: {result}, data: {data}")
@@ -277,7 +305,7 @@ def fetch_iaci_email():
             subject = subject.decode(encoding if encoding else 'utf-8')
         logger.debug(f"IACI email subject: {subject}")
 
-        if "Container Index" not in subject:  # Lockerere Bedingung
+        if "Container Index" not in subject:
             logger.error(f"IACI email ID {latest_email_id} does not match expected subject")
             raise Exception("No matching IACI email found")
 
