@@ -272,7 +272,7 @@ def fetch_iaci_email():
         logger.debug(f"SEARCH result: {result}, data: {data}")
 
         if result != 'OK':
-            logger.error(f"Failed to search IACI emails: {result},ży data: {data}")
+            logger.error(f"Failed to search IACI emails: {result}, data: {data}")
             raise Exception(f"IMAP search failed: {result}")
 
         email_ids = data[0].split()
@@ -333,9 +333,6 @@ def fetch_iaci_email():
 
 def extract_wci_from_html(html_file, subject):
     """Extrahiert den WCI-Wert und das Datum aus der HTML-Datei."""
-   Korrigierter Code (Fortsetzung)
-
-```python
     logger.debug(f"Attempting to read WCI HTML file: {html_file}")
     try:
         with open(html_file, 'r', encoding='utf-8') as f:
