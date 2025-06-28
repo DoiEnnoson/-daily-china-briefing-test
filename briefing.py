@@ -1946,40 +1946,10 @@ except Exception as e:
     briefing.append("\nEinen erfolgreichen Tag! 🌟")
 
     print("DEBUG - generate_briefing: Briefing generated successfully")
+
     # Debugging: HTML-Output speichern
-    with open("newsletter.html", "w", encoding="utf-8") as f:
-        f.write(f"""\
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="robots" content="noindex, nofollow, noarchive">
-    <meta property="og:image" content="">
-    <meta property="og:image:secure_url" content="">
-    <meta property="og:image:type" content="">
-    <meta property="og:image:width" content="">
-    <meta property="og:image:height" content="">
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Daily China Briefing">
-    <meta property="og:description" content="">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:image" content="">
-    <meta name="twitter:image:alt" content="">
-    <meta name="twitter:title" content="Daily China Briefing">
-    <meta name="twitter:description" content="">
-    <style>
-        .no-preview {{ pointer-events: auto; }}
-        a[href="#"] img {{ border: none !important; }}
-    </style>
-</head>
-<body style="margin: 0; padding: 0;">
-    <div style="background-color: #ffffff; padding: 20px;">
-        <pre style="font-family: Arial, sans-serif; margin: 0;">
-{chr(10).join(briefing)}\n
-        </pre>
-    </div>
-</body>
-</html>""")
-    return f"""\
+    logger.info("DEBUG - generate_briefing: Briefing generated successfully")
+    html_content = f"""\
 <html>
 <head>
     <meta charset="UTF-8">
@@ -2010,6 +1980,9 @@ except Exception as e:
     </div>
 </body>
 </html>"""
+    with open("newsletter.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    return html_content
 
 # === E-Mail senden ===
 def send_briefing():
