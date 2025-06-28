@@ -137,23 +137,18 @@ def fetch_wci_email():
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
         
-        # Versuche, den Ordner "[Gmail]/All Mail" auszuwählen
+        # Versuche, den Ordner "inbox" auszuwählen (Fallback, da [Gmail]/All Mail nicht funktioniert)
         try:
-            result, data = mail.select('[Gmail]/All Mail')
-            logger.debug(f"SELECT [Gmail]/All Mail result: {result}, data: {data}")
-        except Exception as e:
-            logger.error(f"Failed to select [Gmail]/All Mail: {str(e)}, trying inbox")
             result, data = mail.select('inbox')
             logger.debug(f"SELECT inbox result: {result}, data: {data}")
+        except Exception as e:
+            logger.error(f"Failed to select inbox: {str(e)}")
+            raise Exception(f"IMAP select failed: {str(e)}")
         
-        if result != 'OK':
-            logger.error(f"Failed to select mailbox: {result}, data: {data}")
-            raise Exception(f"IMAP select failed: {result}")
-
         # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
-        search_criteria = f'FROM noreply@drewry.co.uk "World Container Index" SINCE {since_date}'
+        search_criteria = f'FROM noreply@drewry.co.uk World Container Index SINCE {since_date}'
         logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
         try:
             result, data = mail.search(None, search_criteria)
@@ -175,49 +170,49 @@ def fetch_wci_email():
             logger.error("No WCI emails found from noreply@drewry.co.uk in the last 7 days")
             raise Exception("No WCI emails found")
 
-        latest_email_id = email_ids[-1]
-        logger.debug(f"Fetching WCI email ID: {latest_email_id}")
-        result, data = mail.fetch(latest_email_id, '(RFC822)')
+        # Prüfe Betreffzeilen aller gefundenen E-Mails
+        for email_id in email_ids[::-1]:  # Neueste zuerst
+            result, data = mail.fetch(email_id, '(RFC822)')
+            if result != 'OK':
+                logger.error(f"Failed to fetch WCI email ID {email_id}")
+                continue
 
-        if result != 'OK':
-            logger.error(f"Failed to fetch WCI email ID {latest_email_id}")
-            raise Exception("Failed to fetch WCI email")
+            raw_email = data[0][1]
+            email_message = email.message_from_bytes(raw_email)
 
-        raw_email = data[0][1]
-        email_message = email.message_from_bytes(raw_email)
+            subject, encoding = decode_header(email_message['subject'])[0]
+            if isinstance(subject, bytes):
+                subject = subject.decode(encoding if encoding else 'utf-8')
+            logger.debug(f"WCI email ID {email_id} subject: {subject}")
 
-        subject, encoding = decode_header(email_message['subject'])[0]
-        if isinstance(subject, bytes):
-            subject = subject.decode(encoding if encoding else 'utf-8')
-        logger.debug(f"WCI email subject: {subject}")
+            if "World Container Index" in subject:
+                logger.debug(f"Fetching WCI email ID: {email_id}")
+                html_content = None
+                if email_message.is_multipart():
+                    for part in email_message.walk():
+                        if part.get_content_type() == 'text/html':
+                            html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            break
+                else:
+                    if email_message.get_content_type() == 'text/html':
+                        html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
 
-        if "Container Index" not in subject:
-            logger.error(f"WCI email ID {latest_email_id} does not match expected subject")
-            raise Exception("No matching WCI email found")
+                if not html_content:
+                    logger.error(f"No HTML content found in WCI email ID {email_id}")
+                    continue
 
-        html_content = None
-        if email_message.is_multipart():
-            for part in email_message.walk():
-                if part.get_content_type() == 'text/html':
-                    html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                    break
-        else:
-            if email_message.get_content_type() == 'text/html':
-                html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                email_id_str = email_id.decode('utf-8')
+                html_filename = f'wci_email_{email_id_str}.html'
+                logger.debug(f"Saving WCI HTML content to {html_filename}")
+                with open(html_filename, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
 
-        if not html_content:
-            logger.error(f"No HTML content found in WCI email ID {latest_email_id}")
-            raise Exception("No HTML content found")
+                logger.info(f"Successfully saved WCI email content to {html_filename}")
+                mail.logout()
+                return html_filename, subject
 
-        email_id_str = latest_email_id.decode('utf-8')
-        html_filename = f'wci_email_{email_id_str}.html'
-        logger.debug(f"Saving WCI HTML content to {html_filename}")
-        with open(html_filename, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        logger.info(f"Successfully saved WCI email content to {html_filename}")
-        mail.logout()
-        return html_filename, subject
+        logger.error("No matching WCI email found")
+        raise Exception("No matching WCI email found")
 
     except Exception as e:
         logger.error(f"Error fetching WCI email: {str(e)}")
@@ -251,23 +246,18 @@ def fetch_iaci_email():
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
         
-        # Versuche, den Ordner "[Gmail]/All Mail" auszuwählen
+        # Versuche, den Ordner "inbox" auszuwählen
         try:
-            result, data = mail.select('[Gmail]/All Mail')
-            logger.debug(f"SELECT [Gmail]/All Mail result: {result}, data: {data}")
-        except Exception as e:
-            logger.error(f"Failed to select [Gmail]/All Mail: {str(e)}, trying inbox")
             result, data = mail.select('inbox')
             logger.debug(f"SELECT inbox result: {result}, data: {data}")
+        except Exception as e:
+            logger.error(f"Failed to select inbox: {str(e)}")
+            raise Exception(f"IMAP select failed: {str(e)}")
         
-        if result != 'OK':
-            logger.error(f"Failed to select mailbox: {result}, data: {data}")
-            raise Exception(f"IMAP select failed: {result}")
-
         # Suche für die letzten 20 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=20)).strftime("%d-%b-%Y")
-        search_criteria = f'FROM noreply@drewry.co.uk "Intra-Asia Container Index" SINCE {since_date}'
+        search_criteria = f'FROM noreply@drewry.co.uk Intra-Asia Container Index SINCE {since_date}'
         logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
         try:
             result, data = mail.search(None, search_criteria)
@@ -289,49 +279,49 @@ def fetch_iaci_email():
             logger.error("No IACI emails found from noreply@drewry.co.uk in the last 20 days")
             raise Exception("No IACI emails found")
 
-        latest_email_id = email_ids[-1]
-        logger.debug(f"Fetching IACI email ID: {latest_email_id}")
-        result, data = mail.fetch(latest_email_id, '(RFC822)')
+        # Prüfe Betreffzeilen aller gefundenen E-Mails
+        for email_id in email_ids[::-1]:  # Neueste zuerst
+            result, data = mail.fetch(email_id, '(RFC822)')
+            if result != 'OK':
+                logger.error(f"Failed to fetch IACI email ID {email_id}")
+                continue
 
-        if result != 'OK':
-            logger.error(f"Failed to fetch IACI email ID {latest_email_id}")
-            raise Exception("Failed to fetch IACI email")
+            raw_email = data[0][1]
+            email_message = email.message_from_bytes(raw_email)
 
-        raw_email = data[0][1]
-        email_message = email.message_from_bytes(raw_email)
+            subject, encoding = decode_header(email_message['subject'])[0]
+            if isinstance(subject, bytes):
+                subject = subject.decode(encoding if encoding else 'utf-8')
+            logger.debug(f"IACI email ID {email_id} subject: {subject}")
 
-        subject, encoding = decode_header(email_message['subject'])[0]
-        if isinstance(subject, bytes):
-            subject = subject.decode(encoding if encoding else 'utf-8')
-        logger.debug(f"IACI email subject: {subject}")
+            if "Intra-Asia" in subject:
+                logger.debug(f"Fetching IACI email ID: {email_id}")
+                html_content = None
+                if email_message.is_multipart():
+                    for part in email_message.walk():
+                        if part.get_content_type() == 'text/html':
+                            html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            break
+                else:
+                    if email_message.get_content_type() == 'text/html':
+                        html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
 
-        if "Container Index" not in subject:
-            logger.error(f"IACI email ID {latest_email_id} does not match expected subject")
-            raise Exception("No matching IACI email found")
+                if not html_content:
+                    logger.error(f"No HTML content found in IACI email ID {email_id}")
+                    continue
 
-        html_content = None
-        if email_message.is_multipart():
-            for part in email_message.walk():
-                if part.get_content_type() == 'text/html':
-                    html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                    break
-        else:
-            if email_message.get_content_type() == 'text/html':
-                html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                email_id_str = email_id.decode('utf-8')
+                html_filename = f'iaci_email_{email_id_str}.html'
+                logger.debug(f"Saving IACI HTML content to {html_filename}")
+                with open(html_filename, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
 
-        if not html_content:
-            logger.error(f"No HTML content found in IACI email ID {latest_email_id}")
-            raise Exception("No HTML content found")
+                logger.info(f"Successfully saved IACI email content to {html_filename}")
+                mail.logout()
+                return html_filename, subject
 
-        email_id_str = latest_email_id.decode('utf-8')
-        html_filename = f'iaci_email_{email_id_str}.html'
-        logger.debug(f"Saving IACI HTML content to {html_filename}")
-        with open(html_filename, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        logger.info(f"Successfully saved IACI email content to {html_filename}")
-        mail.logout()
-        return html_filename, subject
+        logger.error("No matching IACI email found")
+        raise Exception("No matching IACI email found")
 
     except Exception as e:
         logger.error(f"Error fetching IACI email: {str(e)}")
