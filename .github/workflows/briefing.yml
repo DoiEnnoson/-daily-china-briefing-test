@@ -1,12 +1,9 @@
 name: Daily China Briefing
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Für manuelles Auslösen über "Actions" → "Run Workflow"
   schedule:
     - cron: '0 5 * * *' # Täglich um 06:00 UTC (07:00 CEST)
-  push:
-    branches:
-      - main
 
 jobs:
   build:
@@ -39,17 +36,6 @@ jobs:
         env:
           DREWRY: ${{ secrets.DREWRY }}
           CONFIG: ${{ secrets.CONFIG }}
-
-      - name: Inhalte in Zusammenfassung schreiben
-        run: |
-          echo "## Workflow Output" >> $GITHUB_STEP_SUMMARY
-          echo "### daily_briefing.md" >> $GITHUB_STEP_SUMMARY
-          cat daily_briefing.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei daily_briefing.md existiert nicht" >> $GITHUB_STEP_SUMMARY
-          echo "### freight_indicies/wci_cache.json" >> $GITHUB_STEP_SUMMARY
-          cat freight_indicies/wci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei freight_indicies/wci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
-          echo "### freight_indicies/iaci_cache.json" >> $GITHUB_STEP_SUMMARY
-          cat freight_indicies/iaci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei freight_indicies/iaci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
-        continue-on-error: true
 
       - name: Commit and push changes
         run: |
