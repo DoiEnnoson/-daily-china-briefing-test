@@ -31,7 +31,7 @@ logger = logging.getLogger()
 
 # Pfade
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WCI_CACHE_DIR = os.path.join(BASE_DIR, "WCI")
+WCI_CACHE_DIR = os.path.join(BASE_DIR, "freight_indicies")  # Geändert von WCI zu freight_indicies
 WCI_CACHE_FILE = os.path.join(WCI_CACHE_DIR, "wci_cache.json")
 
 def load_wci_cache():
@@ -275,7 +275,7 @@ Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
 """
         msg.attach(MIMEText(body, 'plain'))
 
-        files_to_attach = [log_filename, 'daily_briefing.md', 'WCI/wci_cache.json'] + glob.glob('wci_email_*.html')
+        files_to_attach = [log_filename, 'daily_briefing.md', 'freight_indicies/wci_cache.json'] + glob.glob('wci_email_*.html')
         for file in files_to_attach:
             if os.path.exists(file):
                 logger.debug(f"Attaching file: {file}")
