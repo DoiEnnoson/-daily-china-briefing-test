@@ -87,6 +87,11 @@ def load_iaci_cache():
         cache = {}
         save_iaci_cache(cache)
         return cache
+    except json.JSONDecodeError as e:
+        logger.error(f"Corrupted IACI cache file, reinitializing: {str(e)}")
+        cache = {}
+        save_iaci_cache(cache)
+        return cache
     except Exception as e:
         logger.error(f"Failed to load or create IACI cache: {str(e)}")
         cache = {}
@@ -98,8 +103,21 @@ def save_iaci_cache(cache):
     logger.debug(f"Saving IACI cache to {IACI_CACHE_FILE}: {cache}")
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
+        # Lade den bestehenden Cache, um ihn nicht zu überschreiben
+        existing_cache = {}
+        if os.path.exists(IACI_CACHE_FILE):
+            try:
+                with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
+                    existing_cache = json.load(f)
+                    logger.debug(f"Existing IACI cache loaded: {existing_cache}")
+            except json.JSONDecodeError:
+                logger.error(f"Corrupted IACI cache file, overwriting with new data")
+        
+        # Füge neue Einträge hinzu, ohne bestehende zu löschen
+        existing_cache.update(cache)
         with open(IACI_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(cache, f, ensure_ascii=False, indent=2)
+            json.dump(existing_cache, f, ensure_ascii=False, indent=2)
+        
         if os.path.exists(IACI_CACHE_FILE):
             logger.info(f"Successfully wrote IACI cache to {IACI_CACHE_FILE}")
             with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
@@ -545,7 +563,7 @@ def generate_briefing():
         if latest_iaci_cache_date:
             latest_entry = iaci_cache[latest_iaci_cache_date]
             iaci_value = latest_entry["value"]
-            iaci_date = latest_wci_cache_date
+            iaci_date = latest_iaci_cache_date  # Korrigierter Fehler: Verwende iaci_date statt latest_wci_cache_date
             logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date})")
             warning_message = f"IACI: E-Mail not reachable or value not extracted, used cache value {iaci_value} (Date: {iaci_date})"
             send_warning_email(warning_message)
@@ -578,7 +596,9 @@ def generate_briefing():
     )
     if sorted_iaci_dates:
         iaci_previous_value = iaci_cache[sorted_iaci_dates[-1]]["value"]
+        logger.debug(f"IACI previous value: {iaci_previous_value} for date {sorted_iaci_dates[-1]}")
     iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
+    logger.debug(f"IACI percentage change: {iaci_percentage_change}")
 
     # Bericht generieren
     wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
@@ -595,7 +615,8 @@ def generate_briefing():
 {wci_text}
 {iaci_text}
 """
-    logger.debug(f"Report content:\n{report}")
+    lo
+System: gger.debug(f"Report content:\n{report}")
     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
         f.write(report)
     logger.info("Saved briefing to daily_briefing.md")
