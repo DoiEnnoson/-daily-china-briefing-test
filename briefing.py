@@ -591,6 +591,144 @@ def calculate_percentage_change(current_value, previous_value):
     change = ((current_value - previous_value) / previous_value) * 100
     return round(change)
 
+# WCI-Daten abrufen
+def fetch_wci():
+    """Holt die neuesten WCI-Daten aus der E-Mail oder dem Cache, berechnet die prozentuale Veränderung und behandelt Fehler."""
+    logger.info("DEBUG - fetch_wci: Starting to fetch WCI data")
+    today_str = date.today().isoformat()
+    cache = load_wci_cache()
+
+    try:
+        html_content, subject = fetch_wci_email()
+        if html_content is None or subject is None:
+            raise Exception("Failed to fetch WCI email content")
+
+        wci_value, wci_date = extract_wci_from_html(html_content, subject)
+        if wci_value is None or wci_date is None:
+            raise Exception("Failed to extract WCI value or date from email")
+
+        # Prozentuale Veränderung berechnen
+        latest_cache_date = max(cache.keys(), default=None)
+        previous_value = None
+        if latest_cache_date and latest_cache_date != today_str:
+            previous_value = cache[latest_cache_date].get("value")
+        
+        pct_change = calculate_percentage_change(wci_value, previous_value)
+        
+        # Cache aktualisieren, wenn nötig
+        should_save = True
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            if latest_entry.get("value") == wci_value and latest_entry.get("date") == wci_date:
+                should_save = False
+                logger.info("DEBUG - fetch_wci: No cache update needed (value and date unchanged)")
+
+        if should_save:
+            cache[today_str] = {"value": wci_value, "date": wci_date}
+            save_wci_cache(cache)
+
+        logger.info(f"DEBUG - fetch_wci: WCI value {wci_value:.2f} extracted (Date: {wci_date})")
+        return wci_value, pct_change, wci_date, None
+
+    except Exception as e:
+        logger.error(f"ERROR - fetch_wci: Failed to fetch WCI data: {str(e)}")
+        warning_message = None
+        latest_cache_date = max(cache.keys(), default=None)
+        ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
+
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            wci_value = latest_entry["value"]
+            wci_date = latest_entry["date"]
+
+            try:
+                cache_date = datetime.strptime(wci_date, "%d.%m.%Y")
+                ten_days_ago_date = datetime.strptime(ten_days_ago, "%Y-%m-%d")
+                if cache_date >= ten_days_ago_date:
+                    logger.info(f"DEBUG - fetch_wci: Using cache value {wci_value:.2f} (Date: {wci_date})")
+                    warning_message = f"WCI email not available, using cache value {wci_value} (Date: {wci_date})"
+                    return wci_value, None, wci_date, warning_message
+                else:
+                    warning_message = f"WCI email not available, cache value {wci_value} too old (Date: {wci_date})"
+            except ValueError:
+                warning_message = f"WCI email not available, invalid cache date (Date: {wci_date})"
+
+        # Fallback-Wert
+        wci_value = 2584.00  # Dummy-Wert aus generate_briefing
+        wci_date = date.today().strftime("%d.%m.%Y")
+        warning_message = warning_message or "WCI email not available, no valid cache, using fallback 2584.00"
+        logger.info(f"DEBUG - fetch_wci: Using fallback value {wci_value:.2f} (Date: {wci_date})")
+        return wci_value, None, wci_date, warning_message
+
+# IACI-Daten abrufen
+def fetch_iaci():
+    """Holt die neuesten IACI-Daten aus der E-Mail oder dem Cache, berechnet die prozentuale Veränderung und behandelt Fehler."""
+    logger.info("DEBUG - fetch_iaci: Starting to fetch IACI data")
+    today_str = date.today().isoformat()
+    cache = load_iaci_cache()
+
+    try:
+        html_content, subject = fetch_iaci_email()
+        if html_content is None or subject is None:
+            raise Exception("Failed to fetch IACI email content")
+
+        iaci_value, iaci_date = extract_iaci_from_html(html_content, subject)
+        if iaci_value is None or iaci_date is None:
+            raise Exception("Failed to extract IACI value or date from email")
+
+        # Prozentuale Veränderung berechnen
+        latest_cache_date = max(cache.keys(), default=None)
+        previous_value = None
+        if latest_cache_date and latest_cache_date != today_str:
+            previous_value = cache[latest_cache_date].get("value")
+        
+        pct_change = calculate_percentage_change(iaci_value, previous_value)
+        
+        # Cache aktualisieren, wenn nötig
+        should_save = True
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            if latest_entry.get("value") == iaci_value and latest_entry.get("date") == iaci_date:
+                should_save = False
+                logger.info("DEBUG - fetch_iaci: No cache update needed (value and date unchanged)")
+
+        if should_save:
+            cache[today_str] = {"value": iaci_value, "date": iaci_date}
+            save_iaci_cache(cache)
+
+        logger.info(f"DEBUG - fetch_iaci: IACI value {iaci_value:.2f} extracted (Date: {iaci_date})")
+        return iaci_value, pct_change, iaci_date, None
+
+    except Exception as e:
+        logger.error(f"ERROR - fetch_iaci: Failed to fetch IACI data: {str(e)}")
+        warning_message = None
+        latest_cache_date = max(cache.keys(), default=None)
+        ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
+
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            iaci_value = latest_entry["value"]
+            iaci_date = latest_entry["date"]
+
+            try:
+                cache_date = datetime.strptime(iaci_date, "%d.%m.%Y")
+                ten_days_ago_date = datetime.strptime(ten_days_ago, "%Y-%m-%d")
+                if cache_date >= ten_days_ago_date:
+                    logger.info(f"DEBUG - fetch_iaci: Using cache value {iaci_value:.2f} (Date: {iaci_date})")
+                    warning_message = f"IACI email not available, using cache value {iaci_value} (Date: {iaci_date})"
+                    return iaci_value, None, iaci_date, warning_message
+                else:
+                    warning_message = f"IACI email not available, cache value {iaci_value} too old (Date: {iaci_date})"
+            except ValueError:
+                warning_message = f"IACI email not available, invalid cache date (Date: {iaci_date})"
+
+        # Fallback-Wert
+        iaci_value = 875.00  # Dummy-Wert aus generate_briefing
+        iaci_date = date.today().strftime("%d.%m.%Y")
+        warning_message = warning_message or "IACI email not available, no valid cache, using fallback 875.00"
+        logger.info(f"DEBUG - fetch_iaci: Using fallback value {iaci_value:.2f} (Date: {iaci_date})")
+        return iaci_value, None, iaci_date, warning_message
+
 # Werte vorladen (global)
 today_str = date.today().isoformat()
 china_holidays = load_holidays(CHINA_HOLIDAY_FILE)
