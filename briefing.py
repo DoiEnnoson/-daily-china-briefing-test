@@ -230,34 +230,34 @@ def fetch_scfi():
         print(f"DEBUG - fetch_scfi: SCFI-Wert {scfi_value:.2f} als Fallback verwendet (Datum: {scfi_date})")
         return scfi_value, None, scfi_date, warning_message
 
-# SCFI-Warn-E-Mail senden
-def send_warning_email(warning_message):
-    print("DEBUG - send_warning_email: Preparing to send SCFI warning email")
+# Warn-E-Mail senden (für SCFI, WCI und IACI)
+def send_warning_email(warning_message, index_name="SCFI"):
+    logger.info(f"DEBUG - send_warning_email: Preparing to send {index_name} warning email")
     try:
         config = os.getenv("CONFIG")
         if not config:
-            print("ERROR - send_warning_email: CONFIG environment variable not found")
+            logger.error(f"ERROR - send_warning_email: CONFIG environment variable not found")
             raise Exception("Missing CONFIG")
 
         pairs = config.split(";")
         config_dict = dict(pair.split("=", 1) for pair in pairs)
         msg = MIMEText(
-            f"Problem: API-Ausfall oder veralteter Cache\nDetails: {warning_message}\nDatum: {date.today().strftime('%Y-%m-%d')}",
+            f"Problem: {index_name} data issue\nDetails: {warning_message}\nDatum: {date.today().strftime('%Y-%m-%d')}",
             "plain",
             "utf-8"
         )
-        msg["Subject"] = "China-Briefing SCFI API-Warnung"
+        msg["Subject"] = f"China-Briefing {index_name} Warning"
         msg["From"] = config_dict["EMAIL_USER"]
         msg["To"] = "hadobrockmeyer@gmail.com"
 
-        print("DEBUG - send_warning_email: Connecting to SMTP server")
+        logger.info("DEBUG - send_warning_email: Connecting to SMTP server")
         with smtplib.SMTP(config_dict["EMAIL_HOST"], int(config_dict["EMAIL_PORT"])) as server:
             server.starttls()
             server.login(config_dict["EMAIL_USER"], config_dict["EMAIL_PASSWORD"])
             server.send_message(msg)
-        print("DEBUG - send_warning_email: Warning email sent successfully")
+        logger.info(f"DEBUG - send_warning_email: {index_name} warning email sent successfully")
     except Exception as e:
-        print(f"ERROR - send_warning_email: Failed to send warning email: {str(e)}")
+        logger.error(f"ERROR - send_warning_email: Failed to send {index_name} warning email: {str(e)}")
         raise
 
 # Werte vorladen (global)
