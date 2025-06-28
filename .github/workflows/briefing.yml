@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 5 * * *' # Täglich um 06:00 UTC (07:00 CEST)
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -26,7 +29,8 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4
+          pip install -r requirements.txt
+        continue-on-error: false
 
       - name: Verzeichnis WCI erstellen
         run: |
@@ -39,28 +43,17 @@ jobs:
           DREWRY: ${{ secrets.DREWRY }}
           CONFIG: ${{ secrets.CONFIG }}
 
-      - name: wci_test_log.txt Inhalt prüfen
+      - name: Inhalte in Zusammenfassung schreiben
         run: |
-          echo "Inhalt von wci_test_log.txt:"
-          cat wci_test_log.txt || echo "Datei wci_test_log.txt existiert nicht"
-        continue-on-error: true
-
-      - name: wci_email_*.html Inhalt prüfen
-        run: |
-          echo "Inhalt von wci_email_*.html:"
-          cat wci_email_*.html || echo "Datei wci_email_*.html existiert nicht"
-        continue-on-error: true
-
-      - name: daily_briefing.md Inhalt prüfen
-        run: |
-          echo "Inhalt von daily_briefing.md:"
-          cat daily_briefing.md || echo "Datei daily_briefing.md existiert nicht"
-        continue-on-error: true
-
-      - name: wci_cache.json Inhalt prüfen
-        run: |
-          echo "Inhalt von WCI/wci_cache.json:"
-          cat WCI/wci_cache.json || echo "Datei WCI/wci_cache.json existiert nicht"
+          echo "## Workflow Output" >> $GITHUB_STEP_SUMMARY
+          echo "### wci_test_log.txt" >> $GITHUB_STEP_SUMMARY
+          cat wci_test_log.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_test_log.txt existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### wci_email_*.html" >> $GITHUB_STEP_SUMMARY
+          cat wci_email_*.html >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei wci_email_*.html existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### daily_briefing.md" >> $GITHUB_STEP_SUMMARY
+          cat daily_briefing.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei daily_briefing.md existiert nicht" >> $GITHUB_STEP_SUMMARY
+          echo "### WCI/wci_cache.json" >> $GITHUB_STEP_SUMMARY
+          cat WCI/wci_cache.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Datei WCI/wci_cache.json existiert nicht" >> $GITHUB_STEP_SUMMARY
         continue-on-error: true
 
       - name: Commit and push changes
@@ -69,5 +62,5 @@ jobs:
           git config --global user.name "GitHub Actions"
           git add WCI/wci_cache.json wci_email_*.html daily_briefing.md wci_test_log.txt || echo "No files to add"
           git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
-          git push origin main
+          git push origin main || echo "Push failed, consider using a pull request"
         continue-on-error: true
