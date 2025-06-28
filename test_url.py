@@ -27,44 +27,61 @@ logger = logging.getLogger()
 
 # Pfade
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WCI_CACHE_FILE = os.path.join(BASE_DIR, "WCI", "wci_cache.json")
+WCI_CACHE_DIR = os.path.join(BASE_DIR, "WCI")
+WCI_CACHE_FILE = os.path.join(WCI_CACHE_DIR, "wci_cache.json")
 
 def load_wci_cache():
-    """Lädt den WCI-Cache."""
+    """Lädt den WCI-Cache oder initialisiert ihn mit dem Wert vom 19.06.2025, wenn nicht vorhanden."""
     logger.debug(f"Loading cache from {WCI_CACHE_FILE}")
     try:
-        os.makedirs(os.path.dirname(WCI_CACHE_FILE), exist_ok=True)
+        os.makedirs(WCI_CACHE_DIR, exist_ok=True)
         if os.path.exists(WCI_CACHE_FILE):
             with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
                 logger.debug(f"Successfully loaded cache: {cache}")
-                return cache
-        logger.debug(f"No cache file found at {WCI_CACHE_FILE}")
-        return {}
+        else:
+            logger.debug(f"No cache file found at {WCI_CACHE_FILE}, initializing with default value")
+            cache = {
+                "2025-06-19": {
+                    "value": 3279.0,
+                    "email_date": "19.06.2025"
+                }
+            }
+            save_wci_cache(cache)
+        return cache
     except Exception as e:
-        logger.error(f"Failed to load cache: {str(e)}")
-        return {}
+        logger.error(f"Failed to load or create cache: {str(e)}")
+        cache = {
+            "2025-06-19": {
+                "value": 3279.0,
+                "email_date": "19.06.2025"
+            }
+        }
+        save_wci_cache(cache)
+        return cache
 
 def save_wci_cache(cache):
-    """Speichert den WCI-Cache."""
+    """Speichert den WCI-Cache und prüft, ob die Datei erstellt wurde."""
     logger.debug(f"Saving cache to {WCI_CACHE_FILE}: {cache}")
     try:
-        os.makedirs(os.path.dirname(WCI_CACHE_FILE), exist_ok=True)
+        os.makedirs(WCI_CACHE_DIR, exist_ok=True)
         with open(WCI_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
-        logger.info(f"Successfully wrote cache to {WCI_CACHE_FILE}")
+        if os.path.exists(WCI_CACHE_FILE):
+            logger.info(f"Successfully wrote cache to {WCI_CACHE_FILE}")
+            with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
+                logger.debug(f"Cache file content after save: {f.read()}")
+        else:
+            logger.error(f"Cache file {WCI_CACHE_FILE} was not created")
+            raise Exception(f"Cache file {WCI_CACHE_FILE} was not created")
     except Exception as e:
         logger.error(f"Failed to save cache: {str(e)}")
         raise
 
-def fetch_wci():
-    """Holt WCI-Daten aus der Drewry-E-Mail mit Cache und Fallback."""
-    logger.debug("Starting to fetch WCI data")
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    cache = load_wci_cache()
-
+def fetch_wci_email():
+    """Holt die neueste Drewry-E-Mail aus den letzten 5 Tagen und speichert den HTML-Inhalt."""
+    logger.debug("Starting email fetch")
     try:
-        # E-Mail-Zugangsdaten
         env_vars = os.getenv('DREWRY')
         if not env_vars:
             logger.error("DREWRY environment variable not set")
@@ -73,170 +90,129 @@ def fetch_wci():
         gmail_user = None
         gmail_pass = None
         for var in env_vars.split(';'):
-            key, value = var.split('=', 1)  # Sicherer Split
+            key, value = var.split('=', 1)
             if key.strip() == 'GMAIL_USER':
                 gmail_user = value.strip()
             elif key.strip() == 'GMAIL_PASS':
                 gmail_pass = value.strip()
 
-        logger.debug(f"Gmail user: {gmail_user}")
+        logger.debug(f"Gmail user: {gmail_user}, pass: {'*' * len(gmail_pass) if gmail_pass else 'None'}")
         if not gmail_user or not gmail_pass:
             logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
             raise Exception("GMAIL credentials missing")
 
-        # E-Mail abrufen
-        logger.debug("Connecting to Gmail IMAP")
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
         mail.select('inbox')
 
-        # Zeitfenster: Letzte 3 Tage
-        since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
-        search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
-        logger.debug(f"Searching emails with criteria: {search_criteria}")
-        result, data = mail.search(None, search_criteria)
-        logger.debug(f"IMAP search result: {result}, data: {data}")
+        # Suche für die letzten 5 Tage
+        today = datetime.now()
+        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(5)]
+        email_ids = []
+        for date in date_range:
+            search_criteria = f'(FROM "noreply@drewry.co.uk" ON "{date}")'
+            logger.debug(f"Searching emails with criteria: {search_criteria}")
+            result, data = mail.search(None, search_criteria)
+            if result == 'OK' and data[0]:
+                email_ids.extend(data[0].split())
 
-        if result != 'OK':
-            logger.error("IMAP search failed")
-            raise Exception("IMAP search failed")
-
-        email_ids = data[0].split()
         if not email_ids:
-            logger.error("No emails found from noreply@drewry.co.uk")
+            logger.error("No emails found from noreply@drewry.co.uk in the last 5 days")
             raise Exception("No Drewry emails found")
 
-        # Debug: Logge alle Betreffe
-        logger.debug(f"Found email IDs: {email_ids}")
-        for email_id in email_ids:
-            _, data = mail.fetch(email_id, '(BODY[HEADER.FIELDS (SUBJECT DATE)])')
-            header_data = email.message_from_bytes(data[0][1])
-            subject = header_data['subject']
-            email_date = header_data['date']
-            if subject:
-                decoded_subject, encoding = decode_header(subject)[0]
-                if isinstance(decoded_subject, bytes):
-                    subject = decoded_subject.decode(encoding if encoding else 'utf-8')
-                logger.debug(f"Email ID {email_id} subject: {subject}, date: {email_date}")
+        latest_email_id = email_ids[-1]
+        logger.debug(f"Fetching email ID: {latest_email_id}")
+        result, data = mail.fetch(latest_email_id, '(RFC822)')
 
-        # Neueste E-Mail mit Betreff-Filter
-        for email_id in reversed(email_ids):  # Neueste zuerst
-            result, data = mail.fetch(email_id, '(RFC822)')
-            if result != 'OK':
-                logger.error(f"Failed to fetch email ID {email_id}")
-                continue
+        if result != 'OK':
+            logger.error(f"Failed to fetch email ID {latest_email_id}")
+            raise Exception("Failed to fetch email")
 
-            raw_email = data[0][1]
-            email_message = email.message_from_bytes(raw_email)
+        raw_email = data[0][1]
+        email_message = email.message_from_bytes(raw_email)
 
-            subject, encoding = decode_header(email_message['subject'])[0]
-            if isinstance(subject, bytes):
-                subject = subject.decode(encoding if encoding else 'utf-8')
-            logger.debug(f"Processing email ID {email_id}, subject: {subject}")
+        subject, encoding = decode_header(email_message['subject'])[0]
+        if isinstance(subject, bytes):
+            subject = subject.decode(encoding if encoding else 'utf-8')
+        logger.debug(f"Email subject: {subject}")
 
-            if "Drewry World Container Index" not in subject:
-                logger.debug(f"Skipping email ID {email_id}, no matching subject")
-                continue
+        if "Drewry World Container Index" not in subject:
+            logger.error(f"Email ID {latest_email_id} does not match expected subject")
+            raise Exception("No matching Drewry email found")
 
-            html_content = None
-            if email_message.is_multipart():
-                for part in email_message.walk():
-                    if part.get_content_type() == 'text/html':
-                        html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                        break
-            else:
-                if email_message.get_content_type() == 'text/html':
-                    html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+        html_content = None
+        if email_message.is_multipart():
+            for part in email_message.walk():
+                if part.get_content_type() == 'text/html':
+                    html_content = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    break
+        else:
+            if email_message.get_content_type() == 'text/html':
+                html_content = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
 
-            if not html_content:
-                logger.error(f"No HTML content in email ID {email_id}")
-                continue
+        if not html_content:
+            logger.error(f"No HTML content found in email ID {latest_email_id}")
+            raise Exception("No HTML content found")
 
-            email_id_str = email_id.decode('utf-8')
-            html_filename = f'wci_email_{email_id_str}.html'
-            logger.debug(f"Saving HTML content to {html_filename}")
-            with open(html_filename, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+        email_id_str = latest_email_id.decode('utf-8')
+        html_filename = f'wci_email_{email_id_str}.html'
+        logger.debug(f"Saving HTML content to {html_filename}")
+        with open(html_filename, 'w', encoding='utf-8') as f:
+            f.write(html_content)
 
-            # WCI extrahieren
-            soup = BeautifulSoup(html_content, 'html.parser')
-            wci_text = soup.get_text()
-            logger.debug(f"Extracted text (first 1000 chars): {wci_text[:1000]}")
-            wci_match = re.search(r'\$(\d{1,3}(,\d{3})*)\s*per 40ft container', wci_text)
-            date_match = re.search(r'(\d{1,2}\s+\w+\s+\d{4})', subject or wci_text)
-
-            if not wci_match:
-                logger.error(f"Could not extract WCI value from email ID {email_id}")
-                continue
-
-            wci_value = float(wci_match.group(1).replace(',', ''))
-            wci_date = None
-            if date_match:
-                for fmt in ["%d %B %Y", "%d %b %Y"]:
-                    try:
-                        wci_date = datetime.strptime(date_match.group(1), fmt).strftime("%d.%m.%Y")
-                        break
-                    except ValueError:
-                        continue
-            if wci_date is None:
-                wci_date = datetime.now().strftime("%d.%m.%Y")
-                logger.debug(f"Could not parse date, using today: {wci_date}")
-
-            # Prozentänderung aus Cache
-            pct_change = None
-            latest_cache_date = max([k for k in cache.keys() if k != today_str], default=None)
-            if latest_cache_date:
-                last_value = cache[latest_cache_date]["value"]
-                pct_change = ((wci_value - last_value) / last_value) * 100 if last_value != 0 else 0
-                logger.debug(f"Calculated percent change: {pct_change:.2f}% (Current: {wci_value}, Previous: {last_value})")
-
-            # Cache aktualisieren
-            should_save = True
-            if today_str in cache:
-                latest_entry = cache[today_str]
-                if latest_entry["value"] == wci_value and latest_entry["api_date"] == wci_date:
-                    should_save = False
-                    logger.debug("No cache update needed (value and date unchanged)")
-
-            if should_save:
-                cache[today_str] = {"value": wci_value, "api_date": wci_date}
-                save_wci_cache(cache)
-
-            logger.info(f"Extracted WCI: {wci_value:.2f}, Date: {wci_date}, Percent Change: {pct_change if pct_change is not None else 'N/A'}")
-            mail.logout()
-            return wci_value, pct_change, wci_date, None
-
-        logger.error("No email with matching subject found")
-        raise Exception("No matching Drewry email found")
+        logger.info(f"Successfully saved email content to {html_filename}")
+        mail.logout()
+        return html_filename, subject
 
     except Exception as e:
-        logger.error(f"Failed to fetch WCI data: {str(e)}")
-        warning_message = None
-        latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        logger.error(f"Error fetching email: {str(e)}")
+        if 'mail' in locals():
+            mail.logout()
+        return None, None
 
-        if latest_cache_date:
-            latest_entry = cache[latest_cache_date]
-            wci_value = latest_entry["value"]
-            api_date_str = latest_entry["api_date"]
-            wci_date = api_date_str
+def extract_wci_from_html(html_file, subject):
+    """Extrahiert den WCI-Wert und das Datum aus der HTML-Datei."""
+    logger.debug(f"Attempting to read HTML file: {html_file}")
+    try:
+        with open(html_file, 'r', encoding='utf-8') as f:
+            soup = BeautifulSoup(f, 'html.parser')
 
-            try:
-                api_date = datetime.strptime(api_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
-                if api_date >= ten_days_ago:
-                    logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {wci_date})")
-                    warning_message = f"E-Mail not reachable, used cache value {wci_value} (Date: {api_date_str})"
-                    return wci_value, None, wci_date, warning_message
-                else:
-                    warning_message = f"E-Mail not reachable, cache value {wci_value} too old (Date: {api_date_str})"
-            except ValueError:
-                warning_message = f"E-Mail not reachable, invalid cache date (Date: {api_date_str})"
+        wci_text = soup.get_text(strip=True)
+        logger.debug(f"Extracted text (first 500 chars): {wci_text[:500]}")
 
-        wci_value = 0.0
-        wci_date = datetime.now().strftime("%d.%m.%Y")
-        warning_message = warning_message or "E-Mail not reachable, no valid cache available"
-        logger.info(f"No valid cache, returning zero value (Date: {wci_date})")
-        return wci_value, None, wci_date, warning_message
+        wci_match = re.search(r'\$(\d{1,3}(,\d{3})*)\s*per 40ft container', wci_text)
+        if not wci_match:
+            logger.error("Could not extract WCI value from text")
+            return None, None
+
+        wci_value = float(wci_match.group(1).replace(',', ''))
+
+        date_match = re.search(r'(\d{1,2}\s+\w+\s+\d{4})', subject or wci_text)
+        wci_date = None
+        if date_match:
+            for fmt in ["%d %B %Y", "%d %b %Y"]:
+                try:
+                    wci_date = datetime.strptime(date_match.group(1), fmt).strftime("%d.%m.%Y")
+                    break
+                except ValueError:
+                    continue
+        if wci_date is None:
+            wci_date = datetime.now().strftime("%d.%m.%Y")
+            logger.debug(f"Could not parse date, using today: {wci_date}")
+
+        logger.info(f"Extracted WCI: {wci_value:.2f}, Date: {wci_date}")
+        return wci_value, wci_date
+
+    except Exception as e:
+        logger.error(f"Error processing HTML file {html_file}: {str(e)}")
+        return None, None
+
+def calculate_percentage_change(current_value, previous_value):
+    """Berechnet die prozentuale Veränderung zwischen zwei Werten."""
+    if previous_value is None or previous_value == 0:
+        return None
+    change = ((current_value - previous_value) / previous_value) * 100
+    return round(change, 2)  # Korrigierte Syntax
 
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
@@ -268,7 +244,7 @@ def send_warning_email(warning_message):
         logger.error(f"Failed to send WCI warning email: {str(e)}")
         raise
 
-def send_results_email(wci_value, wci_date, wci_pct_change):
+def send_results_email(wci_value, wci_date, percentage_change=None):
     """Sendet die WCI-Ergebnisse per E-Mail."""
     logger.debug("Starting email sending")
     try:
@@ -295,12 +271,9 @@ def send_results_email(wci_value, wci_date, wci_pct_change):
         msg['To'] = gmail_user
         msg['Subject'] = f"Daily China Briefing WCI Results - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-        wci_text = f"• WCI: {wci_value:.2f}"
-        if wci_pct_change is not None:
-            arrow = "↑" if wci_pct_change > 0 else "↓" if wci_pct_change < 0 else "→"
-            wci_text += f" {arrow} ({abs(wci_pct_change):.2f}%, Stand {wci_date})"
-        else:
-            wci_text += f" (Stand {wci_date})"
+        arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+        change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+        wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {wci_date})"
 
         body = f"""Attached are the logs and briefing from the Daily China Briefing WCI workflow.
 Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
@@ -335,43 +308,141 @@ Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
 
 def generate_briefing():
     logger.debug("Starting briefing generation")
-
     report_date = datetime.now().strftime("%d %b %Y")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    cache = load_wci_cache()
 
-    # WCI abrufen
-    wci_value, wci_pct_change, wci_date, wci_warning = fetch_wci()
-    if wci_warning:
-        send_warning_email(wci_warning)
+    # Vorherigen Wert für prozentuale Veränderung finden
+    sorted_dates = sorted(cache.keys())
+    previous_value = None
+    if len(sorted_dates) > 0:
+        previous_date = sorted_dates[-1]
+        previous_value = cache[previous_date]["value"]
 
-    wci_text = f"• WCI: {wci_value:.2f}"
-    if wci_pct_change is not None:
-        arrow = "↑" if wci_pct_change > 0 else "↓" if wci_pct_change < 0 else "→"
-        wci_text += f" {arrow} ({abs(wci_pct_change):.2f}%, Stand {wci_date})"
-    else:
-        wci_text += f" (Stand {wci_date})"
+    html_file, subject = fetch_wci_email()
+    if not html_file:
+        logger.error("Failed to fetch WCI email")
+        latest_cache_date = max(cache.keys(), default=None)
+        ten_days_ago = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            wci_value = latest_entry["value"]
+            email_date_str = latest_entry["email_date"]
+            try:
+                cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
+                if cache_date >= ten_days_ago:
+                    logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    percentage_change = calculate_percentage_change(wci_value, previous_value)
+                    warning_message = f"E-Mail not reachable, used cache value {wci_value} (Date: {email_date_str})"
+                    send_warning_email(warning_message)
+                    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+                    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+                    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {email_date_str})"
+                    report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+## 🚢 Frachtraten Indizies
+{wci_text}
+"""
+                    with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+                        f.write(report)
+                    logger.info("Saved briefing to daily_briefing.md")
+                    send_results_email(wci_value, email_date_str, percentage_change)
+                    return report
+                else:
+                    warning_message = f"E-Mail not reachable, cache value {wci_value} too old (Date: {email_date_str})"
+            except ValueError:
+                warning_message = f"E-Mail not reachable, invalid cache date (Date: {email_date_str})"
+        wci_value = 0.0
+        wci_date = datetime.now().strftime("%d.%m.%Y")
+        warning_message = warning_message or "E-Mail not reachable, no valid cache available"
+        send_warning_email(warning_message)
+        wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
+        report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+## 🚢 Frachtraten Indizies
+{wci_text}
+"""
+        with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+            f.write(report)
+        logger.info("Saved briefing to daily_briefing.md")
+        send_results_email(wci_value, wci_date)
+        return report
+
+    wci_value, wci_date = extract_wci_from_html(html_file, subject)
+    if not wci_value:
+        logger.error("Failed to extract WCI value")
+        latest_cache_date = max(cache.keys(), default=None)
+        ten_days_ago = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        if latest_cache_date:
+            latest_entry = cache[latest_cache_date]
+            wci_value = latest_entry["value"]
+            email_date_str = latest_entry["email_date"]
+            try:
+                cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
+                if cache_date >= ten_days_ago:
+                    logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    percentage_change = calculate_percentage_change(wci_value, previous_value)
+                    warning_message = f"Could not extract WCI value, used cache value {wci_value} (Date: {email_date_str})"
+                    send_warning_email(warning_message)
+                    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+                    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+                    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {email_date_str})"
+                    report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+## 🚢 Frachtraten Indizies
+{wci_text}
+"""
+                    with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+                        f.write(report)
+                    logger.info("Saved briefing to daily_briefing.md")
+                    send_results_email(wci_value, email_date_str, percentage_change)
+                    return report
+                else:
+                    warning_message = f"Could not extract WCI value, cache value {wci_value} too old (Date: {email_date_str})"
+            except ValueError:
+                warning_message = f"Could not extract WCI value, invalid cache date (Date: {email_date_str})"
+        wci_value = 0.0
+        wci_date = datetime.now().strftime("%d.%m.%Y")
+        warning_message = warning_message or "Could not extract WCI value, no valid cache available"
+        send_warning_email(warning_message)
+        wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
+        report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+## 🚢 Frachtraten Indizies
+{wci_text}
+"""
+        with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+            f.write(report)
+        logger.info("Saved briefing to daily_briefing.md")
+        send_results_email(wci_value, wci_date)
+        return report
+
+    # Prozentuale Veränderung berechnen
+    percentage_change = calculate_percentage_change(wci_value, previous_value)
+
+    # Cache aktualisieren
+    cache[today_str] = {"value": wci_value, "email_date": wci_date}
+    save_wci_cache(cache)
+
+    # Bericht generieren
+    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {wci_date})"
 
     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
 ## 🚢 Frachtraten Indizies
 {wci_text}
 """
-
-    logger.info("Generated briefing report")
     logger.debug(f"Report content:\n{report}")
+    with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+        f.write(report)
+    logger.info("Saved briefing to daily_briefing.md")
 
-    try:
-        with open('daily_briefing.md', 'w', encoding='utf-8') as f:
-            f.write(report)
-        logger.info("Saved briefing to daily_briefing.md")
-    except Exception as e:
-        logger.error(f"Failed to save briefing: {str(e)}")
-        return "Daily China Briefing: Error saving report"
-
-    send_results_email(wci_value, wci_date, wci_pct_change)
+    send_results_email(wci_value, wci_date, percentage_change)
     return report
 
 if __name__ == "__main__":
     logger.debug("Starting main execution")
     report = generate_briefing()
-    print(report)
     logger.debug("Main execution completed")
