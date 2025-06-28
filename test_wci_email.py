@@ -42,12 +42,12 @@ def load_wci_cache():
                 return cache
         logger.debug(f"No cache file found at {WCI_CACHE_FILE}, initializing empty cache")
         cache = {}
-        save_wci_cache(cache)  # Leere Cache-Datei erstellen
+        save_wci_cache(cache)
         return cache
     except Exception as e:
         logger.error(f"Failed to load or create cache: {str(e)}")
         cache = {}
-        save_wci_cache(cache)  # Versuchen, Cache zu erstellen, auch bei Fehlern
+        save_wci_cache(cache)
         return cache
 
 def save_wci_cache(cache):
@@ -69,7 +69,7 @@ def save_wci_cache(cache):
         raise
 
 def fetch_wci_email():
-    """Holt die neueste Drewry-E-Mail und speichert den HTML-Inhalt."""
+    """Holt die neueste Drewry-E-Mail aus den letzten 5 Tagen und speichert den HTML-Inhalt."""
     logger.debug("Starting email fetch")
     try:
         env_vars = os.getenv('DREWRY')
@@ -95,18 +95,19 @@ def fetch_wci_email():
         mail.login(gmail_user, gmail_pass)
         mail.select('inbox')
 
-        today = datetime.now().strftime("%d-%b-%Y")
-        search_criteria = f'(FROM "noreply@drewry.co.uk" ON "{today}")'
-        logger.debug(f"Searching emails with criteria: {search_criteria}")
-        result, data = mail.search(None, search_criteria)
+        # Suche für die letzten 5 Tage
+        today = datetime.now()
+        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(5)]
+        email_ids = []
+        for date in date_range:
+            search_criteria = f'(FROM "noreply@drewry.co.uk" ON "{date}")'
+            logger.debug(f"Searching emails with criteria: {search_criteria}")
+            result, data = mail.search(None, search_criteria)
+            if result == 'OK' and data[0]:
+                email_ids.extend(data[0].split())
 
-        if result != 'OK':
-            logger.error("Failed to search emails")
-            raise Exception("IMAP search failed")
-
-        email_ids = data[0].split()
         if not email_ids:
-            logger.error("No emails found from noreply@drewry.co.uk")
+            logger.error("No emails found from noreply@drewry.co.uk in the last 5 days")
             raise Exception("No Drewry emails found")
 
         latest_email_id = email_ids[-1]
@@ -196,6 +197,13 @@ def extract_wci_from_html(html_file, subject):
         logger.error(f"Error processing HTML file {html_file}: {str(e)}")
         return None, None
 
+def calculate_percentage_change(current_value, previous_value):
+    """Berechnet die prozentuale Veränderung zwischen zwei Werten."""
+    if previous_value is None or previous_value == 0:
+        return None
+    change = ((current_value - previous_value) / previous_value) * 100
+    return round change, 2)
+
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
     logger.debug("Preparing to send WCI warning email")
@@ -226,7 +234,7 @@ def send_warning_email(warning_message):
         logger.error(f"Failed to send WCI warning email: {str(e)}")
         raise
 
-def send_results_email(wci_value, wci_date):
+def send_results_email(wci_value, wci_date, percentage_change=None):
     """Sendet die WCI-Ergebnisse per E-Mail."""
     logger.debug("Starting email sending")
     try:
@@ -253,7 +261,9 @@ def send_results_email(wci_value, wci_date):
         msg['To'] = gmail_user
         msg['Subject'] = f"Daily China Briefing WCI Results - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-        wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
+        arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+        change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+        wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {wci_date})"
 
         body = f"""Attached are the logs and briefing from the Daily China Briefing WCI workflow.
 Date: {datetime.now().strftime('%d %b %Y %H:%M:%S')}
@@ -292,6 +302,13 @@ def generate_briefing():
     today_str = datetime.now().strftime("%Y-%m-%d")
     cache = load_wci_cache()
 
+    # Vorherigen Wert für prozentuale Veränderung finden
+    sorted_dates = sorted(cache.keys())
+    previous_value = None
+    if len(sorted_dates) > 0:
+        previous_date = sorted_dates[-1]
+        previous_value = cache[previous_date]["value"]
+
     html_file, subject = fetch_wci_email()
     if not html_file:
         logger.error("Failed to fetch WCI email")
@@ -305,9 +322,12 @@ def generate_briefing():
                 cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
                 if cache_date >= ten_days_ago:
                     logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    percentage_change = calculate_percentage_change(wci_value, previous_value)
                     warning_message = f"E-Mail not reachable, used cache value {wci_value} (Date: {email_date_str})"
                     send_warning_email(warning_message)
-                    wci_text = f"• WCI: {wci_value:.2f} (Stand {email_date_str})"
+                    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+                    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+                    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {email_date_str})"
                     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
 ## 🚢 Frachtraten Indizies
@@ -316,7 +336,7 @@ def generate_briefing():
                     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
                         f.write(report)
                     logger.info("Saved briefing to daily_briefing.md")
-                    send_results_email(wci_value, email_date_str)
+                    send_results_email(wci_value, email_date_str, percentage_change)
                     return report
                 else:
                     warning_message = f"E-Mail not reachable, cache value {wci_value} too old (Date: {email_date_str})"
@@ -351,9 +371,12 @@ def generate_briefing():
                 cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
                 if cache_date >= ten_days_ago:
                     logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    percentage_change = calculate_percentage_change(wci_value, previous_value)
                     warning_message = f"Could not extract WCI value, used cache value {wci_value} (Date: {email_date_str})"
                     send_warning_email(warning_message)
-                    wci_text = f"• WCI: {wci_value:.2f} (Stand {email_date_str})"
+                    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+                    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+                    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {email_date_str})"
                     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
 ## 🚢 Frachtraten Indizies
@@ -362,7 +385,7 @@ def generate_briefing():
                     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
                         f.write(report)
                     logger.info("Saved briefing to daily_briefing.md")
-                    send_results_email(wci_value, email_date_str)
+                    send_results_email(wci_value, email_date_str, percentage_change)
                     return report
                 else:
                     warning_message = f"Could not extract WCI value, cache value {wci_value} too old (Date: {email_date_str})"
@@ -384,12 +407,17 @@ def generate_briefing():
         send_results_email(wci_value, wci_date)
         return report
 
+    # Prozentuale Veränderung berechnen
+    percentage_change = calculate_percentage_change(wci_value, previous_value)
+
     # Cache aktualisieren
     cache[today_str] = {"value": wci_value, "email_date": wci_date}
     save_wci_cache(cache)
 
-    # Bericht generieren (ohne Prozentänderung)
-    wci_text = f"• WCI: {wci_value:.2f} (Stand {wci_date})"
+    # Bericht generieren
+    arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
+    change_text = f" ({arrow} {percentage_change:.2f}%)" if percentage_change is not None else ""
+    wci_text = f"• WCI: {wci_value:.2f}{change_text} (Stand {wci_date})"
 
     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
@@ -401,7 +429,7 @@ def generate_briefing():
         f.write(report)
     logger.info("Saved briefing to daily_briefing.md")
 
-    send_results_email(wci_value, wci_date)
+    send_results_email(wci_value, wci_date, percentage_change)
     return report
 
 if __name__ == "__main__":
