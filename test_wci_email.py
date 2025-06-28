@@ -16,11 +16,9 @@ cest = timezone(timedelta(hours=2))
 
 # Logging einrichten, nur auf Konsole, keine Dateien
 logging.basicConfig(
-    level=logging.INFO,  # Nur INFO und ERROR
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger()
 
@@ -114,7 +112,7 @@ def save_iaci_cache(cache):
         raise
 
 def fetch_wci_email():
-    """Holt die neueste Drewry WCI-E-Mail aus den letzten 7 Tagen und gibt den HTML-Inhalt zurück."""
+    """Holt die neueste Drewry WCI-E-Mail aus den letzten 14 Tagen und gibt den HTML-Inhalt zurück."""
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -143,8 +141,8 @@ def fetch_wci_email():
             raise Exception(f"IMAP select failed: {result}")
 
         today = datetime.now(cest)
-        since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
-        search_criteria = 'FROM noreply@drewry.co.uk'
+        since_date = (today - timedelta(days=14)).strftime("%d-%b-%Y")
+        search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
         result, data = mail.search(None, search_criteria)
         if result != 'OK':
             logger.error(f"Failed to search WCI emails: {result}, data: {data}")
@@ -152,7 +150,7 @@ def fetch_wci_email():
 
         email_ids = data[0].split()
         if not email_ids:
-            logger.error("No WCI emails found from noreply@drewry.co.uk in the last 7 days")
+            logger.error("No WCI emails found from noreply@drewry.co.uk in the last 14 days")
             raise Exception("No WCI emails found")
 
         for email_id in email_ids[::-1]:
@@ -197,7 +195,7 @@ def fetch_wci_email():
         return None, None
 
 def fetch_iaci_email():
-    """Holt die neueste Drewry IACI-E-Mail aus den letzten 10 Tagen und gibt den HTML-Inhalt zurück."""
+    """Holt die neueste Drewry IACI-E-Mail aus den letzten 14 Tagen und gibt den HTML-Inhalt zurück."""
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -226,8 +224,8 @@ def fetch_iaci_email():
             raise Exception(f"IMAP select failed: {result}")
 
         today = datetime.now(cest)
-        since_date = (today - timedelta(days=10)).strftime("%d-%b-%Y")
-        search_criteria = 'FROM noreply@drewry.co.uk'
+        since_date = (today - timedelta(days=14)).strftime("%d-%b-%Y")
+        search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
         result, data = mail.search(None, search_criteria)
         if result != 'OK':
             logger.error(f"Failed to search IACI emails: {result}, data: {data}")
@@ -235,7 +233,7 @@ def fetch_iaci_email():
 
         email_ids = data[0].split()
         if not email_ids:
-            logger.error("No IACI emails found from noreply@drewry.co.uk in the last 10 days")
+            logger.error("No IACI emails found from noreply@drewry.co.uk in the last 14 days")
             raise Exception("No IACI emails found")
 
         for email_id in email_ids[::-1]:
@@ -443,6 +441,7 @@ def generate_briefing():
     report_date = datetime.now(cest).strftime("%d %b %Y")
     wci_cache = load_wci_cache()
     iaci_cache = load_iaci_cache()
+    today = datetime.now(cest)
 
     # WCI-Verarbeitung
     wci_html_content, wci_subject = fetch_wci_email()
@@ -450,6 +449,7 @@ def generate_briefing():
     wci_date = None
     if wci_html_content:
         wci_value, wci_date = extract_wci_from_html(wci_html_content, wci_subject)
+    
     if not wci_value:
         logger.error("Failed to fetch or extract WCI value")
         latest_wci_cache_date = max(
@@ -458,17 +458,24 @@ def generate_briefing():
             key=lambda d: datetime.strptime(d, "%d.%m.%Y")
         ) if wci_cache else None
         if latest_wci_cache_date:
-            latest_entry = wci_cache[latest_wci_cache_date]
-            wci_value = latest_entry["value"]
-            wci_date = latest_wci_cache_date
-            logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {wci_date})")
-            warning_message = f"WCI: E-Mail not reachable or value not extracted, used cache value {wci_value} (Date: {wci_date})"
-            send_warning_email(warning_message)
+            days_old = (today - datetime.strptime(latest_wci_cache_date, "%d.%m.%Y")).days
+            if days_old <= 14:
+                latest_entry = wci_cache[latest_wci_cache_date]
+                wci_value = latest_entry["value"]
+                wci_date = latest_wci_cache_date
+                logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {wci_date}, {days_old} days old)")
+            else:
+                wci_value = 0.0
+                wci_date = today.strftime("%d.%m.%Y")
+                warning_message = f"WCI: No email found in the last 14 days, cache from {latest_wci_cache_date} ({days_old} days old) too old"
+                send_warning_email(warning_message)
+                logger.info(f"Sent warning email: {warning_message}")
         else:
-            warning_message = "WCI: E-Mail not reachable, no valid cache available"
-            send_warning_email(warning_message)
             wci_value = 0.0
-            wci_date = datetime.now(cest).strftime("%d.%m.%Y")
+            wci_date = today.strftime("%d.%m.%Y")
+            warning_message = "WCI: No email found in the last 14 days, no cache available"
+            send_warning_email(warning_message)
+            logger.info(f"Sent warning email: {warning_message}")
     else:
         if wci_date not in wci_cache:
             wci_cache[wci_date] = {"value": wci_value}
@@ -482,6 +489,7 @@ def generate_briefing():
     iaci_date = None
     if iaci_html_content:
         iaci_value, iaci_date = extract_iaci_from_html(iaci_html_content, iaci_subject)
+    
     if not iaci_value:
         logger.error("Failed to fetch or extract IACI value")
         latest_iaci_cache_date = max(
@@ -490,17 +498,24 @@ def generate_briefing():
             key=lambda d: datetime.strptime(d, "%d.%m.%Y")
         ) if iaci_cache else None
         if latest_iaci_cache_date:
-            latest_entry = iaci_cache[latest_iaci_cache_date]
-            iaci_value = latest_entry["value"]
-            iaci_date = latest_iaci_cache_date
-            logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date})")
-            warning_message = f"IACI: E-Mail not reachable or value not extracted, used cache value {iaci_value} (Date: {iaci_date})"
-            send_warning_email(warning_message)
+            days_old = (today - datetime.strptime(latest_iaci_cache_date, "%d.%m.%Y")).days
+            if days_old <= 20:
+                latest_entry = iaci_cache[latest_iaci_cache_date]
+                iaci_value = latest_entry["value"]
+                iaci_date = latest_iaci_cache_date
+                logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date}, {days_old} days old)")
+            else:
+                iaci_value = 0.0
+                iaci_date = today.strftime("%d.%m.%Y")
+                warning_message = f"IACI: No email found in the last 14 days, cache from {latest_iaci_cache_date} ({days_old} days old) too old"
+                send_warning_email(warning_message)
+                logger.info(f"Sent warning email: {warning_message}")
         else:
-            warning_message = "IACI: E-Mail not reachable, no valid cache available"
-            send_warning_email(warning_message)
             iaci_value = 0.0
-            iaci_date = datetime.now(cest).strftime("%d.%m.%Y")
+            iaci_date = today.strftime("%d.%m.%Y")
+            warning_message = "IACI: No email found in the last 14 days, no cache available"
+            send_warning_email(warning_message)
+            logger.info(f"Sent warning email: {warning_message}")
     else:
         if iaci_date not in iaci_cache:
             iaci_cache[iaci_date] = {"value": iaci_value}
