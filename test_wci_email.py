@@ -143,7 +143,7 @@ def fetch_wci_email():
         date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(7)]
         email_ids = []
         for date in date_range:
-            search_criteria = f'(FROM "noreply@drewry.co.uk" "World Container Index")'
+            search_criteria = f'FROM noreply@drewry.co.uk World Container Index'
             logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
             result, data = mail.search(None, search_criteria)
             if result == 'OK' and data[0]:
@@ -235,7 +235,7 @@ def fetch_iaci_email():
         date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(20)]
         email_ids = []
         for date in date_range:
-            search_criteria = f'(FROM "noreply@drewry.co.uk" "Intra-Asia Container Index")'
+            search_criteria = f'FROM noreply@drewry.co.uk Intra-Asia Container Index'
             logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
             result, data = mail.search(None, search_criteria)
             if result == 'OK' and data[0]:
@@ -487,7 +487,11 @@ def generate_briefing():
         wci_value, wci_date = extract_wci_from_html(wci_html_file, wci_subject)
     if not wci_value:
         logger.error("Failed to fetch or extract WCI value")
-        latest_wci_cache_date = max(wci_cache.keys(), default=None) if wci_cache else None
+        latest_wci_cache_date = max(
+            wci_cache.keys(),
+            default=None,
+            key=lambda d: datetime.strptime(d, "%d.%m.%Y")
+        ) if wci_cache else None
         if latest_wci_cache_date:
             latest_entry = wci_cache[latest_wci_cache_date]
             wci_value = latest_entry["value"]
@@ -515,7 +519,11 @@ def generate_briefing():
         iaci_value, iaci_date = extract_iaci_from_html(iaci_html_file, iaci_subject)
     if not iaci_value:
         logger.error("Failed to fetch or extract IACI value")
-        latest_iaci_cache_date = max(iaci_cache.keys(), default=None) if iaci_cache else None
+        latest_iaci_cache_date = max(
+            iaci_cache.keys(),
+            default=None,
+            key=lambda d: datetime.strptime(d, "%d.%m.%Y")
+        ) if iaci_cache else None
         if latest_iaci_cache_date:
             latest_entry = iaci_cache[latest_iaci_cache_date]
             iaci_value = latest_entry["value"]
@@ -537,13 +545,19 @@ def generate_briefing():
 
     # Prozentuale Veränderung
     wci_previous_value = None
-    sorted_wci_dates = sorted([d for d in wci_cache.keys() if d != wci_date])
+    sorted_wci_dates = sorted(
+        [d for d in wci_cache.keys() if d != wci_date],
+        key=lambda d: datetime.strptime(d, "%d.%m.%Y")
+    )
     if sorted_wci_dates:
         wci_previous_value = wci_cache[sorted_wci_dates[-1]]["value"]
     wci_percentage_change = calculate_percentage_change(wci_value, wci_previous_value)
 
     iaci_previous_value = None
-    sorted_iaci_dates = sorted([d for d in iaci_cache.keys() if d != iaci_date])
+    sorted_iaci_dates = sorted(
+        [d for d in iaci_cache.keys() if d != iaci_date],
+        key=lambda d: datetime.strptime(d, "%d.%m.%Y")
+    )
     if sorted_iaci_dates:
         iaci_previous_value = iaci_cache[sorted_iaci_dates[-1]]["value"]
     iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
