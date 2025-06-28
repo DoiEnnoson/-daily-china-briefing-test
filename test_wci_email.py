@@ -136,14 +136,21 @@ def fetch_wci_email():
 
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
-        mail.select('inbox')
+        mail.select('[Gmail]/Alle Nachrichten')  # Wechsel zu "Alle Nachrichten"
 
         # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         search_criteria = f'FROM noreply@drewry.co.uk "World Container Index" SINCE {since_date}'
         logger.debug(f"Searching WCI emails with criteria: {search_criteria}")
-        result, data = mail.search(None, 'UTF-8', search_criteria)
+        try:
+            result, data = mail.search(None, search_criteria)
+        except Exception as e:
+            logger.error(f"Primary WCI search failed: {str(e)}, trying fallback search")
+            search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
+            logger.debug(f"Fallback WCI search with criteria: {search_criteria}")
+            result, data = mail.search(None, search_criteria)
+
         if result != 'OK':
             logger.error(f"Failed to search WCI emails: {result}, data: {data}")
             raise Exception(f"IMAP search failed: {result}")
@@ -170,7 +177,7 @@ def fetch_wci_email():
             subject = subject.decode(encoding if encoding else 'utf-8')
         logger.debug(f"WCI email subject: {subject}")
 
-        if "World Container Index" not in subject:
+        if "Container Index" not in subject:  # Lockerere Bedingung
             logger.error(f"WCI email ID {latest_email_id} does not match expected subject")
             raise Exception("No matching WCI email found")
 
@@ -229,14 +236,21 @@ def fetch_iaci_email():
 
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
         mail.login(gmail_user, gmail_pass)
-        mail.select('inbox')
+        mail.select('[Gmail]/Alle Nachrichten')  # Wechsel zu "Alle Nachrichten"
 
         # Suche für die letzten 20 Tage in CEST
         today = datetime.now(cest)
         since_date = (today - timedelta(days=20)).strftime("%d-%b-%Y")
         search_criteria = f'FROM noreply@drewry.co.uk "Intra-Asia Container Index" SINCE {since_date}'
         logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
-        result, data = mail.search(None, 'UTF-8', search_criteria)
+        try:
+            result, data = mail.search(None, search_criteria)
+        except Exception as e:
+            logger.error(f"Primary IACI search failed: {str(e)}, trying fallback search")
+            search_criteria = f'FROM noreply@drewry.co.uk SINCE {since_date}'
+            logger.debug(f"Fallback IACI search with criteria: {search_criteria}")
+            result, data = mail.search(None, search_criteria)
+
         if result != 'OK':
             logger.error(f"Failed to search IACI emails: {result}, data: {data}")
             raise Exception(f"IMAP search failed: {result}")
@@ -263,7 +277,7 @@ def fetch_iaci_email():
             subject = subject.decode(encoding if encoding else 'utf-8')
         logger.debug(f"IACI email subject: {subject}")
 
-        if "Intra-Asia Container Index" not in subject:
+        if "Container Index" not in subject:  # Lockerere Bedingung
             logger.error(f"IACI email ID {latest_email_id} does not match expected subject")
             raise Exception("No matching IACI email found")
 
