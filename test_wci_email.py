@@ -8,8 +8,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 from email.header import decode_header
 from bs4 import BeautifulSoup
 
@@ -383,7 +381,7 @@ def send_warning_email(warning_message):
         raise
 
 def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change=None, iaci_percentage_change=None):
-    """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail mit klickbaren Links."""
+    """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail ohne Anhänge."""
     try:
         env_vars = os.getenv('DREWRY')
         if not env_vars:
@@ -418,7 +416,7 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
 
         body = f"""<html>
 <body>
-<p>Attached are the logs and briefing from the Daily China Briefing WCI/IACI workflow.</p>
+<p>Daily China Briefing WCI/IACI Results</p>
 <p>Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}</p>
 <ul>
 {wci_text}
@@ -427,19 +425,6 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
 </body>
 </html>"""
         msg.attach(MIMEText(body, 'html', 'utf-8'))
-
-        files_to_attach = ['daily_briefing.md', 'freight_indicies/wci_cache.json', 'freight_indicies/iaci_cache.json']
-        for file in files_to_attach:
-            if os.path.exists(file):
-                logger.info(f"Attaching file: {file}")
-                with open(file, 'rb') as f:
-                    part = MIMEBase('application', 'octet-stream')
-                    part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', f'attachment; filename={os.path.basename(file)}')
-                msg.attach(part)
-            else:
-                logger.error(f"File not found for attachment: {file}")
 
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
