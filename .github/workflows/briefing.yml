@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write
 
     steps:
       - name: Repository klonen
@@ -29,7 +28,7 @@ jobs:
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install beautifulsoup4
         continue-on-error: false
 
       - name: Verzeichnis WCI erstellen
@@ -63,4 +62,15 @@ jobs:
           git add WCI/wci_cache.json wci_email_*.html daily_briefing.md wci_test_log.txt || echo "No files to add"
           git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
           git push origin main || echo "Push failed, consider using a pull request"
+        continue-on-error: true
+
+      - name: Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: wci-files
+          path: |
+            wci_test_log.txt
+            wci_email_*.html
+            daily_briefing.md
+            WCI/wci_cache.json
         continue-on-error: true
