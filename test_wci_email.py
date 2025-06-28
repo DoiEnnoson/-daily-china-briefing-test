@@ -213,7 +213,7 @@ def fetch_wci_email():
         return None, None
 
 def fetch_iaci_email():
-    """Holt die neueste Drewry IACI-E-Mail aus den letzten 20 Tagen und speichert den HTML-Inhalt."""
+    """Holt die neueste Drewry IACI-E-Mail aus den letzten 10 Tagen und speichert den HTML-Inhalt."""
     logger.debug("Starting IACI email fetch")
     try:
         env_vars = os.getenv('DREWRY')
@@ -245,9 +245,9 @@ def fetch_iaci_email():
             logger.error(f"Failed to select inbox: {result}, data: {data}")
             raise Exception(f"IMAP select failed: {result}")
 
-        # Suche für die letzten 20 Tage in CEST
+        # Suche für die letzten 10 Tage in CEST
         today = datetime.now(cest)
-        since_date = (today - timedelta(days=20)).strftime("%d-%b-%Y")
+        since_date = (today - timedelta(days=10)).strftime("%d-%b-%Y")
         search_criteria = f'FROM noreply@drewry.co.uk'
         logger.debug(f"Searching IACI emails with criteria: {search_criteria}")
         result, data = mail.search(None, search_criteria)
@@ -260,7 +260,7 @@ def fetch_iaci_email():
         email_ids = data[0].split()
         logger.debug(f"Found IACI email IDs: {email_ids}")
         if not email_ids:
-            logger.error("No IACI emails found from noreply@drewry.co.uk in the last 20 days")
+            logger.error("No IACI emails found from noreply@drewry.co.uk in the last 10 days")
             raise Exception("No IACI emails found")
 
         # Prüfe Betreffzeilen aller gefundenen E-Mails
@@ -545,7 +545,7 @@ def generate_briefing():
         if latest_iaci_cache_date:
             latest_entry = iaci_cache[latest_iaci_cache_date]
             iaci_value = latest_entry["value"]
-            iaci_date = latest_iaci_cache_date
+            iaci_date = latest_wci_cache_date
             logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date})")
             warning_message = f"IACI: E-Mail not reachable or value not extracted, used cache value {iaci_value} (Date: {iaci_date})"
             send_warning_email(warning_message)
