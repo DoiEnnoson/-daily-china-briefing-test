@@ -59,9 +59,10 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add WCI/wci_cache.json wci_email_*.html daily_briefing.md wci_test_log.txt || echo "No files to add"
+          git add wci_test_log.txt wci_email_*.html daily_briefing.md WCI/wci_cache.json || echo "No files to add"
           git commit -m "Update WCI cache and briefing" || echo "Nothing to commit"
-          git push origin main || echo "Push failed, consider using a pull request"
+          git pull --rebase origin main || echo "Pull failed, continuing"
+          git push origin main || echo "Push failed"
         continue-on-error: true
 
       - name: Artefakte hochladen
