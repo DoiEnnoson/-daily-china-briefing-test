@@ -33,16 +33,19 @@ logger = logging.getLogger()
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-# Pfad zu den Holiday JSON Dateien, CPR-Cache, Economic Calendar CSV und SCFI-Cache
+# Pfad zu den Holiday JSON Dateien, CPR-Cache, Economic Calendar CSV und Cache-Dateien
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
 ECONOMIC_CALENDAR_FILE = os.path.join(BASE_DIR, "data", "economic_calendar.csv")
-SCFI_CACHE_FILE = os.path.join(BASE_DIR, "scfi_cache.json")
 FREIGHT_CACHE_DIR = os.path.join(BASE_DIR, "freight_indicies")
+SCFI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "scfi_cache.json")
 WCI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "wci_cache.json")
 IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
+
+# Erstelle den freight_indicies-Ordner, falls er nicht existiert
+os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
 
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
