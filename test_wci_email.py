@@ -72,7 +72,7 @@ def save_wci_cache(cache):
         raise
 
 def fetch_wci_email():
-    """Holt die neueste Drewry-E-Mail aus den letzten 5 Tagen und speichert den HTML-Inhalt."""
+    """Holt die neueste Drewry-E-Mail aus den letzten 7 Tagen und speichert den HTML-Inhalt."""
     logger.debug("Starting email fetch")
     try:
         env_vars = os.getenv('DREWRY')
@@ -98,9 +98,9 @@ def fetch_wci_email():
         mail.login(gmail_user, gmail_pass)
         mail.select('inbox')
 
-        # Suche für die letzten 5 Tage in CEST
+        # Suche für die letzten 7 Tage in CEST
         today = datetime.now(cest)
-        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(5)]
+        date_range = [(today - timedelta(days=i)).strftime("%d-%b-%Y") for i in range(7)]
         email_ids = []
         for date in date_range:
             search_criteria = f'(FROM "noreply@drewry.co.uk" ON "{date}")'
@@ -110,7 +110,7 @@ def fetch_wci_email():
                 email_ids.extend(data[0].split())
 
         if not email_ids:
-            logger.error("No emails found from noreply@drewry.co.uk in the last 5 days")
+            logger.error("No emails found from noreply@drewry.co.uk in the last 7 days")
             raise Exception("No Drewry emails found")
 
         latest_email_id = email_ids[-1]
@@ -205,7 +205,7 @@ def calculate_percentage_change(current_value, previous_value):
     if previous_value is None or previous_value == 0:
         return None
     change = ((current_value - previous_value) / previous_value) * 100
-    return round(change, 2)  # Korrigierte Syntax
+    return round(change, 2)
 
 def send_warning_email(warning_message):
     """Sendet eine Warn-E-Mail bei Problemen."""
@@ -299,32 +299,42 @@ Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}
         logger.error(f"Error sending email: {str(e)}")
         return False
 
+def clean_old_cache(cache):
+    """Entfernt Cache-Einträge älter als 30 Tage."""
+    thirty_days_ago = datetime.now(cest) - timedelta(days=30)
+    cleaned_cache = {}
+    for date_str, data in cache.items():
+        try:
+            cache_date = datetime.strptime(date_str, "%d.%m.%Y")
+            if cache_date >= thirty_days_ago:
+                cleaned_cache[date_str] = data
+        except ValueError:
+            logger.warning(f"Invalid date format in cache: {date_str}")
+    return cleaned_cache
+
 def generate_briefing():
     logger.debug("Starting briefing generation")
     report_date = datetime.now(cest).strftime("%d %b %Y")
-    today_str = datetime.now(cest).strftime("%Y-%m-%d")
     cache = load_wci_cache()
-
-    # Vorherigen Wert für prozentuale Veränderung finden
-    sorted_dates = sorted(cache.keys())
-    previous_value = None
-    if len(sorted_dates) > 0:
-        previous_date = sorted_dates[-1]
-        previous_value = cache[previous_date]["value"]
 
     html_file, subject = fetch_wci_email()
     if not html_file:
         logger.error("Failed to fetch WCI email")
-        latest_cache_date = max(cache.keys(), default=None)
+        latest_cache_date = max(cache.keys(), default=None) if cache else None
         ten_days_ago = (datetime.now(cest) - timedelta(days=10)).strftime("%Y-%m-%d")
         if latest_cache_date:
             latest_entry = cache[latest_cache_date]
             wci_value = latest_entry["value"]
-            email_date_str = latest_entry["email_date"]
+            email_date_str = latest_cache_date
             try:
                 cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
                 if cache_date >= ten_days_ago:
                     logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    # Finde vorherigen Wert
+                    previous_value = None
+                    sorted_dates = sorted([d for d in cache.keys() if d != email_date_str])
+                    if sorted_dates:
+                        previous_value = cache[sorted_dates[-1]]["value"]
                     percentage_change = calculate_percentage_change(wci_value, previous_value)
                     warning_message = f"E-Mail not reachable, used cache value {wci_value} (Date: {email_date_str})"
                     send_warning_email(warning_message)
@@ -364,16 +374,21 @@ def generate_briefing():
     wci_value, wci_date = extract_wci_from_html(html_file, subject)
     if not wci_value:
         logger.error("Failed to extract WCI value")
-        latest_cache_date = max(cache.keys(), default=None)
+        latest_cache_date = max(cache.keys(), default=None) if cache else None
         ten_days_ago = (datetime.now(cest) - timedelta(days=10)).strftime("%Y-%m-%d")
         if latest_cache_date:
             latest_entry = cache[latest_cache_date]
             wci_value = latest_entry["value"]
-            email_date_str = latest_entry["email_date"]
+            email_date_str = latest_cache_date
             try:
                 cache_date = datetime.strptime(email_date_str, "%d.%m.%Y").strftime("%Y-%m-%d")
                 if cache_date >= ten_days_ago:
                     logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {email_date_str})")
+                    # Finde vorherigen Wert
+                    previous_value = None
+                    sorted_dates = sorted([d for d in cache.keys() if d != email_date_str])
+                    if sorted_dates:
+                        previous_value = cache[sorted_dates[-1]]["value"]
                     percentage_change = calculate_percentage_change(wci_value, previous_value)
                     warning_message = f"Could not extract WCI value, used cache value {wci_value} (Date: {email_date_str})"
                     send_warning_email(warning_message)
@@ -410,12 +425,24 @@ def generate_briefing():
         send_results_email(wci_value, wci_date)
         return report
 
+    # Cache bereinigen
+    cache = clean_old_cache(cache)
+
+    # Cache nur aktualisieren, wenn email_date neu ist
+    if wci_date not in cache:
+        cache[wci_date] = {"value": wci_value}
+        save_wci_cache(cache)
+    else:
+        logger.debug(f"Cache entry for {wci_date} already exists, skipping save")
+
+    # Finde vorherigen Wert
+    previous_value = None
+    sorted_dates = sorted([d for d in cache.keys() if d != wci_date])
+    if sorted_dates:
+        previous_value = cache[sorted_dates[-1]]["value"]
+
     # Prozentuale Veränderung berechnen
     percentage_change = calculate_percentage_change(wci_value, previous_value)
-
-    # Cache aktualisieren
-    cache[today_str] = {"value": wci_value, "email_date": wci_date}
-    save_wci_cache(cache)
 
     # Bericht generieren
     arrow = "↓" if percentage_change and percentage_change < 0 else "↑" if percentage_change else ""
