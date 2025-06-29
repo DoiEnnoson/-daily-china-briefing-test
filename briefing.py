@@ -288,8 +288,18 @@ def save_wci_cache(cache):
     """Speichert den WCI-Cache und prüft, ob die Datei erstellt wurde."""
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
+        existing_cache = {}
+        if os.path.exists(WCI_CACHE_FILE):
+            try:
+                with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
+                    existing_cache = json.load(f)
+            except json.JSONDecodeError:
+                logger.error("Corrupted WCI cache file, overwriting with new data")
+        
+        existing_cache.update(cache)
         with open(WCI_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(cache, f, ensure_ascii=False, indent=2)
+            json.dump(existing_cache, f, ensure_ascii=False, indent=2)
+        
         if os.path.exists(WCI_CACHE_FILE):
             logger.info(f"Successfully wrote WCI cache to {WCI_CACHE_FILE}")
         else:
