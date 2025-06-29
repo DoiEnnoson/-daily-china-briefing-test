@@ -629,7 +629,9 @@ def fetch_wci():
                 previous_value = cache[cache_date].get("value")
                 break
 
-        pct_change = calculate_percentage_change(wci_value, previous_value)
+        pct_change = None
+        if previous_value is not None:
+            pct_change = calculate_percentage_change(wci_value, previous_value)
 
         # Cache aktualisieren, wenn nötig
         should_save = True
@@ -658,12 +660,21 @@ def fetch_wci():
             wci_value = latest_entry["value"]
             wci_date = latest_entry["date"]
 
+            # Prozentuale Veränderung im Cache-Fall berechnen
+            previous_value = None
+            for cache_date in sorted_cache_dates[1:]:  # Überspringe den neuesten Eintrag
+                previous_value = cache[cache_date].get("value")
+                break
+            pct_change = None
+            if previous_value is not None:
+                pct_change = calculate_percentage_change(wci_value, previous_value)
+
             try:
                 cache_date = datetime.strptime(wci_date, "%d.%m.%Y").strftime("%Y-%m-%d")
                 if cache_date >= ten_days_ago:
                     logger.info(f"DEBUG - fetch_wci: Using cache value {wci_value:.2f} (Date: {wci_date})")
                     warning_message = f"WCI email not available, using cache value {wci_value} (Date: {wci_date})"
-                    return wci_value, None, wci_date, warning_message
+                    return wci_value, pct_change, wci_date, warning_message
                 else:
                     warning_message = f"WCI email not available, cache value {wci_value} too old (Date: {wci_date})"
             except ValueError:
@@ -675,6 +686,7 @@ def fetch_wci():
         warning_message = warning_message or "WCI email not available, no valid cache, using fallback 2584.00"
         logger.info(f"DEBUG - fetch_wci: Using fallback value {wci_value:.2f} (Date: {wci_date})")
         return wci_value, None, wci_date, warning_message
+        
 # IACI-Daten abrufen
 def fetch_iaci():
     """Holt die neuesten IACI-Daten aus der E-Mail oder dem Cache, berechnet die prozentuale Veränderung und behandelt Fehler."""
