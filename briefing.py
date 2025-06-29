@@ -597,18 +597,11 @@ def extract_iaci_from_html(html_content, subject):
         return None, None
 
 # Prozentuale Veränderung berechnen
-def calculate_percentage_change(current_value, previous_value):
-    """Berechnet die prozentuale Veränderung zwischen zwei Werten, gerundet auf ganze Zahlen."""
-    if previous_value is None or previous_value == 0:
-        return None
-    change = ((current_value - previous_value) / previous_value) * 100
-    return round(change)
-
-# WCI-Daten abrufen
 def fetch_wci():
     """Holt die neuesten WCI-Daten aus der E-Mail oder dem Cache, berechnet die prozentuale Veränderung und behandelt Fehler."""
     logger.info("DEBUG - fetch_wci: Starting to fetch WCI data")
-    today_str = date.today().isoformat()
+    today = datetime.now(cest)
+    today_str = today.strftime("%Y-%m-%d")
     cache = load_wci_cache()
 
     try:
@@ -620,24 +613,34 @@ def fetch_wci():
         if wci_value is None or wci_date is None:
             raise Exception("Failed to extract WCI value or date from email")
 
+        # Cache-Schlüssel im Format YYYY-MM-DD basierend auf wci_date
+        try:
+            wci_date_obj = datetime.strptime(wci_date, "%d.%m.%Y")
+            cache_key = wci_date_obj.strftime("%Y-%m-%d")
+        except ValueError:
+            logger.error(f"Invalid WCI date format: {wci_date}")
+            raise Exception(f"Invalid WCI date format: {wci_date}")
+
         # Prozentuale Veränderung berechnen
-        latest_cache_date = max(cache.keys(), default=None)
+        sorted_cache_dates = sorted(cache.keys(), reverse=True)
         previous_value = None
-        if latest_cache_date and latest_cache_date != today_str:
-            previous_value = cache[latest_cache_date].get("value")
-        
+        for cache_date in sorted_cache_dates:
+            if cache_date != cache_key:
+                previous_value = cache[cache_date].get("value")
+                break
+
         pct_change = calculate_percentage_change(wci_value, previous_value)
-        
+
         # Cache aktualisieren, wenn nötig
         should_save = True
-        if latest_cache_date:
-            latest_entry = cache[latest_cache_date]
+        if cache_key in cache:
+            latest_entry = cache[cache_key]
             if latest_entry.get("value") == wci_value and latest_entry.get("date") == wci_date:
                 should_save = False
                 logger.info("DEBUG - fetch_wci: No cache update needed (value and date unchanged)")
 
         if should_save:
-            cache[today_str] = {"value": wci_value, "date": wci_date}
+            cache[cache_key] = {"value": wci_value, "date": wci_date}
             save_wci_cache(cache)
 
         logger.info(f"DEBUG - fetch_wci: WCI value {wci_value:.2f} extracted (Date: {wci_date})")
@@ -646,18 +649,18 @@ def fetch_wci():
     except Exception as e:
         logger.error(f"ERROR - fetch_wci: Failed to fetch WCI data: {str(e)}")
         warning_message = None
-        latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
+        sorted_cache_dates = sorted(cache.keys(), reverse=True)
+        ten_days_ago = (today - timedelta(days=10)).strftime("%Y-%m-%d")
 
-        if latest_cache_date:
+        if sorted_cache_dates:
+            latest_cache_date = sorted_cache_dates[0]
             latest_entry = cache[latest_cache_date]
             wci_value = latest_entry["value"]
             wci_date = latest_entry["date"]
 
             try:
-                cache_date = datetime.strptime(wci_date, "%d.%m.%Y")
-                ten_days_ago_date = datetime.strptime(ten_days_ago, "%Y-%m-%d")
-                if cache_date >= ten_days_ago_date:
+                cache_date = datetime.strptime(wci_date, "%d.%m.%Y").strftime("%Y-%m-%d")
+                if cache_date >= ten_days_ago:
                     logger.info(f"DEBUG - fetch_wci: Using cache value {wci_value:.2f} (Date: {wci_date})")
                     warning_message = f"WCI email not available, using cache value {wci_value} (Date: {wci_date})"
                     return wci_value, None, wci_date, warning_message
@@ -667,12 +670,11 @@ def fetch_wci():
                 warning_message = f"WCI email not available, invalid cache date (Date: {wci_date})"
 
         # Fallback-Wert
-        wci_value = 2584.00  # Dummy-Wert aus generate_briefing
-        wci_date = date.today().strftime("%d.%m.%Y")
+        wci_value = 2584.00
+        wci_date = today.strftime("%d.%m.%Y")
         warning_message = warning_message or "WCI email not available, no valid cache, using fallback 2584.00"
         logger.info(f"DEBUG - fetch_wci: Using fallback value {wci_value:.2f} (Date: {wci_date})")
         return wci_value, None, wci_date, warning_message
-
 # IACI-Daten abrufen
 def fetch_iaci():
     """Holt die neuesten IACI-Daten aus der E-Mail oder dem Cache, berechnet die prozentuale Veränderung und behandelt Fehler."""
