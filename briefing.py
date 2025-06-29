@@ -1,3 +1,4 @@
+# Importe (z. B. import os, import json, etc.)
 import email
 import feedparser
 import imaplib
@@ -47,6 +48,13 @@ IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
 # Erstelle den freight_indicies-Ordner, falls er nicht existiert
 os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
 
+# Berechnet die prozentuale Veränderung zwischen zwei Werten, gerundet auf ganze Zahle (Fuer WCI, SCFI, IACI) 
+def calculate_percentage_change(current_value, previous_value):
+    """Berechnet die prozentuale Veränderung zwischen zwei Werten, gerundet auf ganze Zahlen."""
+    if previous_value is None or previous_value == 0:
+        return None
+    change = ((current_value - previous_value) / previous_value) * 100
+    return round(change)
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
     try:
