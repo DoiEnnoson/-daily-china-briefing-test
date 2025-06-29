@@ -48,8 +48,8 @@ jobs:
 
       - name: scfi_cache.json Inhalt prüfen (vor Commit)
         run: |
-          echo "Inhalt von scfi_cache.json vor dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
+          echo "Inhalt von freight_indicies/scfi_cache.json vor dem Commit:"
+          cat freight_indicies/scfi_cache.json || echo "Datei freight_indicies/scfi_cache.json existiert nicht"
         continue-on-error: true
 
       - name: wci_cache.json Inhalt prüfen (vor Commit)
@@ -68,7 +68,7 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add cpr_cache.json scfi_cache.json freight_indicies/wci_cache.json freight_indicies/iaci_cache.json daily_briefing.md
+          git add cpr_cache.json freight_indicies/scfi_cache.json freight_indicies/wci_cache.json freight_indicies/iaci_cache.json daily_briefing.md
           git commit -m "Update cache files and briefing" || echo "Keine Änderungen zu committen"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
@@ -82,8 +82,8 @@ jobs:
 
       - name: scfi_cache.json Inhalt prüfen (nach Commit)
         run: |
-          echo "Inhalt von scfi_cache.json nach dem Commit:"
-          cat scfi_cache.json || echo "Datei scfi_cache.json existiert nicht"
+          echo "Inhalt von freight_indicies/scfi_cache.json nach dem Commit:"
+          cat freight_indicies/scfi_cache.json || echo "Datei freight_indicies/scfi_cache.json existiert nicht"
         continue-on-error: true
 
       - name: wci_cache.json Inhalt prüfen (nach Commit)
