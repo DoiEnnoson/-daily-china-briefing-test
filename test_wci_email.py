@@ -343,6 +343,18 @@ def extract_iaci_from_html(html_content, subject):
         logger.error(f"Error processing IACI HTML content: {str(e)}")
         return None, None
 
+def parse_date(date_str):
+    """Versucht, ein Datum in verschiedenen Formaten zu parsen."""
+    formats = ["%d.%m.%Y", "%Y-%m-%d"]
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(date_str, fmt)
+            logger.info(f"Parsed date {date_str} with format {fmt}")
+            return parsed
+        except ValueError:
+            continue
+    raise ValueError(f"Could not parse date: {date_str}")
+
 def calculate_percentage_change(current_value, previous_value):
     """Berechnet die prozentuale Veränderung zwischen zwei Werten, gerundet auf ganze Zahlen."""
     if previous_value is None or previous_value == 0:
@@ -409,60 +421,6 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
         wci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})</li>"
 
         iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
-        iaci_error = iaci_percentage_change if iaci_percentage_change is not None else 0
-        iaci_change_text = f" ({iaci_arrow} {iaci_error}%)" if iaci_percentage_change is not None else ""
-        iaci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})</li>"
-
-        body = f"""<html>
-<body>
-<p>Daily China Briefing WCI/IACI Results</p>
-<p>Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}</p>
-<ul>
-{wci_text}
-{iaci_text}
-</ul>
-</body>
-</html>"""
-        msg.attach(MIMEText(body, 'html', 'utf-8'))
-
-        server = smtplib.SMTP彼此
-
-System: I notice there is an error in the `send_results_email` function of the provided script. Specifically, there is an issue with the `iaci_error` variable, which seems to be a typo and is causing incorrect handling of the IACI percentage change in the email body. Let me fix this and provide the corrected version of the script.
-
-Here is the corrected `send_results_email` function (the rest of the script remains unchanged):
-
-```python
-def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change=None, iaci_percentage_change=None):
-    """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail ohne Anhänge."""
-    try:
-        env_vars = os.getenv('DREWRY')
-        if not env_vars:
-            logger.error("DREWRY environment variable not set")
-            return False
-
-        gmail_user = None
-        gmail_pass = None
-        for var in env_vars.split(';'):
-            key, value = var.split('=', 1)
-            if key.strip() == 'GMAIL_USER':
-                gmail_user = value.strip()
-            elif key.strip() == 'GMAIL_PASS':
-                gmail_pass = value.strip()
-
-        if not gmail_user or not gmail_pass:
-            logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
-            return False
-
-        msg = MIMEMultipart()
-        msg['From'] = f"Daily China Briefing <{gmail_user}>"
-        msg['To'] = gmail_user
-        msg['Subject'] = f"Daily China Briefing WCI/IACI Results - {datetime.now(cest).strftime('%Y-%m-%d %H:%M:%S')}"
-
-        wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
-        wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
-        wci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})</li>"
-
-        iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
         iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
         iaci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})</li>"
 
@@ -489,3 +447,139 @@ def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentag
     except Exception as e:
         logger.error(f"Error sending email: {str(e)}")
         return False
+
+def generate_briefing():
+    logger.info("Starting briefing generation")
+    report_date = datetime.now(cest).strftime("%d %b %Y")
+    wci_cache = load_wci_cache()
+    iaci_cache = load_iaci_cache()
+    today = datetime.now(cest)
+
+    # WCI-Verarbeitung
+    wci_html_content, wci_subject = fetch_wci_email()
+    wci_value = None
+    wci_date = None
+    if wci_html_content:
+        wci_value, wci_date = extract_wci_from_html(wci_html_content, wci_subject)
+    
+    if not wci_value:
+        logger.error("Failed to fetch or extract WCI value")
+        latest_wci_cache_date = max(
+            wci_cache.keys(),
+            default=None,
+            key=lambda d: parse_date(d)
+        ) if wci_cache else None
+        if latest_wci_cache_date:
+            days_old = (today - parse_date(latest_wci_cache_date)).days
+            if days_old <= 14:
+                latest_entry = wci_cache[latest_wci_cache_date]
+                wci_value = latest_entry["value"]
+                wci_date = latest_wci_cache_date
+                logger.info(f"Using cached WCI value {wci_value:.2f} (Date: {wci_date}, {days_old} days old)")
+            else:
+                wci_value = 0.0
+                wci_date = today.strftime("%d.%m.%Y")
+                warning_message = f"WCI: No email found in the last 14 days, cache from {latest_wci_cache_date} ({days_old} days old) too old"
+                send_warning_email(warning_message)
+                logger.info(f"Sent warning email: {warning_message}")
+        else:
+            wci_value = 0.0
+            wci_date = today.strftime("%d.%m.%Y")
+            warning_message = "WCI: No email found in the last 14 days, no cache available"
+            send_warning_email(warning_message)
+            logger.info(f"Sent warning email: {warning_message}")
+    else:
+        if wci_date not in wci_cache:
+            wci_cache[wci_date] = {"value": wci_value}
+            save_wci_cache(wci_cache)
+        else:
+            logger.info(f"WCI cache entry for {wci_date} already exists, skipping save")
+
+    # IACI-Verarbeitung
+    iaci_html_content, iaci_subject = fetch_iaci_email()
+    iaci_value = None
+    iaci_date = None
+    if iaci_html_content:
+        iaci_value, iaci_date = extract_iaci_from_html(iaci_html_content, iaci_subject)
+    
+    if not iaci_value:
+        logger.error("Failed to fetch or extract IACI value")
+        latest_iaci_cache_date = max(
+            iaci_cache.keys(),
+            default=None,
+            key=lambda d: parse_date(d)
+        ) if iaci_cache else None
+        if latest_iaci_cache_date:
+            days_old = (today - parse_date(latest_iaci_cache_date)).days
+            if days_old <= 20:
+                latest_entry = iaci_cache[latest_iaci_cache_date]
+                iaci_value = latest_entry["value"]
+                iaci_date = latest_iaci_cache_date
+                logger.info(f"Using cached IACI value {iaci_value:.2f} (Date: {iaci_date}, {days_old} days old)")
+            else:
+                iaci_value = 0.0
+                iaci_date = today.strftime("%d.%m.%Y")
+                warning_message = f"IACI: No email found in the last 14 days, cache from {latest_iaci_cache_date} ({days_old} days old) too old"
+                send_warning_email(warning_message)
+                logger.info(f"Sent warning email: {warning_message}")
+        else:
+            iaci_value = 0.0
+            iaci_date = today.strftime("%d.%m.%Y")
+            warning_message = "IACI: No email found in the last 14 days, no cache available"
+            send_warning_email(warning_message)
+            logger.info(f"Sent warning email: {warning_message}")
+    else:
+        if iaci_date not in iaci_cache:
+            iaci_cache[iaci_date] = {"value": iaci_value}
+            save_iaci_cache(iaci_cache)
+        else:
+            logger.info(f"IACI cache entry for {iaci_date} already exists, skipping save")
+
+    # Prozentuale Veränderung
+    wci_previous_value = None
+    sorted_wci_dates = sorted(
+        [d for d in wci_cache.keys() if d != wci_date],
+        key=lambda d: parse_date(d)
+    )
+    if sorted_wci_dates:
+        wci_previous_value = wci_cache[sorted_wci_dates[-1]]["value"]
+    wci_percentage_change = calculate_percentage_change(wci_value, wci_previous_value)
+
+    iaci_previous_value = None
+    sorted_iaci_dates = sorted(
+        [d for d in iaci_cache.keys() if d != iaci_date],
+        key=lambda d: parse_date(d)
+    )
+    if sorted_iaci_dates:
+        iaci_previous_value = iaci_cache[sorted_iaci_dates[-1]]["value"]
+        logger.info(f"IACI previous value: {iaci_previous_value} for date {sorted_iaci_dates[-1]}")
+    iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
+    logger.info(f"IACI percentage change: {iaci_percentage_change}")
+
+    # Bericht generieren mit Markdown-Links
+    wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
+    wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
+    wci_text = f"• [**WCI**](https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry): ${wci_value:.2f}{wci_change_text} (Stand {wci_date})"
+
+    iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
+    iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
+    iaci_text = f"• [**IACI**](https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index): ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
+
+    report = f"""Daily China Briefing - {report_date}
+{'=' * 50}
+## 🚢 Frachtraten Indizies
+{wci_text}
+{iaci_text}
+"""
+    logger.info(f"Report content:\n{report}")
+    with open('daily_briefing.md', 'w', encoding='utf-8') as f:
+        f.write(report)
+    logger.info("Saved briefing to daily_briefing.md")
+
+    send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change, iaci_percentage_change)
+    return report
+
+if __name__ == "__main__":
+    logger.info("Starting main execution")
+    report = generate_briefing()
+    logger.info("Main execution completed")
