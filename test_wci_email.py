@@ -36,7 +36,16 @@ def load_wci_cache():
             with open(WCI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
                 logger.info("Successfully loaded WCI cache")
-                return cache
+                # Konvertiere Schlüssel und entferne redundante 'date'-Felder
+                cleaned_cache = {}
+                for date_str, data in cache.items():
+                    new_date_str = convert_date_format(date_str)
+                    cleaned_data = {"value": data["value"]}
+                    cleaned_cache[new_date_str] = cleaned_data
+                if cleaned_cache != cache:
+                    save_wci_cache(cleaned_cache)
+                    logger.info("Converted WCI cache dates to DD.MM.YYYY and removed redundant 'date' fields")
+                return cleaned_cache
         logger.info(f"No WCI cache file found at {WCI_CACHE_FILE}, initializing empty cache")
         cache = {}
         save_wci_cache(cache)
@@ -70,7 +79,15 @@ def load_iaci_cache():
             with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
                 cache = json.load(f)
                 logger.info("Successfully loaded IACI cache")
-                return cache
+                # Konvertiere Schlüssel zu DD.MM.YYYY
+                cleaned_cache = {}
+                for date_str, data in cache.items():
+                    new_date_str = convert_date_format(date_str)
+                    cleaned_cache[new_date_str] = data
+                if cleaned_cache != cache:
+                    save_iaci_cache(cleaned_cache)
+                    logger.info("Converted IACI cache dates to DD.MM.YYYY")
+                return cleaned_cache
         logger.info(f"No IACI cache file found at {IACI_CACHE_FILE}, initializing empty cache")
         cache = {}
         save_iaci_cache(cache)
@@ -90,18 +107,8 @@ def save_iaci_cache(cache):
     """Speichert den IACI-Cache und prüft, ob die Datei erstellt wurde."""
     try:
         os.makedirs(FREIGHT_CACHE_DIR, exist_ok=True)
-        existing_cache = {}
-        if os.path.exists(IACI_CACHE_FILE):
-            try:
-                with open(IACI_CACHE_FILE, "r", encoding="utf-8") as f:
-                    existing_cache = json.load(f)
-            except json.JSONDecodeError:
-                logger.error("Corrupted IACI cache file, overwriting with new data")
-        
-        existing_cache.update(cache)
         with open(IACI_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(existing_cache, f, ensure_ascii=False, indent=2)
-        
+            json.dump(cache, f, ensure_ascii=False, indent=2)
         if os.path.exists(IACI_CACHE_FILE):
             logger.info(f"Successfully wrote IACI cache to {IACI_CACHE_FILE}")
         else:
@@ -110,6 +117,16 @@ def save_iaci_cache(cache):
     except Exception as e:
         logger.error(f"Failed to save IACI cache: {str(e)}")
         raise
+
+def convert_date_format(date_str):
+    """Konvertiert ein Datum in das Format DD.MM.YYYY."""
+    try:
+        if '-' in date_str:
+            return datetime.strptime(date_str, '%Y-%m-%d').strftime('%d.%m.%Y')
+        return date_str
+    except ValueError:
+        logger.error(f"Could not convert date format for {date_str}, keeping original")
+        return date_str
 
 def fetch_wci_email():
     """Holt die neueste Drewry WCI-E-Mail aus den letzten 14 Tagen und gibt den HTML-Inhalt zurück."""
