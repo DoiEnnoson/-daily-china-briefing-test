@@ -26,7 +26,7 @@ CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
 ECONOMIC_CALENDAR_FILE = os.path.join(BASE_DIR, "data", "economic_calendar.csv")
-SCFI_CACHE_FILE = os.path.join(BASE_DIR, "scfi_cache.json")
+SCFI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "scfi_cache.json")
 
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
