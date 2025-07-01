@@ -1756,7 +1756,6 @@ def render_markdown(posts):
             markdown.append(f'  {teaser}')
     return markdown
 
-# === Briefing generieren ===
 def generate_briefing():
     print("DEBUG - generate_briefing: Starting to generate briefing")
     date_str = datetime.now().strftime("%d. %B %Y")
@@ -1820,8 +1819,8 @@ def generate_briefing():
         else:
             briefing.append(currency_data.get("USDCNY"))
         if isinstance(currency_data.get("USDCNH"), tuple):
-            val_cny, arrow_cny, pct_cny = currency_data["USDCNH"]
-            briefing.append(f"• CNH/USD (Offshore): {val_cny:.4f} {arrow_cny} ({pct_cny:+.2f} %)")
+            val_cnh, arrow_cnh, pct_cnh = currency_data["USDCNH"]
+            briefing.append(f"• CNH/USD (Offshore): {val_cnh:.4f} {arrow_cnh} ({pct_cnh:+.2f} %)")
         else:
             briefing.append(currency_data.get("USDCNH"))
         if isinstance(currency_data.get("USDCNY"), tuple) and isinstance(currency_data.get("USDCNH"), tuple):
@@ -1833,49 +1832,48 @@ def generate_briefing():
             spread_arrow = "↓" if spread_pips <= -10 else "↑" if spread_pips >= 10 else "→"
             briefing.append(f"• Spread CNH–CNY: {spread:+.4f} {spread_arrow} ({cnh_cny_interpretation})")
 
-# Frachtraten Indizies
-briefing.append("\n## 🚢 Frachtraten Indizies")
-try:
-    # SCFI-Daten
-    scfi_value, pct_change, scfi_date, warning_message = fetch_scfi()
-    if warning_message:
-        send_warning_email(warning_message)
-    arrow = "→"
-    pct_change_str = "0.00"
-    if pct_change is not None:
-        pct_change_str = f"{pct_change:.2f}"
-        if pct_change > 0:
-            arrow = "↑"
-        elif pct_change < 0:
-            arrow = "↓"
-    scfi_line = f"• <a href=\"https://en.sse.net.cn/indices/scfinew.jsp\">SCFI</a>: ${scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
-    
-    # WCI- und IACI-Daten
+    # Frachtraten Indizies
+    briefing.append("\n## 🚢 Frachtraten Indizies")
     try:
-        wci_text, iaci_text = generate_briefing_freight()
-        # Sicherstellen, dass $ im Text enthalten ist
-        wci_text = wci_text.replace("WCI</a>: ", "WCI</a>: $")
-        iaci_text = iaci_text.replace("IACI</a>: ", "IACI</a>: $")
+        # SCFI-Daten
+        scfi_value, pct_change, scfi_date, warning_message = fetch_scfi()
+        if warning_message:
+            send_warning_email(warning_message)
+        arrow = "→"
+        pct_change_str = "0.00"
+        if pct_change is not None:
+            pct_change_str = f"{pct_change:.2f}"
+            if pct_change > 0:
+                arrow = "↑"
+            elif pct_change < 0:
+                arrow = "↓"
+        scfi_line = f"• <a href=\"https://en.sse.net.cn/indices/scfinew.jsp\">SCFI</a>: ${scfi_value:.2f} {arrow} ({pct_change_str}%, Stand {scfi_date})"
+        
+        # WCI- und IACI-Daten
+        try:
+            wci_text, iaci_text = generate_briefing_freight()
+            # Sicherstellen, dass $ im Text enthalten ist
+            wci_text = wci_text.replace("WCI</a>: ", "WCI</a>: $")
+            iaci_text = iaci_text.replace("IACI</a>: ", "IACI</a>: $")
+        except Exception as e:
+            logger.error(f"Failed to fetch WCI/IACI data: {str(e)}")
+            wci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: $0.00 (Stand {date.today().strftime('%d.%m.%Y')})"
+            iaci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: $0.00 (Stand {date.today().strftime('%d.%m.%Y')})"
+            send_warning_email(f"WCI/IACI data fetch failed: {str(e)}")
+        
+        briefing.extend([scfi_line, wci_text, iaci_text])
+        
+        # SCFI-Cache-Debugging
+        try:
+            with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_content = json.load(f)
+                print(f"DEBUG - generate_briefing: SCFI cache content after fetch: {cache_content}")
+        except Exception as e:
+            print(f"ERROR - generate_briefing: Failed to read SCFI cache after fetch: {str(e)}")
     except Exception as e:
-        logger.error(f"Failed to fetch WCI/IACI data: {str(e)}")
-        wci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: $0.00 (Stand {date.today().strftime('%d.%m.%Y')})"
-        iaci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: $0.00 (Stand {date.today().strftime('%d.%m.%Y')})"
-        send_warning_email(f"WCI/IACI data fetch failed: {str(e)}")
-    
-    briefing.extend([scfi_line, wci_text, iaci_text])
-    
-    # SCFI-Cache-Debugging
-    try:
-        with open(SCFI_CACHE_FILE, "r", encoding="utf-8") as f:
-            cache_content = json.load(f)
-            print(f"DEBUG - generate_briefing: SCFI cache content after fetch: {cache_content}")
-    except Exception as e:
-        print(f"ERROR - generate_briefing: Failed to read SCFI cache after fetch: {str(e)}")
-except Exception as e:
-    print(f"ERROR - generate_briefing: Failed to fetch SCFI data: {str(e)}")
-    briefing.append(f"❌ Fehler beim Abrufen der Frachtraten: {str(e)}")
+        print(f"ERROR - generate_briefing: Failed to fetch SCFI data: {str(e)}")
+        briefing.append(f"❌ Fehler beim Abrufen der Frachtraten: {str(e)}")
 
-    
     # Wirtschaftskalender
     briefing.append("")  # Leerzeile für Abstand
     briefing.extend(fetch_economic_calendar())
@@ -1949,7 +1947,6 @@ except Exception as e:
     briefing.append("\n## 📺 SCMP – Top-Themen")
     briefing.extend(fetch_ranked_articles(feeds_scmp_yicai["SCMP"]))
 
-    # Caixin
     # Caixin
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
@@ -2083,7 +2080,6 @@ except Exception as e:
     </div>
 </body>
 </html>"""
-
 # === E-Mail senden ===
 def send_briefing():
     print("🧠 DEBUG - send_briefing: Starting to generate and send briefing")
