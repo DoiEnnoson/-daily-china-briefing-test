@@ -8,10 +8,12 @@ import requests
 import smtplib
 import time
 import warnings
+import logging
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from email.utils import parsedate_to_datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -19,14 +21,27 @@ import pandas as pd
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
+# CEST ist UTC+2
+cest = timezone(timedelta(hours=2))
 
-# Pfad zu den Holiday JSON Dateien, CPR-Cache, Economic Calendar CSV und SCFI-Cache
+# Logging einrichten, nur auf Konsole, keine Dateien
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger()
+
+# Pfad zu den Holiday JSON Dateien, CPR-Cache, Economic Calendar CSV, SCFI-Cache und Freight-Cache
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHINA_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "china.json")
 HK_HOLIDAY_FILE = os.path.join(BASE_DIR, "holiday_cache", "hk.json")
 CPR_CACHE_FILE = os.path.join(BASE_DIR, "cpr_cache.json")
 ECONOMIC_CALENDAR_FILE = os.path.join(BASE_DIR, "data", "economic_calendar.csv")
 SCFI_CACHE_FILE = os.path.join(BASE_DIR, "scfi_cache.json")
+FREIGHT_CACHE_DIR = os.path.join(BASE_DIR, "freight_indicies")
+WCI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "wci_cache.json")
+IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
 
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
