@@ -594,14 +594,14 @@ def generate_briefing_freight():
     iaci_percentage_change = calculate_percentage_change(iaci_value, iaci_previous_value)
     logger.info(f"IACI percentage change: {iaci_percentage_change}")
 
-    # Bericht generieren mit Markdown-Links
+    # Bericht generieren mit Markdown-Links, ohne $ im Wert
     wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
     wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
-    wci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})"
+    wci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: {wci_value:.2f}{wci_change_text} (Stand {wci_date})"
 
     iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
     iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
-    iaci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
+    iaci_text = f"• <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: {iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})"
 
     report = f"""Daily China Briefing - {report_date}
 {'=' * 50}
@@ -616,7 +616,8 @@ def generate_briefing_freight():
 
     send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change, iaci_percentage_change)
     return wci_text, iaci_text
-
+    
+ # Feiertage
 def load_holidays(filepath):
     print(f"DEBUG - load_holidays: Loading holidays from {filepath}")
     try:
