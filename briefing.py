@@ -422,71 +422,12 @@ def send_warning_email(warning_message):
         logger.error(f"Failed to send warning email: {str(e)}")
         raise
 
-def send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change=None, iaci_percentage_change=None):
-    """Sendet die WCI- und IACI-Ergebnisse per HTML-E-Mail ohne Anhänge."""
-    try:
-        env_vars = os.getenv('DREWRY')
-        if not env_vars:
-            logger.error("DREWRY environment variable not set")
-            return False
-
-        gmail_user = None
-        gmail_pass = None
-        for var in env_vars.split(';'):
-            key, value = var.split('=', 1)
-            if key.strip() == 'GMAIL_USER':
-                gmail_user = value.strip()
-            elif key.strip() == 'GMAIL_PASS':
-                gmail_pass = value.strip()
-
-        if not gmail_user or not gmail_pass:
-            logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
-            return False
-
-        msg = MIMEMultipart()
-        msg['From'] = f"Daily China Briefing <{gmail_user}>"
-        msg['To'] = gmail_user
-        msg['Subject'] = f"Daily China Briefing WCI/IACI Results - {datetime.now(cest).strftime('%Y-%m-%d %H:%M:%S')}"
-
-        wci_arrow = "↓" if wci_percentage_change and wci_percentage_change < 0 else "↑" if wci_percentage_change else ""
-        wci_change_text = f" ({wci_arrow} {wci_percentage_change}%)" if wci_percentage_change is not None else ""
-        wci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: ${wci_value:.2f}{wci_change_text} (Stand {wci_date})</li>"
-
-        iaci_arrow = "↓" if iaci_percentage_change and iaci_percentage_change < 0 else "↑" if iaci_percentage_change else ""
-        iaci_change_text = f" ({iaci_arrow} {iaci_percentage_change}%)" if iaci_percentage_change is not None else ""
-        iaci_text = f"<li><a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/intra-asia-container-index'>IACI</a>: ${iaci_value:.2f}{iaci_change_text} (Stand {iaci_date})</li>"
-
-        body = f"""<html>
-<body>
-<p>Daily China Briefing WCI/IACI Results</p>
-<p>Date: {datetime.now(cest).strftime('%d %b %Y %H:%M:%S')}</p>
-<ul>
-{wci_text}
-{iaci_text}
-</ul>
-</body>
-</html>"""
-        msg.attach(MIMEText(body, 'html', 'utf-8'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(gmail_user, gmail_pass)
-        server.send_message(msg)
-        server.quit()
-        logger.info("Email sent successfully")
-        return True
-
-    except Exception as e:
-        logger.error(f"Error sending email: {str(e)}")
-        return False
-
 def generate_briefing_freight():
     logger.info("Starting briefing generation")
     report_date = datetime.now(cest).strftime("%d %b %Y")
     wci_cache = load_wci_cache()
     iaci_cache = load_iaci_cache()
     today = datetime.now(cest)
-
     # WCI-Verarbeitung
     wci_html_content, wci_subject = fetch_wci_email()
     wci_value = None
