@@ -554,8 +554,6 @@ def generate_briefing_freight():
     with open('daily_briefing.md', 'w', encoding='utf-8') as f:
         f.write(report)
     logger.info("Saved briefing to daily_briefing.md")
-
-    send_results_email(wci_value, wci_date, iaci_value, iaci_date, wci_percentage_change, iaci_percentage_change)
     return wci_text, iaci_text
     
  # Feiertage
