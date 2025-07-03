@@ -146,10 +146,10 @@ def convert_date_format(date_str):
 def fetch_wci_email():
     """Holt die neueste Drewry WCI-E-Mail aus den letzten 14 Tagen und gibt den HTML-Inhalt zurück."""
     try:
-        env_vars = os.getenv('DREWRY')
+        env_vars = os.getenv('SUBSTACK_MAIL')
         if not env_vars:
             logger.error("DREWRY environment variable not set")
-            raise Exception("DREWRY not set")
+            raise Exception("SUBSTACK_MAIL not set"
 
         gmail_user = None
         gmail_pass = None
@@ -161,7 +161,7 @@ def fetch_wci_email():
                 gmail_pass = value.strip()
 
         if not gmail_user or not gmail_pass:
-            logger.error("GMAIL_USER or GMAIL_PASS not found in DREWRY")
+            logger.error("GMAIL_USER or GMAIL_PASS not found in SUBSTACK_MAIL")
             raise Exception("GMAIL credentials missing")
 
         mail = imaplib.IMAP4_SSL('imap.gmail.com', timeout=30)
