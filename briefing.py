@@ -1,4 +1,5 @@
 import email
+from email.header import decode_header
 import feedparser
 import imaplib
 import json
