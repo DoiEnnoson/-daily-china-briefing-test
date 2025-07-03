@@ -149,7 +149,7 @@ def fetch_wci_email():
         env_vars = os.getenv('SUBSTACK_MAIL')
         if not env_vars:
             logger.error("DREWRY environment variable not set")
-            raise Exception("SUBSTACK_MAIL not set"
+            raise Exception("SUBSTACK_MAIL not set")
 
         gmail_user = None
         gmail_pass = None
