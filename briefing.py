@@ -451,13 +451,16 @@ def generate_briefing_freight():
             if email_date > latest_cache_date:
                 wci_cache[wci_date] = {"value": wci_value}
                 save_wci_cache(wci_cache)
+                wci_cache = load_wci_cache()  # Cache neu laden
                 logger.info(f"New WCI value {wci_value:.2f} for {wci_date} saved to cache")
             else:
                 logger.info(f"WCI email date {wci_date} is not newer than latest cache date {latest_wci_cache_date}, skipping save")
         else:
             wci_cache[wci_date] = {"value": wci_value}
             save_wci_cache(wci_cache)
+            wci_cache = load_wci_cache()  # Cache neu laden
             logger.info(f"No previous WCI cache, saved new value {wci_value:.2f} for {wci_date}")
+
 
     # Neueste Werte aus Cache für WCI verwenden
     if latest_wci_cache_date:
