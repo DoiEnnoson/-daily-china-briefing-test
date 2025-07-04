@@ -58,11 +58,11 @@ def send_article_email(posts):
                 if link_tag:
                     title = link_tag.get_text(strip=True)
                     url = link_tag.get("href", "#")
-                    formatted_posts.append(f'<p>• <a href="{url}">{title}</a></p>')
-            # Sichtbarer Text ohne <a>-Tags, aber HTML behält Links
-            body = "## 📜 Nikkei Asia – Top-Themen:\n\n" + "\n".join(formatted_posts)
+                    formatted_posts.append(f'• <a href="{url}">{title}</a>')
+            # Verbinde mit \n für eine Zeile pro Artikel ohne Leerzeilen
+            body = f"<p>## 📜 Nikkei Asia – Top-Themen:</p>\n" + "\n".join(formatted_posts)
         else:
-            body = "Keine Nikkei-Artikel gefunden."
+            body = "<p>Keine Nikkei-Artikel gefunden.</p>"
         msg = MIMEText(body, "html")  # HTML-Format für klickbare Links
         msg["Subject"] = subject
         msg["From"] = email_user
