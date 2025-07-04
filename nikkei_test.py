@@ -50,10 +50,10 @@ def send_article_email(posts):
             return
         subject = f"Nikkei Asia Briefing - {datetime.now().strftime('%Y-%m-%d')}"
         if posts:
-            body = "## 📜 Nikkei Asia – Top-Themen\n\n" + "\n\n".join(posts)
+            body = "## 📜 Nikkei Asia – Top-Themen:\n\n" + "\n\n".join(posts)
         else:
             body = "Keine Nikkei-Artikel gefunden."
-        msg = MIMEText(body, "html")  # HTML-Format für Links
+        msg = MIMEText(body, "html")  # HTML-Format für klickbare Links
         msg["Subject"] = subject
         msg["From"] = email_user
         msg["To"] = "hadobrockmeyer@gmail.com"
@@ -263,11 +263,11 @@ def main():
         send_warning_email("Keine Nikkei-Artikel gefunden", f"Fehler: SUBSTACK_MAIL Format ungültig: {str(e)}")
         return
     posts = fetch_nikkei_from_email(email_user, email_password)
-    print("\n## 📜 Nikkei Asia – Top-Themen")
+    print("\n## 📜 Nikkei Asia – Top-Themen:")
     if posts:
         for post in posts:
             print(post)
-        send_article_email(posts)  # Neue E-Mail mit Artikeln senden
+        send_article_email(posts)
     else:
         print("Keine Artikel gefunden.")
         send_warning_email("Keine Nikkei-Artikel gefunden", "Keine China-relevanten Artikel in den E-Mails gefunden.")
