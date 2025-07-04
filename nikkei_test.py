@@ -16,7 +16,6 @@ def send_warning_email(subject, body):
         if not substack_mail:
             print("❌ ERROR - send_warning_email: SUBSTACK_MAIL nicht gesetzt")
             return
-        # Parse SUBSTACK_MAIL: GMAIL_USER=...;GMAIL_PASS=...
         try:
             user_part, pass_part = substack_mail.split(";")
             email_user = user_part.split("=")[1]
@@ -34,6 +33,36 @@ def send_warning_email(subject, body):
         print(f"DEBUG - send_warning_email: Warn-E-Mail gesendet: {subject}")
     except Exception as e:
         print(f"❌ ERROR - send_warning_email: Fehler beim Senden der Warn-E-Mail: {str(e)}")
+
+def send_article_email(posts):
+    """Sendet eine E-Mail mit den gefundenen Nikkei-Artikeln an hadobrockmeyer@gmail.com."""
+    try:
+        substack_mail = os.getenv("SUBSTACK_MAIL")
+        if not substack_mail:
+            print("❌ ERROR - send_article_email: SUBSTACK_MAIL nicht gesetzt")
+            return
+        try:
+            user_part, pass_part = substack_mail.split(";")
+            email_user = user_part.split("=")[1]
+            email_password = pass_part.split("=")[1]
+        except (ValueError, IndexError) as e:
+            print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
+            return
+        subject = f"Nikkei Asia Briefing - {datetime.now().strftime('%Y-%m-%d')}"
+        if posts:
+            body = "## 📜 Nikkei Asia – Top-Themen\n\n" + "\n\n".join(posts)
+        else:
+            body = "Keine Nikkei-Artikel gefunden."
+        msg = MIMEText(body, "html")  # HTML-Format für Links
+        msg["Subject"] = subject
+        msg["From"] = email_user
+        msg["To"] = "hadobrockmeyer@gmail.com"
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(email_user, email_password)
+            server.send_message(msg)
+        print(f"DEBUG - send_article_email: E-Mail mit Artikeln gesendet: {subject}")
+    except Exception as e:
+        print(f"❌ ERROR - send_article_email: Fehler beim Senden der Artikel-E-Mail: {str(e)}")
 
 def score_nikkei_article(title):
     """Bewertet einen Artikel auf China-Relevanz."""
@@ -225,7 +254,6 @@ def main():
         print("❌ ERROR - main: SUBSTACK_MAIL nicht gesetzt")
         send_warning_email("Keine Nikkei-Artikel gefunden", "Fehler: SUBSTACK_MAIL nicht gesetzt.")
         return
-    # Parse SUBSTACK_MAIL: GMAIL_USER=...;GMAIL_PASS=...
     try:
         user_part, pass_part = substack_mail.split(";")
         email_user = user_part.split("=")[1]
@@ -239,8 +267,10 @@ def main():
     if posts:
         for post in posts:
             print(post)
+        send_article_email(posts)  # Neue E-Mail mit Artikeln senden
     else:
         print("Keine Artikel gefunden.")
+        send_warning_email("Keine Nikkei-Artikel gefunden", "Keine China-relevanten Artikel in den E-Mails gefunden.")
 
 if __name__ == "__main__":
     main()
