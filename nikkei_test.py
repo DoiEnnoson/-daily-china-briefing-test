@@ -50,7 +50,7 @@ def send_article_email(posts):
             return
         subject = f"Nikkei Asia Briefing - {datetime.now().strftime('%Y-%m-%d')}"
         if posts:
-            # Erstelle eine Liste mit HTML-Links, aber sichtbarem Text ohne <a>-Tags
+            # Erstelle HTML-Links für klickbare Links
             formatted_posts = []
             for post in posts:
                 soup = BeautifulSoup(post, "lxml")
@@ -58,10 +58,9 @@ def send_article_email(posts):
                 if link_tag:
                     title = link_tag.get_text(strip=True)
                     url = link_tag.get("href", "#")
-                    # HTML-Link für klickbare Links, aber Titel im sichtbaren Text
-                    formatted_posts.append(f'• <a href="{url}">{title}</a>')
-            # Verbinde mit \n für eine Zeile pro Artikel
-            body = "## 📜 Nikkei Asia – Top-Themen:\n\n" + "\n".join(f"• {BeautifulSoup(post, 'lxml').get_text(strip=True)}" for post in formatted_posts)
+                    formatted_posts.append(f'<p>• <a href="{url}">{title}</a></p>')
+            # Sichtbarer Text ohne <a>-Tags, aber HTML behält Links
+            body = "## 📜 Nikkei Asia – Top-Themen:\n\n" + "\n".join(formatted_posts)
         else:
             body = "Keine Nikkei-Artikel gefunden."
         msg = MIMEText(body, "html")  # HTML-Format für klickbare Links
