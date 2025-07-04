@@ -1,0 +1,44 @@
+name: Nikkei Test
+
+on:
+  workflow_dispatch:  # Manuell ausführen
+  schedule:
+    - cron: '0 6 * * *'  # Täglich um 07:00 UTC (08:00 CEST), etwas später als dein Haupt-Workflow
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Für das Speichern von HTML-Dateien
+      actions: read
+
+    steps:
+      - name: Repository klonen
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python installieren
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+
+      - name: Nikkei Test-Skript ausführen
+        run: python nikkei_test.py
+        env:
+          SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
+
+      - name: HTML-Dateien speichern
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add nikkei_email_*.html
+          git commit -m "Speichere Nikkei HTML-Dateien" || echo "Keine HTML-Dateien zu committen"
+          git pull --rebase origin main || echo "Pull failed, continuing"
+          git push origin main || echo "Push failed"
+        continue-on-error: true
