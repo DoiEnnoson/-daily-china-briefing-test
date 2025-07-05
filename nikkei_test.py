@@ -53,14 +53,14 @@ def send_article_email(nikkei_posts, china_posts):
         # Nikkei Asia Briefing Abschnitt
         nikkei_section = "<p><strong>## 📜 Nikkei Asia – Top-Themen:</strong></p>\n"
         if nikkei_posts:
-            nikkei_section += "".join(f"<p>{post}</p>\n" for post in nikkei_posts)
+            nikkei_section += "".join(f"<p>{post}</p>" for post in nikkei_posts)  # Entferne \n für saubere Formatierung
         else:
             nikkei_section += "<p>Keine Nikkei-Artikel gefunden.</p>\n"
         
         # China Up Close Abschnitt
         china_section = "<p><strong>## 📜 Nikkei China Up Close:</strong></p>\n"
         if china_posts:
-            china_section += "".join(f"<p>{post}</p>\n" for post in china_posts)
+            china_section += "".join(f"<p>{post}</p>" for post in china_posts)  # Entferne \n
         else:
             china_section += "<p>Keine China Up Close-Artikel gefunden.</p>\n"
         
@@ -202,9 +202,6 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        # 🚨 DAU-ANMERKUNG: Suchzeitraum für Nikkei Asia Briefing
-        # Aktuell auf 7 Tage gesetzt für Testzwecke (Wochenende).
-        # Später zurücksetzen auf 1 Tag: since_date = (today - timedelta(days=1)).strftime("%d-%b-%Y")
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         sender = "nikkeiasia-d-nl@namail.nikkei.com"
         search_query = f'FROM {sender} SINCE {since_date}'
@@ -224,7 +221,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
             return []
 
         scored_posts = []
-        seen_posts = set()  # Für Deduplizierung
+        seen_posts = set()  # Für Deduplizierung über alle E-Mails
         generic_titles = {"read more", "click here", "learn more", "view online", "subscribe now", "full story", "continue reading", "nikkei asia", "newsletters"}
         for eid in email_ids[:5]:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -287,8 +284,8 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
                 except Exception as e:
                     print(f"DEBUG - fetch_nikkei_from_email: URL-Auflösung fehlgeschlagen: {link[:50]}...: {str(e)}")
                     final_url = link
-                if "nikkei.com" not in final_url.lower():
-                    print(f"DEBUG - fetch_nikkei_from_email: Überspringe nicht-nikkei.com URL: {final_url[:50]}...")
+                if "asia.nikkei.com" not in final_url.lower():  # Bevorzuge asia.nikkei.com
+                    print(f"DEBUG - fetch_nikkei_from_email: Überspringe nicht-asia.nikkei.com URL: {final_url[:50]}...")
                     continue
                 score = score_nikkei_article(final_title)
                 if score > 0:
@@ -324,7 +321,7 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
         return []
 
     try:
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        imap = imaplib. IMAP4_SSL("imap.gmail.com")
         for attempt in range(3):
             try:
                 imap.login(email_user, email_password)
@@ -343,8 +340,6 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
         return []
 
     try:
-        # 🚨 DAU-ANMERKUNG: Suchzeitraum für China Up Close
-        # 7 Tage, da wöchentlicher Newsletter (Donnerstag).
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         sender = "nikkeiasia-w-nl@namail.nikkei.com"
         search_query = f'FROM {sender} SINCE {since_date}'
@@ -380,10 +375,10 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 subject = subject.decode()
             print(f"DEBUG - fetch_china_up_close_from_email: Verarbeite E-Mail {eid}, Betreff: {subject}")
             
-            # Nur E-Mails mit "China Up Close" im Betreff verarbeiten
-            if "China Up Close" not in subject:
-                print(f"DEBUG - fetch_china_up_close_from_email: Überspringe E-Mail {eid}, Betreff enthält nicht 'China Up Close'")
-                continue
+            # 🚨 Temporäre Entfernung der strengen Betreff-Filterung für Debugging
+            # if "China Up Close" not in subject:
+            #     print(f"DEBUG - fetch_china_up_close_from_email: Überspringe E-Mail {eid}, Betreff enthält nicht 'China Up Close'")
+            #     continue
 
             html = None
             if msg.is_multipart():
@@ -435,8 +430,8 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 except Exception as e:
                     print(f"DEBUG - fetch_china_up_close_from_email: URL-Auflösung fehlgeschlagen: {link[:50]}...: {str(e)}")
                     final_url = link
-                if "nikkei.com" not in final_url.lower():
-                    print(f"DEBUG - fetch_china_up_close_from_email: Überspringe nicht-nikkei.com URL: {final_url[:50]}...")
+                if "asia.nikkei.com" not in final_url.lower():  # Bevorzuge asia.nikkei.com
+                    print(f"DEBUG - fetch_china_up_close_from_email: Überspringe nicht-asia.nikkei.com URL: {final_url[:50]}...")
                     continue
                 score = score_china_up_close_article(final_title)
                 if score > 0:
