@@ -9,6 +9,12 @@ import smtplib
 from email.mime.text import MIMEText
 import urllib.parse
 
+# ~~~ SUCHPARAMETER ~~~
+# Hier kannst du die Suchparameter für die Newsletter ändern
+EMAIL_NIKKEI_ASIA = "nikkeiasia-d-nl@namail.nikkei.com"  # E-Mail-Adresse für Nikkei Asia Newsletter
+EMAIL_CHINA_UP_CLOSE = "nikkeiasia-w-nl@namail.nikkei.com"  # E-Mail-Adresse für China Up Close Newsletter
+SEARCH_DAYS = 7  # Zeitfenster für die Suche (letzte 7 Tage)
+
 def send_warning_email(subject, body):
     """Sendet eine Warn-E-Mail an hadobrockmeyer@gmail.com."""
     try:
@@ -110,13 +116,13 @@ def fetch_combined_china_articles():
     mail.login(email_user, email_password)
     mail.select("INBOX")
     
-    since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+    since_date = (datetime.now() - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
     
     # Nikkei Asia
     try:
         print("DEBUG - fetch_combined_china_articles: Starte Nikkei Asia Briefing")
-        result, data = mail.search(None, f'FROM nikkeiasia-d-nl@namail.nikkei.com SINCE {since_date}')
-        print(f"DEBUG - fetch_combined_china_articles: Suche Nikkei Asia: FROM nikkeiasia-d-nl@namail.nikkei.com SINCE {since_date}")
+        result, data = mail.search(None, f'FROM {EMAIL_NIKKEI_ASIA} SINCE {since_date}')
+        print(f"DEBUG - fetch_combined_china_articles: Suche Nikkei Asia: FROM {EMAIL_NIKKEI_ASIA} SINCE {since_date}")
         print(f"DEBUG - fetch_combined_china_articles: Gefundene Nikkei Asia E-Mail-IDs: {len(data[0].split())}")
         
         for eid in data[0].split():
@@ -169,8 +175,8 @@ def fetch_combined_china_articles():
     # China Up Close
     try:
         print("DEBUG - fetch_combined_china_articles: Starte China Up Close")
-        result, data = mail.search(None, f'FROM nikkeiasia-w-nl@namail.nikkei.com SINCE {since_date}')
-        print(f"DEBUG - fetch_combined_china_articles: Suche China Up Close: FROM nikkeiasia-w-nl@namail.nikkei.com SINCE {since_date}")
+        result, data = mail.search(None, f'FROM {EMAIL_CHINA_UP_CLOSE} SINCE {since_date}')
+        print(f"DEBUG - fetch_combined_china_articles: Suche China Up Close: FROM {EMAIL_CHINA_UP_CLOSE} SINCE {since_date}")
         print(f"DEBUG - fetch_combined_china_articles: Gefundene China Up Close E-Mail-IDs: {len(data[0].split())}")
         
         for eid in data[0].split():
@@ -229,7 +235,9 @@ def fetch_combined_china_articles():
     articles.sort(key=lambda x: x[2], reverse=True)
     articles = articles[:5]
     print(f"DEBUG - fetch_combined_china_articles: Rückgabe von {len(articles)} Artikeln")
-    return [f"• <a href=\"{url}\">{title}</a> ({source})" for title, url, score, source in articles]
+    
+    # Entferne Quellenangaben aus der Ausgabe
+    return [f"• <a href=\"{url}\">{title}</a>" for title, url, score, source in articles]
 
 def send_article_email(china_articles):
     """Sendet eine kombinierte E-Mail mit den Top-5 China-Artikeln."""
@@ -245,13 +253,13 @@ def send_article_email(china_articles):
         except (ValueError, IndexError) as e:
             print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
             return
-        subject = f"China Briefing - {datetime.now().strftime('%Y-%m-%d')}"
+        subject = f"Nikkei Top Artikel - {datetime.now().strftime('%Y-%m-%d')}"
         
-        china_section = "<p><strong>## 📜 China Briefing – Top-Themen:</strong></p>\n<ul>\n"
+        china_section = "<p><strong>## 📜 Nikkei Top Artikel:</strong></p>\n<ul>\n"
         if china_articles:
             china_section += "".join(f"<li>{article}</li>\n" for article in china_articles)
         else:
-            china_section += "<li>Keine China-Artikel gefunden.</li>\n"
+            china_section += "<li>Keine Nikkei-Artikel gefunden.</li>\n"
         china_section += "</ul>\n"
         
         body = china_section
@@ -265,10 +273,10 @@ def send_article_email(china_articles):
         print(f"DEBUG - send_article_email: Kombinierte E-Mail gesendet: {subject}")
     except Exception as e:
         print(f"❌ ERROR - send_article_email: Fehler beim Senden der kombinierten E-Mail: {str(e)}")
-        send_warning_email("Fehler beim Senden der China Briefing-E-Mail", f"Unerwarteter Fehler: {str(e)}")
+        send_warning_email("Fehler beim Senden der Nikkei Top Artikel-E-Mail", f"Unerwarteter Fehler: {str(e)}")
 
 def main():
-    print(f"DEBUG - main: Starte China Briefing um {datetime.now()}")
+    print(f"DEBUG - main: Starte Nikkei Top Artikel um {datetime.now()}")
     china_articles = fetch_combined_china_articles()
     send_article_email(china_articles)
 
