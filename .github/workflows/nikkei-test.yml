@@ -22,9 +22,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
+          pip install requests beautifulsoup4 lxml  # lxml hinzugefügt
 
       - name: Run Nikkei test script
         env:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
-        run: python nikkei_test.py  # Korrekter Dateiname
+        run: python nikkei_test.py
