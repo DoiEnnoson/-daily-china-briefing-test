@@ -121,7 +121,12 @@ def fetch_nikkei_from_email():
             
             for part in msg.walk():
                 if part.get_content_type() == "text/html":
-                    html_content = part.get_payload(decode=True).decode()
+                    charset = part.get_content_charset() or 'utf-8'
+                    try:
+                        html_content = part.get_payload(decode=True).decode(charset)
+                    except UnicodeDecodeError:
+                        print(f"DEBUG - fetch_nikkei_from_email: UnicodeDecodeError mit {charset}, versuche windows-1252")
+                        html_content = part.get_payload(decode=True).decode('windows-1252', errors='replace')
                     with open(f"nikkei_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                         f.write(html_content)
                     print(f"DEBUG - fetch_nikkei_from_email: HTML für E-Mail b'{eid}' gespeichert: nikkei_email_{eid.decode()}.html")
@@ -192,7 +197,12 @@ def fetch_china_up_close_from_email():
             
             for part in msg.walk():
                 if part.get_content_type() == "text/html":
-                    html_content = part.get_payload(decode=True).decode()
+                    charset = part.get_content_charset() or 'utf-8'
+                    try:
+                        html_content = part.get_payload(decode=True).decode(charset)
+                    except UnicodeDecodeError:
+                        print(f"DEBUG - fetch_china_up_close_from_email: UnicodeDecodeError mit {charset}, versuche windows-1252")
+                        html_content = part.get_payload(decode=True).decode('windows-1252', errors='replace')
                     with open(f"china_up_close_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                         f.write(html_content)
                     print(f"DEBUG - fetch_china_up_close_from_email: HTML für E-Mail b'{eid}' gespeichert: china_up_close_email_{eid.decode()}.html")
