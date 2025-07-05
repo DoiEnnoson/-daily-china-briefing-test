@@ -7,7 +7,6 @@ import requests
 from bs4 import BeautifulSoup
 import smtplib
 from email.mime.text import MIMEText
-import time
 import urllib.parse
 
 def send_warning_email(subject, body):
@@ -89,27 +88,36 @@ def score_china_up_close_article(title):
         score -= 5
     return score, is_china, is_important, is_indepth, is_nonchina, is_footer
 
-def fetch_nikkei_from_email():
-    """Holt Nikkei Asia-Artikel aus E-Mails."""
+def fetch_combined_china_articles():
+    """Holt die Top-5 China-Artikel aus Nikkei Asia und China Up Close."""
     seen_posts = set()
     articles = []
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    
+    if not substack_mail:
+        print("❌ ERROR - fetch_combined_china_articles: SUBSTACK_MAIL nicht gesetzt")
+        return []
+
     try:
-        substack_mail = os.getenv("SUBSTACK_MAIL")
-        if not substack_mail:
-            print("❌ ERROR - fetch_nikkei_from_email: SUBSTACK_MAIL nicht gesetzt")
-            return articles
         user_part, pass_part = substack_mail.split(";")
         email_user = user_part.split("=")[1]
         email_password = pass_part.split("=")[1]
-        
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_user, email_password)
-        mail.select("INBOX")
-        
-        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+    except (ValueError, IndexError) as e:
+        print(f"❌ ERROR - fetch_combined_china_articles: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
+        return []
+
+    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+    mail.login(email_user, email_password)
+    mail.select("INBOX")
+    
+    since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+    
+    # Nikkei Asia
+    try:
+        print("DEBUG - fetch_combined_china_articles: Starte Nikkei Asia Briefing")
         result, data = mail.search(None, f'FROM nikkeiasia-d-nl@namail.nikkei.com SINCE {since_date}')
-        print(f"DEBUG - fetch_nikkei_from_email: Suche: FROM nikkeiasia-d-nl@namail.nikkei.com SINCE {since_date}")
-        print(f"DEBUG - fetch_nikkei_from_email: Gefundene E-Mail-IDs: {len(data[0].split())}")
+        print(f"DEBUG - fetch_combined_china_articles: Suche Nikkei Asia: FROM nikkeiasia-d-nl@namail.nikkei.com SINCE {since_date}")
+        print(f"DEBUG - fetch_combined_china_articles: Gefundene Nikkei Asia E-Mail-IDs: {len(data[0].split())}")
         
         for eid in data[0].split():
             result, msg_data = mail.fetch(eid, "(RFC822)")
@@ -117,7 +125,7 @@ def fetch_nikkei_from_email():
             subject = decode_header(msg["subject"])[0][0]
             if isinstance(subject, bytes):
                 subject = subject.decode()
-            print(f"DEBUG - fetch_nikkei_from_email: Verarbeite E-Mail b'{eid}', Betreff: {subject}")
+            print(f"DEBUG - fetch_combined_china_articles: Verarbeite Nikkei Asia E-Mail b'{eid}', Betreff: {subject}")
             
             for part in msg.walk():
                 if part.get_content_type() == "text/html":
@@ -125,67 +133,45 @@ def fetch_nikkei_from_email():
                     try:
                         html_content = part.get_payload(decode=True).decode(charset)
                     except UnicodeDecodeError:
-                        print(f"DEBUG - fetch_nikkei_from_email: UnicodeDecodeError mit {charset}, versuche windows-1252")
+                        print(f"DEBUG - fetch_combined_china_articles: UnicodeDecodeError mit {charset} für Nikkei Asia, versuche windows-1252")
                         html_content = part.get_payload(decode=True).decode('windows-1252', errors='replace')
                     with open(f"nikkei_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                         f.write(html_content)
-                    print(f"DEBUG - fetch_nikkei_from_email: HTML für E-Mail b'{eid}' gespeichert: nikkei_email_{eid.decode()}.html")
+                    print(f"DEBUG - fetch_combined_china_articles: HTML für Nikkei Asia E-Mail b'{eid}' gespeichert: nikkei_email_{eid.decode()}.html")
                     
                     soup = BeautifulSoup(html_content, "html.parser")
                     links = soup.find_all("a", href=True)
-                    print(f"DEBUG - fetch_nikkei_from_email: Gefundene Links mit 'nikkei.com': {len([l for l in links if 'nikkei.com' in l.get('href')])}")
+                    print(f"DEBUG - fetch_combined_china_articles: Gefundene Links mit 'nikkei.com' (Nikkei Asia): {len([l for l in links if 'nikkei.com' in l.get('href')])}")
                     
                     for link in links:
                         href = link.get("href")
                         title = link.get_text(strip=True)
                         if not title or len(title) < 10 or "read more" in title.lower() or "subscribe" in title.lower():
-                            print(f"DEBUG - fetch_nikkei_from_email: Überspringe Titel '{title}' (zu kurz oder generisch)")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe Titel '{title}' (zu kurz oder generisch, Nikkei Asia)")
                             continue
                         final_url = resolve_url(href)
                         if not final_url or "asia.nikkei.com" not in final_url:
-                            print(f"DEBUG - fetch_nikkei_from_email: Überspringe nicht-asia.nikkei.com URL: {final_url}")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe nicht-asia.nikkei.com URL: {final_url} (Nikkei Asia)")
                             continue
                         normalized_url = normalize_url(final_url)
                         if normalized_url in seen_posts:
-                            print(f"DEBUG - fetch_nikkei_from_email: Überspringe Duplikat URL: {normalized_url}")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe Duplikat URL: {normalized_url} (Nikkei Asia)")
                             continue
                         score, is_china, is_japan = score_nikkei_article(title)
                         if score > 0 and is_china:
-                            articles.append((title, final_url, score))
+                            articles.append((title, final_url, score, "Nikkei Asia"))
                             seen_posts.add(normalized_url)
-                            print(f"DEBUG - fetch_nikkei_from_email: Artikel hinzugefügt: '{title[:50]}...', Score: {score}")
-        
-        mail.logout()
-        articles.sort(key=lambda x: x[2], reverse=True)
-        articles = articles[:5]
-        print(f"DEBUG - fetch_nikkei_from_email: Rückgabe von {len(articles)} Artikeln")
-        return [f"• <a href=\"{url}\">{title}</a>" for title, url, score in articles]
+                            print(f"DEBUG - fetch_combined_china_articles: Artikel hinzugefügt: '{title[:50]}...' (Nikkei Asia), Score: {score}")
     except Exception as e:
-        print(f"❌ ERROR - fetch_nikkei_from_email: Fehler: {str(e)}")
-        send_warning_email("Fehler beim Abrufen von Nikkei-Artikeln", f"Unerwarteter Fehler: {str(e)}")
-        return []
+        print(f"❌ ERROR - fetch_combined_china_articles: Fehler bei Nikkei Asia: {str(e)}")
+        send_warning_email("Fehler beim Abrufen von Nikkei Asia-Artikeln", f"Unerwarteter Fehler: {str(e)}")
 
-def fetch_china_up_close_from_email():
-    """Holt China Up Close-Artikel aus E-Mails."""
-    seen_posts = set()
-    articles = []
+    # China Up Close
     try:
-        substack_mail = os.getenv("SUBSTACK_MAIL")
-        if not substack_mail:
-            print("❌ ERROR - fetch_china_up_close_from_email: SUBSTACK_MAIL nicht gesetzt")
-            return articles
-        user_part, pass_part = substack_mail.split(";")
-        email_user = user_part.split("=")[1]
-        email_password = pass_part.split("=")[1]
-        
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_user, email_password)
-        mail.select("INBOX")
-        
-        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+        print("DEBUG - fetch_combined_china_articles: Starte China Up Close")
         result, data = mail.search(None, f'FROM nikkeiasia-w-nl@namail.nikkei.com SINCE {since_date}')
-        print(f"DEBUG - fetch_china_up_close_from_email: Suche: FROM nikkeiasia-w-nl@namail.nikkei.com SINCE {since_date}")
-        print(f"DEBUG - fetch_china_up_close_from_email: Gefundene E-Mail-IDs: {len(data[0].split())}")
+        print(f"DEBUG - fetch_combined_china_articles: Suche China Up Close: FROM nikkeiasia-w-nl@namail.nikkei.com SINCE {since_date}")
+        print(f"DEBUG - fetch_combined_china_articles: Gefundene China Up Close E-Mail-IDs: {len(data[0].split())}")
         
         for eid in data[0].split():
             result, msg_data = mail.fetch(eid, "(RFC822)")
@@ -193,7 +179,7 @@ def fetch_china_up_close_from_email():
             subject = decode_header(msg["subject"])[0][0]
             if isinstance(subject, bytes):
                 subject = subject.decode()
-            print(f"DEBUG - fetch_china_up_close_from_email: Verarbeite E-Mail b'{eid}', Betreff: {subject}")
+            print(f"DEBUG - fetch_combined_china_articles: Verarbeite China Up Close E-Mail b'{eid}', Betreff: {subject}")
             
             for part in msg.walk():
                 if part.get_content_type() == "text/html":
@@ -201,51 +187,52 @@ def fetch_china_up_close_from_email():
                     try:
                         html_content = part.get_payload(decode=True).decode(charset)
                     except UnicodeDecodeError:
-                        print(f"DEBUG - fetch_china_up_close_from_email: UnicodeDecodeError mit {charset}, versuche windows-1252")
+                        print(f"DEBUG - fetch_combined_china_articles: UnicodeDecodeError mit {charset} für China Up Close, versuche windows-1252")
                         html_content = part.get_payload(decode=True).decode('windows-1252', errors='replace')
                     with open(f"china_up_close_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                         f.write(html_content)
-                    print(f"DEBUG - fetch_china_up_close_from_email: HTML für E-Mail b'{eid}' gespeichert: china_up_close_email_{eid.decode()}.html")
+                    print(f"DEBUG - fetch_combined_china_articles: HTML für China Up Close E-Mail b'{eid}' gespeichert: china_up_close_email_{eid.decode()}.html")
                     
                     soup = BeautifulSoup(html_content, "html.parser")
                     links = soup.find_all("a", href=True)
-                    print(f"DEBUG - fetch_china_up_close_from_email: Gefundene Links mit 'nikkei.com': {len([l for l in links if 'nikkei.com' in l.get('href')])}")
+                    print(f"DEBUG - fetch_combined_china_articles: Gefundene Links mit 'nikkei.com' (China Up Close): {len([l for l in links if 'nikkei.com' in l.get('href')])}")
                     
                     for link in links:
                         href = link.get("href")
                         title = link.get_text(strip=True)
                         if not title or len(title) < 10 or "read more" in title.lower() or "subscribe" in title.lower():
-                            print(f"DEBUG - fetch_china_up_close_from_email: Überspringe Titel '{title}' (zu kurz oder generisch)")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe Titel '{title}' (zu kurz oder generisch, China Up Close)")
                             continue
                         if "This week's China Up Close focuses on" in title or "Read Katsuji Nakazawa's analysis here" in title:
-                            print(f"DEBUG - fetch_china_up_close_from_email: Überspringe Einleitungstext '{title[:50]}...'")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe Einleitungstext '{title[:50]}...' (China Up Close)")
                             continue
                         final_url = resolve_url(href)
                         if not final_url or "asia.nikkei.com" not in final_url:
-                            print(f"DEBUG - fetch_china_up_close_from_email: Überspringe nicht-asia.nikkei.com URL: {final_url}")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe nicht-asia.nikkei.com URL: {final_url} (China Up Close)")
                             continue
                         normalized_url = normalize_url(final_url)
                         if normalized_url in seen_posts:
-                            print(f"DEBUG - fetch_china_up_close_from_email: Überspringe Duplikat URL: {normalized_url}")
+                            print(f"DEBUG - fetch_combined_china_articles: Überspringe Duplikat URL: {normalized_url} (China Up Close)")
                             continue
                         score, is_china, is_important, is_indepth, is_nonchina, is_footer = score_china_up_close_article(title)
                         if score > 0:
-                            articles.append((title, final_url, score))
+                            articles.append((title, final_url, score, "China Up Close"))
                             seen_posts.add(normalized_url)
-                            print(f"DEBUG - fetch_china_up_close_from_email: Artikel hinzugefügt: '{title[:50]}...', Score: {score}")
-        
-        mail.logout()
-        articles.sort(key=lambda x: x[2], reverse=True)
-        articles = articles[:5]
-        print(f"DEBUG - fetch_china_up_close_from_email: Rückgabe von {len(articles)} Artikeln")
-        return [f"• <a href=\"{url}\">{title}</a>" for title, url, score in articles]
+                            print(f"DEBUG - fetch_combined_china_articles: Artikel hinzugefügt: '{title[:50]}...' (China Up Close), Score: {score}")
     except Exception as e:
-        print(f"❌ ERROR - fetch_china_up_close_from_email: Fehler: {str(e)}")
+        print(f"❌ ERROR - fetch_combined_china_articles: Fehler bei China Up Close: {str(e)}")
         send_warning_email("Fehler beim Abrufen von China Up Close-Artikeln", f"Unerwarteter Fehler: {str(e)}")
-        return []
 
-def send_article_email(nikkei_posts, china_posts):
-    """Sendet eine kombinierte E-Mail mit Nikkei Asia Briefing und China Up Close Artikeln."""
+    mail.logout()
+    
+    # Sortiere nach Score (absteigend) und wähle die Top-5
+    articles.sort(key=lambda x: x[2], reverse=True)
+    articles = articles[:5]
+    print(f"DEBUG - fetch_combined_china_articles: Rückgabe von {len(articles)} Artikeln")
+    return [f"• <a href=\"{url}\">{title}</a> ({source})" for title, url, score, source in articles]
+
+def send_article_email(china_articles):
+    """Sendet eine kombinierte E-Mail mit den Top-5 China-Artikeln."""
     try:
         substack_mail = os.getenv("SUBSTACK_MAIL")
         if not substack_mail:
@@ -258,23 +245,16 @@ def send_article_email(nikkei_posts, china_posts):
         except (ValueError, IndexError) as e:
             print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
             return
-        subject = f"Nikkei Asia Briefing & China Up Close - {datetime.now().strftime('%Y-%m-%d')}"
+        subject = f"China Briefing - {datetime.now().strftime('%Y-%m-%d')}"
         
-        nikkei_section = "<p><strong>## 📜 Nikkei Asia – Top-Themen:</strong></p>\n<ul>\n"
-        if nikkei_posts:
-            nikkei_section += "".join(f"<li>{post}</li>\n" for post in nikkei_posts)
+        china_section = "<p><strong>## 📜 China Briefing – Top-Themen:</strong></p>\n<ul>\n"
+        if china_articles:
+            china_section += "".join(f"<li>{article}</li>\n" for article in china_articles)
         else:
-            nikkei_section += "<li>Keine Nikkei-Artikel gefunden.</li>\n"
-        nikkei_section += "</ul>\n"
-        
-        china_section = "<p><strong>## 📜 Nikkei China Up Close:</strong></p>\n<ul>\n"
-        if china_posts:
-            china_section += "".join(f"<li>{post}</li>\n" for post in china_posts)
-        else:
-            china_section += "<li>Keine China Up Close-Artikel gefunden.</li>\n"
+            china_section += "<li>Keine China-Artikel gefunden.</li>\n"
         china_section += "</ul>\n"
         
-        body = nikkei_section + "<br>\n" + china_section
+        body = china_section
         msg = MIMEText(body, "html")
         msg["Subject"] = subject
         msg["From"] = email_user
@@ -285,15 +265,12 @@ def send_article_email(nikkei_posts, china_posts):
         print(f"DEBUG - send_article_email: Kombinierte E-Mail gesendet: {subject}")
     except Exception as e:
         print(f"❌ ERROR - send_article_email: Fehler beim Senden der kombinierten E-Mail: {str(e)}")
-        send_warning_email("Fehler beim Senden der Nikkei-E-Mail", f"Unerwarteter Fehler: {str(e)}")
+        send_warning_email("Fehler beim Senden der China Briefing-E-Mail", f"Unerwarteter Fehler: {str(e)}")
 
 def main():
-    print(f"DEBUG - main: Starte Nikkei-Test um {datetime.now()}")
-    print("DEBUG - main: Starte Nikkei Asia Briefing")
-    nikkei_posts = fetch_nikkei_from_email()
-    print("DEBUG - main: Starte China Up Close")
-    china_posts = fetch_china_up_close_from_email()
-    send_article_email(nikkei_posts, china_posts)
+    print(f"DEBUG - main: Starte China Briefing um {datetime.now()}")
+    china_articles = fetch_combined_china_articles()
+    send_article_email(china_articles)
 
 if __name__ == "__main__":
     main()
