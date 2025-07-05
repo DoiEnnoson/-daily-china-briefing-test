@@ -45,7 +45,7 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
             user_part, pass_part = substack_mail.split(";")
             email_user = user_part.split("=")[1]
             email_password = pass_part.split("=")[1]
-        except (ValueError, IndexIndexError) as e:
+        except (ValueError, IndexError) as e:
             print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
             return
         subject = f"{newsletter_type} - {datetime.now().strftime('%Y-%m-%d')}"
@@ -120,7 +120,7 @@ def score_nikkei_article(title):
     return max(score, 0)
 
 def score_china_up_close_article(title):
-    """Bewertet einen China Up Close-Artikel auf China-Relevanz (identisch mit Caixin-Logik aus briefing.py)."""
+    """Bewertet einen China Up Close-Artikel auf China-Relevanz (identisch mit Caixin-Logik)."""
     title_lower = title.lower()
     must_have_in_title = [
         "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
@@ -165,10 +165,12 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
     """Holt Nikkei Asia Briefing-Artikel aus E-Mails."""
     print(f"DEBUG - fetch_nikkei_from_email: Start fetching Nikkei emails at {datetime.now()}")
     today = datetime.now()
-    is_weekend = today.weekday() >= 5  # Samstag (5) oder Sonntag (6)
-    if is_weekend:
-        print("DEBUG - fetch_nikkei_from_email: Wochenende, überspringe Nikkei-Abschnitt")
-        return []
+    # 🚨 DAU-ANMERKUNG: Wochenendlogik für Testzwecke deaktiviert.
+    # Später wieder aktivieren, um Nikkei Asia Briefing am Wochenende zu überspringen.
+    # is_weekend = today.weekday() >= 5  # Samstag (5) oder Sonntag (6)
+    # if is_weekend:
+    #     print("DEBUG - fetch_nikkei_from_email: Wochenende, überspringe Nikkei-Abschnitt")
+    #     return []
     
     if not email_user or not email_password:
         print("❌ ERROR - fetch_nikkei_from_email: E-Mail oder Passwort fehlt")
@@ -331,7 +333,7 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
     try:
         # 🚨 DAU-ANMERKUNG: Suchzeitraum für China Up Close
         # Aktuell auf 7 Tage gesetzt für Testzwecke (Wochenende).
-        # Später zurücksetzen auf 7 Tage (wöchentlicher Newsletter, Donnerstag): since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
+        # Für China Up Close (wöchentlicher Newsletter, Donnerstag) bleibt 7 Tage korrekt.
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         sender = "nikkeiasia-w-nl@namail.nikkei.com"
         search_query = f'FROM {sender} "China Up Close" SINCE {since_date}'
