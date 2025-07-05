@@ -52,7 +52,7 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
         if posts:
             formatted_posts = []
             for post in posts:
-                soup = BeautifulSoup(post, "lxml")
+                soup = BeautifulSoup(post, "html.parser")  # Verwende html.parser statt lxml
                 link_tag = soup.find("a")
                 if link_tag:
                     title = link_tag.get_text(strip=True)
@@ -243,11 +243,11 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
                 print(f"❌ ERROR - fetch_nikkei_from_email: Kein HTML-Inhalt in E-Mail {eid}")
                 continue
             
-            with open(f"nikkei_email_{eid}.html", "w", encoding="utf-8") as f:
+            with open(f"nikkei_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                 f.write(html)
-            print(f"DEBUG - fetch_nikkei_from_email: HTML für E-Mail {eid} gespeichert: nikkei_email_{eid}.html")
+            print(f"DEBUG - fetch_nikkei_from_email: HTML für E-Mail {eid} gespeichert: nikkei_email_{eid.decode()}.html")
 
-            soup = BeautifulSoup(html, "lxml")
+            soup = BeautifulSoup(html, "html.parser")  # Verwende html.parser statt lxml
             links = soup.find_all("a", href=lambda x: x and "nikkei.com" in x.lower())
             print(f"DEBUG - fetch_nikkei_from_email: Gefundene Links mit 'nikkei.com': {len(links)}")
 
@@ -305,6 +305,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
 def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", max_results=5):
     """Holt China Up Close-Artikel aus E-Mails."""
     print(f"DEBUG - fetch_china_up_close_from_email: Start fetching China Up Close emails at {datetime.now()}")
+    today = datetime.now()  # Hinzugefügt, um 'today' zu definieren
     
     if not email_user or not email_password:
         print("❌ ERROR - fetch_china_up_close_from_email: E-Mail oder Passwort fehlt")
@@ -380,11 +381,11 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 print(f"❌ ERROR - fetch_china_up_close_from_email: Kein HTML-Inhalt in E-Mail {eid}")
                 continue
             
-            with open(f"china_up_close_email_{eid}.html", "w", encoding="utf-8") as f:
+            with open(f"china_up_close_email_{eid.decode()}.html", "w", encoding="utf-8") as f:
                 f.write(html)
-            print(f"DEBUG - fetch_china_up_close_from_email: HTML für E-Mail {eid} gespeichert: china_up_close_email_{eid}.html")
+            print(f"DEBUG - fetch_china_up_close_from_email: HTML für E-Mail {eid} gespeichert: china_up_close_email_{eid.decode()}.html")
 
-            soup = BeautifulSoup(html, "lxml")
+            soup = BeautifulSoup(html, "html.parser")  # Verwende html.parser statt lxml
             links = soup.find_all("a", href=lambda x: x and "nikkei.com" in x.lower())
             print(f"DEBUG - fetch_china_up_close_from_email: Gefundene Links mit 'nikkei.com': {len(links)}")
 
