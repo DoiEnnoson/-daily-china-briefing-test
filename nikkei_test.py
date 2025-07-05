@@ -34,8 +34,8 @@ def send_warning_email(subject, body):
     except Exception as e:
         print(f"❌ ERROR - send_warning_email: Fehler beim Senden der Warn-E-Mail: {str(e)}")
 
-def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
-    """Sendet eine E-Mail mit den gefundenen Artikeln an hadobrockmeyer@gmail.com."""
+def send_article_email(nikkei_posts, china_posts):
+    """Sendet eine kombinierte E-Mail mit Nikkei Asia Briefing und China Up Close Artikeln."""
     try:
         substack_mail = os.getenv("SUBSTACK_MAIL")
         if not substack_mail:
@@ -48,20 +48,24 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
         except (ValueError, IndexError) as e:
             print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
             return
-        subject = f"{newsletter_type} - {datetime.now().strftime('%Y-%m-%d')}"
-        if posts:
-            formatted_posts = []
-            for post in posts:
-                soup = BeautifulSoup(post, "html.parser")  # Verwende html.parser statt lxml
-                link_tag = soup.find("a")
-                if link_tag:
-                    title = link_tag.get_text(strip=True)
-                    url = link_tag.get("href", "#")
-                    formatted_posts.append(f'• <a href="{url}">{title}</a><br>')
-            header = f"## 📜 {newsletter_type}:"
-            body = f"<p>{header}</p>\n" + "".join(formatted_posts)
+        subject = f"Nikkei Asia Briefing & China Up Close - {datetime.now().strftime('%Y-%m-%d')}"
+        
+        # Nikkei Asia Briefing Abschnitt
+        nikkei_section = "<p><strong>## 📜 Nikkei Asia – Top-Themen:</strong></p>\n"
+        if nikkei_posts:
+            nikkei_section += "".join(f"<p>{post}</p>\n" for post in nikkei_posts)
         else:
-            body = f"<p>Keine {newsletter_type}-Artikel gefunden.</p>"
+            nikkei_section += "<p>Keine Nikkei-Artikel gefunden.</p>\n"
+        
+        # China Up Close Abschnitt
+        china_section = "<p><strong>## 📜 Nikkei China Up Close:</strong></p>\n"
+        if china_posts:
+            china_section += "".join(f"<p>{post}</p>\n" for post in china_posts)
+        else:
+            china_section += "<p>Keine China Up Close-Artikel gefunden.</p>\n"
+        
+        # Kombinierte E-Mail
+        body = nikkei_section + "<br>\n" + china_section
         msg = MIMEText(body, "html")
         msg["Subject"] = subject
         msg["From"] = email_user
@@ -69,9 +73,10 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(email_user, email_password)
             server.send_message(msg)
-        print(f"DEBUG - send_article_email: E-Mail mit Artikeln gesendet: {subject}")
+        print(f"DEBUG - send_article_email: Kombinierte E-Mail gesendet: {subject}")
     except Exception as e:
-        print(f"❌ ERROR - send_article_email: Fehler beim Senden der Artikel-E-Mail: {str(e)}")
+        print(f"❌ ERROR - send_article_email: Fehler beim Senden der kombinierten E-Mail: {str(e)}")
+        send_warning_email("Fehler beim Senden der Nikkei-E-Mail", f"Unerwarteter Fehler: {str(e)}")
 
 def score_nikkei_article(title):
     """Bewertet einen Artikel auf China-Relevanz (Original-Logik für Nikkei Asia Briefing)."""
@@ -219,6 +224,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
             return []
 
         scored_posts = []
+        seen_posts = set()  # Für Deduplizierung
         generic_titles = {"read more", "click here", "learn more", "view online", "subscribe now", "full story", "continue reading", "nikkei asia", "newsletters"}
         for eid in email_ids[:5]:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
@@ -247,7 +253,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
                 f.write(html)
             print(f"DEBUG - fetch_nikkei_from_email: HTML für E-Mail {eid} gespeichert: nikkei_email_{eid.decode()}.html")
 
-            soup = BeautifulSoup(html, "html.parser")  # Verwende html.parser statt lxml
+            soup = BeautifulSoup(html, "html.parser")
             links = soup.find_all("a", href=lambda x: x and "nikkei.com" in x.lower())
             print(f"DEBUG - fetch_nikkei_from_email: Gefundene Links mit 'nikkei.com': {len(links)}")
 
@@ -286,8 +292,13 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
                     continue
                 score = score_nikkei_article(final_title)
                 if score > 0:
-                    scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
-                    print(f"DEBUG - fetch_nikkei_from_email: Artikel hinzugefügt: '{final_title[:50]}...', Score: {score}")
+                    post_key = (final_title, final_url)
+                    if post_key not in seen_posts:
+                        seen_posts.add(post_key)
+                        scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
+                        print(f"DEBUG - fetch_nikkei_from_email: Artikel hinzugefügt: '{final_title[:50]}...', Score: {score}")
+                    else:
+                        print(f"DEBUG - fetch_nikkei_from_email: Duplikat übersprungen: '{final_title[:50]}...'")
         
         scored_posts.sort(reverse=True, key=lambda x: x[0])
         posts = [item[1] for item in scored_posts[:max_results]]
@@ -305,7 +316,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
 def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", max_results=5):
     """Holt China Up Close-Artikel aus E-Mails."""
     print(f"DEBUG - fetch_china_up_close_from_email: Start fetching China Up Close emails at {datetime.now()}")
-    today = datetime.now()  # Hinzugefügt, um 'today' zu definieren
+    today = datetime.now()
     
     if not email_user or not email_password:
         print("❌ ERROR - fetch_china_up_close_from_email: E-Mail oder Passwort fehlt")
@@ -333,16 +344,15 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
 
     try:
         # 🚨 DAU-ANMERKUNG: Suchzeitraum für China Up Close
-        # Aktuell auf 7 Tage gesetzt für Testzwecke (Wochenende).
-        # Für China Up Close (wöchentlicher Newsletter, Donnerstag) bleibt 7 Tage korrekt.
+        # 7 Tage, da wöchentlicher Newsletter (Donnerstag).
         since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         sender = "nikkeiasia-w-nl@namail.nikkei.com"
-        search_query = f'FROM {sender} "China Up Close" SINCE {since_date}'
+        search_query = f'FROM {sender} SINCE {since_date}'
         print(f"DEBUG - fetch_china_up_close_from_email: Suche: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
         if typ != "OK":
             print(f"❌ ERROR - fetch_china_up_close_from_email: IMAP-Suche fehlgeschlagen: {data}")
-            send_warning_email("Keine China Up Close-Artikel gefunden", "Fehler: Keine E-Mails gefunden.")
+            send_warning_email("Keine China Up Close-Artikel gefunden", f"Fehler: IMAP-Suche fehlgeschlagen: {data}")
             imap.logout()
             return []
         
@@ -354,6 +364,7 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
             return []
 
         scored_posts = []
+        seen_posts = set()  # Für Deduplizierung
         generic_titles = {
             "read more", "click here", "learn more", "view online", "subscribe now",
             "full story", "continue reading", "nikkei asia", "newsletters"
@@ -368,6 +379,11 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
             if isinstance(subject, bytes):
                 subject = subject.decode()
             print(f"DEBUG - fetch_china_up_close_from_email: Verarbeite E-Mail {eid}, Betreff: {subject}")
+            
+            # Nur E-Mails mit "China Up Close" im Betreff verarbeiten
+            if "China Up Close" not in subject:
+                print(f"DEBUG - fetch_china_up_close_from_email: Überspringe E-Mail {eid}, Betreff enthält nicht 'China Up Close'")
+                continue
 
             html = None
             if msg.is_multipart():
@@ -385,7 +401,7 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 f.write(html)
             print(f"DEBUG - fetch_china_up_close_from_email: HTML für E-Mail {eid} gespeichert: china_up_close_email_{eid.decode()}.html")
 
-            soup = BeautifulSoup(html, "html.parser")  # Verwende html.parser statt lxml
+            soup = BeautifulSoup(html, "html.parser")
             links = soup.find_all("a", href=lambda x: x and "nikkei.com" in x.lower())
             print(f"DEBUG - fetch_china_up_close_from_email: Gefundene Links mit 'nikkei.com': {len(links)}")
 
@@ -422,10 +438,15 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 if "nikkei.com" not in final_url.lower():
                     print(f"DEBUG - fetch_china_up_close_from_email: Überspringe nicht-nikkei.com URL: {final_url[:50]}...")
                     continue
-                score = score_china_up_close_article(final_title)  # Verwende Caixin-Logik
+                score = score_china_up_close_article(final_title)
                 if score > 0:
-                    scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
-                    print(f"DEBUG - fetch_china_up_close_from_email: Artikel hinzugefügt: '{final_title[:50]}...', Score: {score}")
+                    post_key = (final_title, final_url)
+                    if post_key not in seen_posts:
+                        seen_posts.add(post_key)
+                        scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
+                        print(f"DEBUG - fetch_china_up_close_from_email: Artikel hinzugefügt: '{final_title[:50]}...', Score: {score}")
+                    else:
+                        print(f"DEBUG - fetch_china_up_close_from_email: Duplikat übersprungen: '{final_title[:50]}...'")
         
         scored_posts.sort(reverse=True, key=lambda x: x[0])
         posts = [item[1] for item in scored_posts[:max_results]]
@@ -464,22 +485,21 @@ def main():
     if nikkei_posts:
         for post in nikkei_posts:
             print(post)
-        send_article_email(nikkei_posts, "Nikkei Asia Briefing")
     else:
         print("Keine Nikkei-Artikel gefunden.")
-        send_warning_email("Keine Nikkei-Artikel gefunden", "Keine China-relevanten Artikel in den E-Mails gefunden.")
 
-    # China Up Close (direkt darunter)
+    # China Up Close
     print("\nDEBUG - main: Starte China Up Close")
     china_posts = fetch_china_up_close_from_email(email_user, email_password)
     print("\n## 📜 Nikkei China Up Close:")
     if china_posts:
         for post in china_posts:
             print(post)
-        send_article_email(china_posts, "Nikkei China Up Close")
     else:
         print("Keine China Up Close-Artikel gefunden.")
-        send_warning_email("Keine China Up Close-Artikel gefunden", "Keine China-relevanten Artikel in den E-Mails gefunden.")
+
+    # Kombinierte E-Mail senden
+    send_article_email(nikkei_posts, china_posts)
 
 if __name__ == "__main__":
     main()
