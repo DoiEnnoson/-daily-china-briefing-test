@@ -2,7 +2,9 @@ name: Nikkei Test
 
 on:
   schedule:
-    - cron: '0 7 * * 1-5'  # Läuft Mo-Fr um 07:00 UTC (08:00 CEST)
+    # 🚨 DAU-ANMERKUNG: Cron-Ausdruck für Testzwecke auf Mo-Sa um 07:00 UTC (08:00 CEST) erweitert.
+    # Später zurücksetzen auf '0 7 * * 1-5' für Mo-Fr, wenn der Test abgeschlossen ist.
+    - cron: '0 7 * * 1-6'  # Läuft Mo-Sa um 07:00 UTC (08:00 CEST)
   workflow_dispatch:  # Ermöglicht manuelles Ausführen
 
 jobs:
@@ -25,4 +27,4 @@ jobs:
       - name: Run Nikkei test script
         env:
           SUBSTACK_MAIL: ${{ secrets.SUBSTACK_MAIL }}
-        run: python nikkei_test.py
+        run: python nikkei_test.py  # Korrekter Dateiname
