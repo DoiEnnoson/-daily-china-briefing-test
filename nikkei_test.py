@@ -45,7 +45,7 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
             user_part, pass_part = substack_mail.split(";")
             email_user = user_part.split("=")[1]
             email_password = pass_part.split("=")[1]
-        except (ValueError, IndexError) as e:
+        except (ValueError, IndexIndexError) as e:
             print(f"❌ ERROR - send_article_email: SUBSTACK_MAIL Format ungültig (erwartet: GMAIL_USER=email;GMAIL_PASS=pass, bekommen: {substack_mail})")
             return
         subject = f"{newsletter_type} - {datetime.now().strftime('%Y-%m-%d')}"
@@ -74,7 +74,7 @@ def send_article_email(posts, newsletter_type="Nikkei Asia Briefing"):
         print(f"❌ ERROR - send_article_email: Fehler beim Senden der Artikel-E-Mail: {str(e)}")
 
 def score_nikkei_article(title):
-    """Bewertet einen Artikel auf China-Relevanz."""
+    """Bewertet einen Artikel auf China-Relevanz (Original-Logik für Nikkei Asia Briefing)."""
     title_lower = title.lower()
     must_have_keywords = [
         "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
@@ -119,6 +119,48 @@ def score_nikkei_article(title):
     print(f"DEBUG - score_nikkei_article: Titel '{title[:50]}...': Score {score}, China: {has_china}, Japan: {has_japan}")
     return max(score, 0)
 
+def score_china_up_close_article(title):
+    """Bewertet einen China Up Close-Artikel auf China-Relevanz (identisch mit Caixin-Logik aus briefing.py)."""
+    title_lower = title.lower()
+    must_have_in_title = [
+        "china", "chinese", "xi", "beijing", "shanghai", "hong kong", "taiwan", "prc",
+        "communist party", "cpc", "byd", "alibaba", "tencent", "huawei", "li qiang", "brics",
+        "belt and road", "macau", "pla", "guangdong", "shenzhen"
+    ]
+    important_keywords = [
+        "gdp", "exports", "imports", "tariffs", "real estate", "economy", "policy", "ai",
+        "semiconductors", "pmi", "cpi", "housing", "foreign direct investment", "tech",
+        "military", "sanctions", "trade", "data", "manufacturing", "industrial"
+    ]
+    positive_modifiers = [
+        "analysis", "explainer", "comment", "feature", "official", "report", "statement",
+        "in depth", "long read", "cover story"
+    ]
+    negative_keywords = [
+        "celebrity", "gossip", "dog", "baby", "fashion", "movie", "series", "bizarre",
+        "dating", "weird", "quiz", "elon musk", "rapid", "lask", "bundesliga", "eurovision",
+        "basketball", "nba", "mlb", "nfl", "liberty", "yankees", "tournament", "playoffs",
+        "finale", "score", "blowout", "caixin summer", "summit",
+        "canada", "british columbia", "japan", "uzbekistan", "india", "korea", "australia"
+    ]
+    footer_phrases = [
+        "subscribe", "unsubscribe", "nikkei asia", "newsletters", "mobile apps", "sign up",
+        "read online", "enjoy unlimited access"
+    ]
+    score = 0
+    if any(kw in title_lower for kw in must_have_in_title):
+        score += 3
+    if any(kw in title_lower for kw in important_keywords):
+        score += 2
+    if any(kw in title_lower for kw in positive_modifiers):
+        score += 6
+    if any(kw in title_lower for kw in negative_keywords):
+        score -= 3
+    if any(kw in title_lower for kw in footer_phrases):
+        score = 0
+    print(f"DEBUG - score_china_up_close_article: Title '{title[:50]}...': Score {score} (China-relevance: {any(kw in title_lower for kw in must_have_in_title)}, Important: {any(kw in title_lower for kw in important_keywords)}, In Depth/Cover/Analysis: {any(kw in title_lower for kw in positive_modifiers)}, Non-China: {any(kw in title_lower for kw in negative_keywords)}, Footer: {any(kw in title_lower for kw in footer_phrases)})")
+    return max(score, 0)
+
 def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_results=5):
     """Holt Nikkei Asia Briefing-Artikel aus E-Mails."""
     print(f"DEBUG - fetch_nikkei_from_email: Start fetching Nikkei emails at {datetime.now()}")
@@ -153,7 +195,10 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
         return []
 
     try:
-        since_date = (today - timedelta(days=1)).strftime("%d-%b-%Y")
+        # 🚨 DAU-ANMERKUNG: Suchzeitraum für Nikkei Asia Briefing
+        # Aktuell auf 7 Tage gesetzt für Testzwecke (Wochenende).
+        # Später zurücksetzen auf 1 Tag: since_date = (today - timedelta(days=1)).strftime("%d-%b-%Y")
+        since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
         sender = "nikkeiasia-d-nl@namail.nikkei.com"
         search_query = f'FROM {sender} SINCE {since_date}'
         print(f"DEBUG - fetch_nikkei_from_email: Suche: {search_query}")
@@ -167,7 +212,7 @@ def fetch_nikkei_from_email(email_user, email_password, folder="INBOX", max_resu
         email_ids = data[0].split()
         print(f"DEBUG - fetch_nikkei_from_email: Gefundene E-Mail-IDs: {len(email_ids)}")
         if not email_ids:
-            send_warning_email("Keine Nikkei-Artikel gefunden", "Keine E-Mails in den letzten 24 Stunden gefunden.")
+            send_warning_email("Keine Nikkei-Artikel gefunden", "Keine E-Mails in den letzten 7 Tagen gefunden.")
             imap.logout()
             return []
 
@@ -284,8 +329,11 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
         return []
 
     try:
-        since_date = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")  # Letzte 7 Tage, da wöchentlich
-        sender = "nikkeiasia-d-nl@namail.nikkei.com"  # Annahme, gleicher Absender
+        # 🚨 DAU-ANMERKUNG: Suchzeitraum für China Up Close
+        # Aktuell auf 7 Tage gesetzt für Testzwecke (Wochenende).
+        # Später zurücksetzen auf 7 Tage (wöchentlicher Newsletter, Donnerstag): since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
+        since_date = (today - timedelta(days=7)).strftime("%d-%b-%Y")
+        sender = "nikkeiasia-w-nl@namail.nikkei.com"
         search_query = f'FROM {sender} "China Up Close" SINCE {since_date}'
         print(f"DEBUG - fetch_china_up_close_from_email: Suche: {search_query}")
         typ, data = imap.search(None, search_query.encode('utf-8'))
@@ -303,7 +351,10 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
             return []
 
         scored_posts = []
-        generic_titles = {"read more", "click here", "learn more", "view online", "subscribe now", "full story", "continue reading", "nikkei asia", "newsletters"}
+        generic_titles = {
+            "read more", "click here", "learn more", "view online", "subscribe now",
+            "full story", "continue reading", "nikkei asia", "newsletters"
+        }
         for eid in email_ids[:5]:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
             if typ != "OK":
@@ -368,7 +419,7 @@ def fetch_china_up_close_from_email(email_user, email_password, folder="INBOX", 
                 if "nikkei.com" not in final_url.lower():
                     print(f"DEBUG - fetch_china_up_close_from_email: Überspringe nicht-nikkei.com URL: {final_url[:50]}...")
                     continue
-                score = score_nikkei_article(final_title)
+                score = score_china_up_close_article(final_title)  # Verwende Caixin-Logik
                 if score > 0:
                     scored_posts.append((score, f'• <a href="{final_url}">{final_title}</a>'))
                     print(f"DEBUG - fetch_china_up_close_from_email: Artikel hinzugefügt: '{final_title[:50]}...', Score: {score}")
@@ -415,7 +466,7 @@ def main():
         print("Keine Nikkei-Artikel gefunden.")
         send_warning_email("Keine Nikkei-Artikel gefunden", "Keine China-relevanten Artikel in den E-Mails gefunden.")
 
-    # China Up Close
+    # China Up Close (direkt darunter)
     print("\nDEBUG - main: Starte China Up Close")
     china_posts = fetch_china_up_close_from_email(email_user, email_password)
     print("\n## 📜 Nikkei China Up Close:")
