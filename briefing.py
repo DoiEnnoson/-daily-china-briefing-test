@@ -66,35 +66,46 @@ def resolve_url(url):
     except Exception:
         return None
 
-def score_nikkei_article(subject):
-    """Bewertet Nikkei-Artikel basierend auf Relevanz für China-Themen."""
-    keywords = {
-        'china': 5, 'chinese': 4, 'xi jinping': 4, 'beijing': 3, 'shanghai': 3,
-        'hong kong': 3, 'taiwan': 3, 'trade': 2, 'economy': 2, 'policy': 2,
-        'tech': 2, 'manufacturing': 2, 'export': 2, 'import': 2
-    }
+def score_nikkei_article(title):
+    """Bewertet einen Artikel auf China-Relevanz."""
+    logger.info(f"Bewerte Nikkei-Artikel: {title}")
     score = 0
-    subject_lower = subject.lower()
-    for keyword, weight in keywords.items():
-        if keyword in subject_lower:
-            score += weight
+    china_keywords = ["china", "chinese", "hong kong", "taiwan", "xi jinping", "beijing", "shanghai"]
+    japan_keywords = ["japan", "japanese", "tokyo"]
+    has_china = any(keyword in title.lower() for keyword in china_keywords)
+    has_japan = any(keyword in title.lower() for keyword in japan_keywords)
+    
+    if has_china:
+        score += 5
+    if has_japan:
+        score -= 3
+    if not has_china and not has_japan:
+        score -= 1
+    logger.info(f"Score für Nikkei-Artikel '{title}': {score}, has_china={has_china}, has_japan={has_japan}")
     return score
 
-
-def score_china_up_close_article(subject):
-    """Bewertet China Up Close-Artikel basierend auf Relevanz für China-Themen."""
-    keywords = {
-        'china': 5, 'chinese': 4, 'xi jinping': 4, 'beijing': 3, 'shanghai': 3,
-        'hong kong': 3, 'taiwan': 3, 'trade': 2, 'economy': 2, 'policy': 2,
-        'tech': 2, 'manufacturing': 2, 'export': 2, 'import': 2
-    }
+def score_china_up_close_article(title):
+    """Bewertet einen China Up Close-Artikel."""
+    logger.info(f"Bewerte China Up Close-Artikel: {title}")
     score = 0
-    subject_lower = subject.lower()
-    for keyword, weight in keywords.items():
-        if keyword in subject_lower:
-            score += weight
+    is_china = any(keyword in title.lower() for keyword in ["china", "chinese", "hong kong", "taiwan", "xi jinping"])
+    is_important = any(keyword in title.lower() for keyword in ["xi jinping", "politburo", "policy"])
+    is_indepth = any(keyword in title.lower() for keyword in ["analysis", "in depth", "cover"])
+    is_nonchina = any(keyword in title.lower() for keyword in ["japan", "india", "us", "europe"])
+    is_footer = any(keyword in title.lower() for keyword in ["subscribe", "newsletter", "app"])
+    
+    if is_china:
+        score += 5
+    if is_important:
+        score += 3
+    if is_indepth:
+        score += 3
+    if is_nonchina:
+        score -= 2
+    if is_footer:
+        score -= 5
+    logger.info(f"Score für China Up Close-Artikel '{title}': {score}, is_china={is_china}, is_important={is_important}, is_indepth={is_indepth}, is_nonchina={is_nonchina}, is_footer={is_footer}")
     return score
-
 
 def fetch_combined_china_articles():
     """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
@@ -135,6 +146,7 @@ def fetch_combined_china_articles():
         mail.select("inbox")
         
         articles = []
+        seen_urls = set()
         since_date = (datetime.now(timezone.utc) - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
         logger.info(f"Suche nach E-Mails seit: {since_date}")
         
@@ -158,35 +170,46 @@ def fetch_combined_china_articles():
                     continue
                     
                 msg = email.message_from_bytes(msg_data[0][1])
-                subject = decode_header(msg["Subject"])[0][0]
-                if isinstance(subject, bytes):
-                    subject = subject.decode()
-                logger.info(f"E-Mail-Betreff: {subject}")
-                
-                score = (
-                    score_china_up_close_article(subject)
-                    if email_address == EMAIL_CHINA_UP_CLOSE
-                    else score_nikkei_article(subject)
-                )
-                logger.info(f"Score für E-Mail: {score}")
-                
-                if score < 2:
-                    logger.info(f"Score zu niedrig (<2), überspringe E-Mail")
-                    continue
-                    
-                soup = BeautifulSoup(msg.get_payload(decode=True), "lxml")
-                links = soup.find_all("a")
-                logger.info(f"Anzahl gefundener Links: {len(links)}")
-                for link in links:
-                    href = link.get("href")
-                    if href and "asia.nikkei.com" in href:
-                        normalized_url = normalize_url(href)
-                        resolved_url = resolve_url(normalized_url)
-                        if resolved_url:
-                            title = link.text.strip()
-                            if title and len(title) > 10:
-                                logger.info(f"Artikel hinzugefügt: {title} (URL: {resolved_url})")
-                                articles.append((score, f"• <a href=\"{resolved_url}\">{title}</a>"))
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        charset = part.get_content_charset() or 'utf-8'
+                        try:
+                            html_content = part.get_payload(decode=True).decode(charset)
+                        except UnicodeDecodeError:
+                            html_content = part.get_payload(decode=True).decode('windows-1252', errors='replace')
+                        soup = BeautifulSoup(html_content, "lxml")
+                        links = soup.find_all("a", href=True)
+                        logger.info(f"Anzahl gefundener Links: {len(links)}")
+                        
+                        for link in links:
+                            href = link.get("href")
+                            title = link.get_text(strip=True)
+                            logger.info(f"Verarbeite Link: {title} (href: {href})")
+                            if not title or len(title) < 10 or "read more" in title.lower() or "subscribe" in title.lower():
+                                logger.info(f"Link übersprungen: Titel zu kurz oder unerwünscht")
+                                continue
+                            if email_address == EMAIL_CHINA_UP_CLOSE and (
+                                "This week's China Up Close focuses on" in title or "Read Katsuji Nakazawa's analysis here" in title
+                            ):
+                                logger.info(f"Link übersprungen: Unerwünschter China Up Close Text")
+                                continue
+                            final_url = resolve_url(href)
+                            if not final_url or "asia.nikkei.com" not in final_url:
+                                logger.info(f"Link übersprungen: Keine gültige asia.nikkei.com URL")
+                                continue
+                            normalized_url = normalize_url(final_url)
+                            if normalized_url in seen_urls:
+                                logger.info(f"Link übersprungen: URL bereits gesehen")
+                                continue
+                            score = (
+                                score_china_up_close_article(title)
+                                if email_address == EMAIL_CHINA_UP_CLOSE
+                                else score_nikkei_article(title)
+                            )
+                            if score > 0:
+                                logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
+                                articles.append((score, f"• <a href=\"{final_url}\">{title}</a>"))
+                                seen_urls.add(normalized_url)
         
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
@@ -194,7 +217,7 @@ def fetch_combined_china_articles():
         logger.info(f"Gesamtanzahl gefundener Artikel: {len(articles)}")
         articles.sort(reverse=True)
         unique_articles = []
-        seen_urls = set()
+        seen_urls.clear()  # Reset für die finale Auswahl
         for score, article in articles:
             url = article.split('href="')[1].split('">')[0]
             if url not in seen_urls:
