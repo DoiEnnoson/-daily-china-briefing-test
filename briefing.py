@@ -2063,32 +2063,14 @@ def generate_briefing():
             briefing.append("\n## 📜 Caixin – Top-Themen")
             briefing.append(f"❌ Fehler beim Parsen von SUBSTACK: {str(e)}")
 
-        # Nikkei Top-Artikel
+    
+    # Nikkei Top-Artikel
     briefing.append("\n## 📜 Nikkei Top-Artikel")
-    substack_mail = os.getenv("SUBSTACK_MAIL")
-    if not substack_mail:
-        briefing.append("❌ Fehler: SUBSTACK_MAIL Umgebungsvariable nicht gefunden!")
+    nikkei_articles = fetch_combined_china_articles()
+    if nikkei_articles:
+        briefing.extend(nikkei_articles)
     else:
-        try:
-            mail_pairs = substack_mail.split(";")
-            mail_config = {}
-            for pair in mail_pairs:
-                if "=" in pair:
-                    key, value = pair.split("=", 1)
-                    mail_config[key] = value
-            if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
-                briefing.append(f"❌ Fehler: Fehlende Schlüssel in SUBSTACK: {', '.join([k for k in ['GMAIL_USER', 'GMAIL_PASS'] if k not in mail_config])}")
-            else:
-                email_user = mail_config["GMAIL_USER"]
-                email_password = mail_config["GMAIL_PASS"]
-                nikkei_articles = fetch_combined_china_articles(email_user, email_password)
-                if nikkei_articles:
-                    briefing.extend(nikkei_articles)
-                else:
-                    briefing.append("Keine Nikkei-Artikel gefunden.")
-        except ValueError as e:
-            briefing.append(f"❌ Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
-
+        briefing.append("Keine Nikkei-Artikel gefunden.")
     # China Update YouTube
     youtube_episodes = fetch_youtube_endpoint()
     if youtube_episodes:
