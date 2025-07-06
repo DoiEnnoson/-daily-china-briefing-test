@@ -75,7 +75,10 @@ def score_nikkei_article(subject):
     }
     score = 0
     subject_lower = subject.lower()
-   
+    for keyword, weight in keywords.items():
+        if keyword in subject_lower:
+            score += weight
+    return score
 
  for keyword, weight in keywords.items():
         if keyword in subject_lower:
