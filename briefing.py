@@ -97,9 +97,31 @@ def score_china_up_close_article(subject):
     return score
 
 
-def fetch_combined_china_articles(email_user, email_password):
+def fetch_combined_china_articles():
     """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
     try:
+        env_vars = os.getenv("CONFIG")
+        if not env_vars:
+            logger.error("CONFIG environment variable not found")
+            send_warning_email(
+                "Fehler beim Abrufen der Nikkei-Artikel",
+                "CONFIG Umgebungsvariable nicht gefunden"
+            )
+            return []
+
+        pairs = env_vars.split(";")
+        config_dict = dict(pair.split("=", 1) for pair in pairs)
+        if "EMAIL_USER" not in config_dict or "EMAIL_PASSWORD" not in config_dict:
+            logger.error(f"Fehlende Schlüssel in CONFIG: {', '.join([k for k in ['EMAIL_USER', 'EMAIL_PASSWORD'] if k not in config_dict])}")
+            send_warning_email(
+                "Fehler beim Abrufen der Nikkei-Artikel",
+                f"Fehlende Schlüssel in CONFIG: {', '.join([k for k in ['EMAIL_USER', 'EMAIL_PASSWORD'] if k not in config_dict])}"
+            )
+            return []
+
+        email_user = config_dict["EMAIL_USER"]
+        email_password = config_dict["EMAIL_PASSWORD"]
+
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_user, email_password)
         mail.select("inbox")
@@ -112,9 +134,7 @@ def fetch_combined_china_articles(email_user, email_password):
             if result != "OK":
                 send_warning_email(
                     "Fehler beim Abrufen der Nikkei-E-Mails",
-                    f"Fehler beim Suchen nach E-Mails von {email_address}: {result}",
-                    email_user,
-                    email_password
+                    f"Fehler beim Suchen nach E-Mails von {email_address}: {result}"
                 )
                 continue
                 
@@ -165,9 +185,7 @@ def fetch_combined_china_articles(email_user, email_password):
     except Exception as e:
         send_warning_email(
             "Fehler beim Abrufen der Nikkei-Artikel",
-            f"Fehler in fetch_combined_china_articles: {str(e)}",
-            email_user,
-            email_password
+            f"Fehler in fetch_combined_china_articles: {str(e)}"
         )
         return []
 
