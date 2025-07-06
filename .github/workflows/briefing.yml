@@ -3,7 +3,7 @@ name: Daily China Briefing
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 5 * * *' # täglich um 06:00 UTC (07:00 CEST)
+    - cron: '0 7 * * *' # täglich um 07:00 UTC (08:00 CEST)
 
 jobs:
   build:
@@ -21,12 +21,13 @@ jobs:
       - name: Python installieren
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Angepasst an Nikkei-Test (3.11)
 
       - name: Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
           pip install feedparser requests beautifulsoup4 lxml google-api-python-client pandas
+          # lxml hinzugefügt für Nikkei-Kompatibilität
 
       - name: Verzeichnis freight_indicies erstellen
         run: |
@@ -55,13 +56,13 @@ jobs:
       - name: wci_cache.json Inhalt prüfen (vor Commit)
         run: |
           echo "Inhalt von wci_cache.json vor dem Commit:"
-          cat freight_indicies/wci_cache.json || echo "Datei wci_cache.json existiert nicht"
+          cat wci_cache.json || echo "Datei wci_cache.json existiert nicht"
         continue-on-error: true
 
       - name: iaci_cache.json Inhalt prüfen (vor Commit)
         run: |
           echo "Inhalt von iaci_cache.json vor dem Commit:"
-          cat freight_indicies/iaci_cache.json || echo "Datei iaci_cache.json existiert nicht"
+          cat freight_indicies/iaci_cache.json || echo "Datei freight_indicies/iaci_cache.json existiert nicht"
         continue-on-error: true
 
       - name: Änderungen an Cache-Dateien und Briefing committen und pushen
@@ -69,7 +70,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
           git add cpr_cache.json freight_indicies/scfi_cache.json freight_indicies/wci_cache.json freight_indicies/iaci_cache.json daily_briefing.md
-          git commit -m "Update cache files and briefing" || echo "Keine Änderungen zu committen"
+          git commit -m "Update cache files and briefing with Nikkei data" || echo "Keine Änderungen zu committen"
           git pull --rebase origin main || echo "Pull failed, continuing"
           git push origin main || echo "Push failed"
         continue-on-error: true
@@ -89,11 +90,11 @@ jobs:
       - name: wci_cache.json Inhalt prüfen (nach Commit)
         run: |
           echo "Inhalt von wci_cache.json nach dem Commit:"
-          cat freight_indicies/wci_cache.json || echo "Datei wci_cache.json existiert nicht"
+          cat wci_cache.json || echo "Datei wci_cache.json existiert nicht"
         continue-on-error: true
 
       - name: iaci_cache.json Inhalt prüfen (nach Commit)
         run: |
           echo "Inhalt von iaci_cache.json nach dem Commit:"
-          cat freight_indicies/iaci_cache.json || echo "Datei iaci_cache.json existiert nicht"
+          cat freight_indicies/iaci_cache.json || echo "Datei freight_indicies/iaci_cache.json existiert nicht"
         continue-on-error: true
