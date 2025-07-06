@@ -98,8 +98,10 @@ def score_china_up_close_article(subject):
 
 def fetch_combined_china_articles():
     """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
+    logger.info("Starte fetch_combined_china_articles")
     try:
         env_vars = os.getenv("CONFIG")
+        logger.info(f"CONFIG-Umgebungsvariable: {'Gefunden' if env_vars else 'Nicht gefunden'}")
         if not env_vars:
             logger.error("CONFIG environment variable not found")
             send_warning_email(
@@ -110,6 +112,7 @@ def fetch_combined_china_articles():
 
         pairs = env_vars.split(";")
         config_dict = dict(pair.split("=", 1) for pair in pairs)
+        logger.info(f"CONFIG-Schlüssel: {list(config_dict.keys())}")
         if "EMAIL_USER" not in config_dict or "EMAIL_PASSWORD" not in config_dict:
             logger.error(f"Fehlende Schlüssel in CONFIG: {', '.join([k for k in ['EMAIL_USER', 'EMAIL_PASSWORD'] if k not in config_dict])}")
             send_warning_email(
@@ -120,16 +123,21 @@ def fetch_combined_china_articles():
 
         email_user = config_dict["EMAIL_USER"]
         email_password = config_dict["EMAIL_PASSWORD"]
+        logger.info(f"Versuche IMAP-Login mit Benutzer: {email_user}")
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_user, email_password)
+        logger.info("IMAP-Login erfolgreich")
         mail.select("inbox")
         
         articles = []
         since_date = (datetime.now(timezone.utc) - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
+        logger.info(f"Suche nach E-Mails seit: {since_date}")
         
         for email_address in [EMAIL_NIKKEI_ASIA, EMAIL_CHINA_UP_CLOSE]:
+            logger.info(f"Suche nach E-Mails von: {email_address}")
             result, data = mail.search(None, f'FROM "{email_address}" SINCE {since_date}')
+            logger.info(f"Suchergebnis für {email_address}: {result}, Anzahl E-Mails: {len(data[0].split())}")
             if result != "OK":
                 send_warning_email(
                     "Fehler beim Abrufen der Nikkei-E-Mails",
@@ -139,26 +147,32 @@ def fetch_combined_china_articles():
                 
             email_ids = data[0].split()
             for email_id in email_ids[-5:]:
+                logger.info(f"Verarbeite E-Mail ID: {email_id}")
                 result, msg_data = mail.fetch(email_id, "(RFC822)")
                 if result != "OK":
+                    logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}")
                     continue
                     
                 msg = email.message_from_bytes(msg_data[0][1])
                 subject = decode_header(msg["Subject"])[0][0]
                 if isinstance(subject, bytes):
                     subject = subject.decode()
+                logger.info(f"E-Mail-Betreff: {subject}")
                 
                 score = (
                     score_china_up_close_article(subject)
                     if email_address == EMAIL_CHINA_UP_CLOSE
                     else score_nikkei_article(subject)
                 )
+                logger.info(f"Score für E-Mail: {score}")
                 
                 if score < 2:
+                    logger.info(f"Score zu niedrig (<2), überspringe E-Mail")
                     continue
                     
                 soup = BeautifulSoup(msg.get_payload(decode=True), "lxml")
                 links = soup.find_all("a")
+                logger.info(f"Anzahl gefundener Links: {len(links)}")
                 for link in links:
                     href = link.get("href")
                     if href and "asia.nikkei.com" in href:
@@ -167,10 +181,13 @@ def fetch_combined_china_articles():
                         if resolved_url:
                             title = link.text.strip()
                             if title and len(title) > 10:
+                                logger.info(f"Artikel hinzugefügt: {title} (URL: {resolved_url})")
                                 articles.append((score, f"• <a href=\"{resolved_url}\">{title}</a>"))
         
         mail.logout()
+        logger.info("IMAP-Logout erfolgreich")
         
+        logger.info(f"Gesamtanzahl gefundener Artikel: {len(articles)}")
         articles.sort(reverse=True)
         unique_articles = []
         seen_urls = set()
@@ -180,8 +197,10 @@ def fetch_combined_china_articles():
                 unique_articles.append(article)
                 seen_urls.add(url)
                 
+        logger.info(f"Anzahl eindeutiger Artikel: {len(unique_articles)}")
         return unique_articles[:5]
     except Exception as e:
+        logger.error(f"Fehler in fetch_combined_china_articles: {str(e)}")
         send_warning_email(
             "Fehler beim Abrufen der Nikkei-Artikel",
             f"Fehler in fetch_combined_china_articles: {str(e)}"
