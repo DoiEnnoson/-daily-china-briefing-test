@@ -96,6 +96,98 @@ def score_china_up_close_article(subject):
             score += weight
     return score
 
+def send_warning_email(subject, body, email_user, email_password):
+    """Sendet eine Warn-E-Mail bei Fehlern in der Nikkei-Verarbeitung."""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = email_user
+        msg['To'] = email_user
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(email_user, email_password)
+        server.sendmail(email_user, email_user, msg.as_string())
+        server.quit()
+        logger.info("Warn-E-Mail erfolgreich gesendet.")
+    except Exception as e:
+        logger.error(f"Fehler beim Senden der Warn-E-Mail: {str(e)}")
+
+def fetch_combined_china_articles(email_user, email_password):
+    """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(email_user, email_password)
+        mail.select("inbox")
+        
+        articles = []
+        since_date = (datetime.now(timezone.utc) - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
+        
+        for email_address in [EMAIL_NIKKEI_ASIA, EMAIL_CHINA_UP_CLOSE]:
+            result, data = mail.search(None, f'FROM "{email_address}" SINCE {since_date}')
+            if result != "OK":
+                send_warning_email(
+                    "Fehler beim Abrufen der Nikkei-E-Mails",
+                    f"Fehler beim Suchen nach E-Mails von {email_address}: {result}",
+                    email_user,
+                    email_password
+                )
+                continue
+                
+            email_ids = data[0].split()
+            for email_id in email_ids[-5:]:
+                result, msg_data = mail.fetch(email_id, "(RFC822)")
+                if result != "OK":
+                    continue
+                    
+                msg = email.message_from_bytes(msg_data[0][1])
+                subject = decode_header(msg["Subject"])[0][0]
+                if isinstance(subject, bytes):
+                    subject = subject.decode()
+                
+                score = (
+                    score_china_up_close_article(subject)
+                    if email_address == EMAIL_CHINA_UP_CLOSE
+                    else score_nikkei_article(subject)
+                )
+                
+                if score < 2:
+                    continue
+                    
+                soup = BeautifulSoup(msg.get_payload(decode=True), "lxml")
+                links = soup.find_all("a")
+                for link in links:
+                    href = link.get("href")
+                    if href and "asia.nikkei.com" in href:
+                        normalized_url = normalize_url(href)
+                        resolved_url = resolve_url(normalized_url)
+                        if resolved_url:
+                            title = link.text.strip()
+                            if title and len(title) > 10:
+                                articles.append((score, f"• <a href=\"{resolved_url}\">{title}</a>"))
+        
+        mail.logout()
+        
+        articles.sort(reverse=True)
+        unique_articles = []
+        seen_urls = set()
+        for score, article in articles:
+            url = article.split('href="')[1].split('">')[0]
+            if url not in seen_urls:
+                unique_articles.append(article)
+                seen_urls.add(url)
+                
+        return unique_articles[:5]
+    except Exception as e:
+        send_warning_email(
+            "Fehler beim Abrufen der Nikkei-Artikel",
+            f"Fehler in fetch_combined_china_articles: {str(e)}",
+            email_user,
+            email_password
+        )
+        return []
+
 def load_wci_cache():
     """Lädt den WCI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
     try:
