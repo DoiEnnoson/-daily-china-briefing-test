@@ -70,7 +70,7 @@ def score_nikkei_article(title):
     """Bewertet einen Artikel auf China-Relevanz."""
     logger.info(f"Bewerte Nikkei-Artikel: {title}")
     score = 0
-    china_keywords = ["china", "chinese", "hong kong", "taiwan", "xi jinping", "beijing", "shanghai"]
+    china_keywords = ["china", "chinese", "hong kong", "taiwan", "xi jinping", "beijing", "shanghai", "byd", "battery", "ev"]
     japan_keywords = ["japan", "japanese", "tokyo"]
     has_china = any(keyword in title.lower() for keyword in china_keywords)
     has_japan = any(keyword in title.lower() for keyword in japan_keywords)
