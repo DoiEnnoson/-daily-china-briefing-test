@@ -19,6 +19,7 @@ from email.utils import parsedate_to_datetime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import pandas as pd
+import urllib.parse  # Hinzugefügt für Nikkei-URL-Normalisierung
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
