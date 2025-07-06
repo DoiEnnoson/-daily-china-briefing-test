@@ -100,29 +100,33 @@ def fetch_combined_china_articles():
     """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
     logger.info("Starte fetch_combined_china_articles")
     try:
-        env_vars = os.getenv("CONFIG")
-        logger.info(f"CONFIG-Umgebungsvariable: {'Gefunden' if env_vars else 'Nicht gefunden'}")
-        if not env_vars:
-            logger.error("CONFIG environment variable not found")
+        substack_mail = os.getenv("SUBSTACK_MAIL")
+        logger.info(f"SUBSTACK_MAIL-Umgebungsvariable: {'Gefunden' if substack_mail else 'Nicht gefunden'}")
+        if not substack_mail:
+            logger.error("SUBSTACK_MAIL environment variable not found")
             send_warning_email(
                 "Fehler beim Abrufen der Nikkei-Artikel",
-                "CONFIG Umgebungsvariable nicht gefunden"
+                "SUBSTACK_MAIL Umgebungsvariable nicht gefunden"
             )
             return []
 
-        pairs = env_vars.split(";")
-        config_dict = dict(pair.split("=", 1) for pair in pairs)
-        logger.info(f"CONFIG-Schlüssel: {list(config_dict.keys())}")
-        if "EMAIL_USER" not in config_dict or "EMAIL_PASSWORD" not in config_dict:
-            logger.error(f"Fehlende Schlüssel in CONFIG: {', '.join([k for k in ['EMAIL_USER', 'EMAIL_PASSWORD'] if k not in config_dict])}")
+        mail_pairs = substack_mail.split(";")
+        mail_config = {}
+        for pair in mail_pairs:
+            if "=" in pair:
+                key, value = pair.split("=", 1)
+                mail_config[key] = value
+        logger.info(f"SUBSTACK_MAIL-Schlüssel: {list(mail_config.keys())}")
+        if "GMAIL_USER" not in mail_config or "GMAIL_PASS" not in mail_config:
+            logger.error(f"Fehlende Schlüssel in SUBSTACK_MAIL: {', '.join([k for k in ['GMAIL_USER', 'GMAIL_PASS'] if k not in mail_config])}")
             send_warning_email(
                 "Fehler beim Abrufen der Nikkei-Artikel",
-                f"Fehlende Schlüssel in CONFIG: {', '.join([k for k in ['EMAIL_USER', 'EMAIL_PASSWORD'] if k not in config_dict])}"
+                f"Fehlende Schlüssel in SUBSTACK_MAIL: {', '.join([k for k in ['GMAIL_USER', 'GMAIL_PASS'] if k not in mail_config])}"
             )
             return []
 
-        email_user = config_dict["EMAIL_USER"]
-        email_password = config_dict["EMAIL_PASSWORD"]
+        email_user = mail_config["GMAIL_USER"]
+        email_password = mail_config["GMAIL_PASS"]
         logger.info(f"Versuche IMAP-Login mit Benutzer: {email_user}")
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -206,7 +210,7 @@ def fetch_combined_china_articles():
             f"Fehler in fetch_combined_china_articles: {str(e)}"
         )
         return []
-
+        
 def load_wci_cache():
     """Lädt den WCI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
     try:
