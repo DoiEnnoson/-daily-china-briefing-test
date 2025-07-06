@@ -96,23 +96,6 @@ def score_china_up_close_article(subject):
             score += weight
     return score
 
-def send_warning_email(subject, body, email_user, email_password):
-    """Sendet eine Warn-E-Mail bei Fehlern in der Nikkei-Verarbeitung."""
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = email_user
-        msg['To'] = email_user
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-        
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(email_user, email_password)
-        server.sendmail(email_user, email_user, msg.as_string())
-        server.quit()
-        logger.info("Warn-E-Mail erfolgreich gesendet.")
-    except Exception as e:
-        logger.error(f"Fehler beim Senden der Warn-E-Mail: {str(e)}")
 
 def fetch_combined_china_articles(email_user, email_password):
     """Holt und kombiniert China-relevante Artikel aus Nikkei Asia und China Up Close."""
