@@ -80,10 +80,6 @@ def score_nikkei_article(subject):
             score += weight
     return score
 
- for keyword, weight in keywords.items():
-        if keyword in subject_lower:
-            score += weight
-    return score
 
 def score_china_up_close_article(subject):
     """Bewertet China Up Close-Artikel basierend auf Relevanz für China-Themen."""
