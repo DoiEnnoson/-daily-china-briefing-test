@@ -45,6 +45,57 @@ FREIGHT_CACHE_DIR = os.path.join(BASE_DIR, "freight_indicies")
 WCI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "wci_cache.json")
 IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
 
+# Nikkei-Konstanten inkl Suchzeitraum 
+EMAIL_NIKKEI_ASIA = "nikkeiasia-d-nl@namail.nikkei.com"
+EMAIL_CHINA_UP_CLOSE = "nikkeiasia-w-nl@namail.nikkei.com"
+SEARCH_DAYS = 7
+
+def normalize_url(url):
+    """Entfernt Tracking-Parameter aus der URL."""
+    parsed = urllib.parse.urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+def resolve_url(url):
+    """Löst die ursprüngliche URL zu einer asia.nikkei.com-URL auf."""
+    try:
+        response = requests.get(url, allow_redirects=True, timeout=5)
+        final_url = response.url
+        if "asia.nikkei.com" in final_url:
+            return final_url
+        return None
+    except Exception:
+        return None
+
+def score_nikkei_article(subject):
+    """Bewertet Nikkei-Artikel basierend auf Relevanz für China-Themen."""
+    keywords = {
+        'china': 5, 'chinese': 4, 'xi jinping': 4, 'beijing': 3, 'shanghai': 3,
+        'hong kong': 3, 'taiwan': 3, 'trade': 2, 'economy': 2, 'policy': 2,
+        'tech': 2, 'manufacturing': 2, 'export': 2, 'import': 2
+    }
+    score = 0
+    subject_lower = subject.lower()
+   
+
+ for keyword, weight in keywords.items():
+        if keyword in subject_lower:
+            score += weight
+    return score
+
+def score_china_up_close_article(subject):
+    """Bewertet China Up Close-Artikel basierend auf Relevanz für China-Themen."""
+    keywords = {
+        'china': 5, 'chinese': 4, 'xi jinping': 4, 'beijing': 3, 'shanghai': 3,
+        'hong kong': 3, 'taiwan': 3, 'trade': 2, 'economy': 2, 'policy': 2,
+        'tech': 2, 'manufacturing': 2, 'export': 2, 'import': 2
+    }
+    score = 0
+    subject_lower = subject.lower()
+    for keyword, weight in keywords.items():
+        if keyword in subject_lower:
+            score += weight
+    return score
+
 def load_wci_cache():
     """Lädt den WCI-Cache oder initialisiert ihn als leer, wenn nicht vorhanden."""
     try:
