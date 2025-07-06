@@ -539,7 +539,7 @@ def calculate_percentage_change(current_value, previous_value):
     change = ((current_value - previous_value) / previous_value) * 100
     return round(change)
 
-def send_warning_email(warning_message):
+def send_warning_email(subject, body):
     """Sendet eine Warn-E-Mail bei Problemen."""
     try:
         env_vars = os.getenv("CONFIG")
@@ -550,11 +550,11 @@ def send_warning_email(warning_message):
         pairs = env_vars.split(";")
         config_dict = dict(pair.split("=", 1) for pair in pairs)
         msg = MIMEText(
-            f"Problem: WCI/IACI data issue\nDetails: {warning_message}\nDate: {datetime.now(cest).strftime('%Y-%m-%d')}",
+            f"Details: {body}\nDate: {datetime.now(cest).strftime('%Y-%m-%d')}",
             "plain",
             "utf-8"
         )
-        msg["Subject"] = "China-Briefing WCI/IACI Warning"
+        msg["Subject"] = subject
         msg["From"] = config_dict["EMAIL_USER"]
         msg["To"] = "hadobrockmeyer@gmail.com"
 
@@ -565,8 +565,7 @@ def send_warning_email(warning_message):
         logger.info("Warning email sent successfully")
     except Exception as e:
         logger.error(f"Failed to send warning email: {str(e)}")
-        raise
-
+        
 def generate_briefing_freight():
     logger.info("Starting briefing generation")
     report_date = datetime.now(cest).strftime("%d %b %Y")
