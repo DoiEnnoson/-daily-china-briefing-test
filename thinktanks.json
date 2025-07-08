@@ -1,0 +1,89 @@
+[
+  {
+    "order": 0,
+    "think_tank": "CSIS",
+    "abbreviation": "CSIS",
+    "email_senders": [
+      "CSIS Geopolitics and Foreign Policy <geopolitics@csis.org>",
+      "CSIS Trustee Chair in Chinese Business and Economics <cbe@csis.org>",
+      "CSIS FreemanChair in China Studies <csisfreemanchair@csis.org>",
+      "CSIS Executive Education <aila@csis.org>"
+    ]
+  },
+  {
+    "order": 1,
+    "think_tank": "CREA",
+    "abbreviation": "CREA",
+    "email_senders": []
+  },
+  {
+    "order": 2,
+    "think_tank": "Brookings Institution",
+    "abbreviation": "Brookings",
+    "email_senders": [
+      "Brookings John L. Thornton China Center <chinacenter@brookings.edu>"
+    ]
+  },
+  {
+    "order": 3,
+    "think_tank": "Peterson Institute for International Economics",
+    "abbreviation": "PIIE",
+    "email_senders": [
+      "PIIE Insider <insider@piie.com>"
+    ]
+  },
+  {
+    "order": 4,
+    "think_tank": "Council on Foreign Relations",
+    "abbreviation": "CFR",
+    "email_senders": [
+      "Council on Foreign Relations <communications@cfr.org>"
+    ]
+  },
+  {
+    "order": 5,
+    "think_tank": "Chatham House",
+    "abbreviation": "Chatham House",
+    "email_senders": [
+      "Chatham House <ch@email-chathamhouse.org>"
+    ]
+  },
+  {
+    "order": 6,
+    "think_tank": "Lowy Institute",
+    "abbreviation": "Lowy",
+    "email_senders": [
+      "Lowy Institute <lowyinstitute@lowyinstitute.org>"
+    ]
+  },
+  {
+    "order": 7,
+    "think_tank": "Carnegie Endowment for International Peace",
+    "abbreviation": "Carnegie Endowment",
+    "email_senders": [
+      "Carnegie Endowment for International Peace <info@carnegieendowment.org>"
+    ]
+  },
+  {
+    "order": 8,
+    "think_tank": "Atlantic Council",
+    "abbreviation": "Atlantic Council",
+    "email_senders": []
+  },
+  {
+    "order": 9,
+    "think_tank": "Asia Society Policy Institute",
+    "abbreviation": "ASPI",
+    "email_senders": [
+      "Asia Society Policy Institute <policyinstitute@asiasociety.org>"
+    ]
+  },
+  {
+    "order": 10,
+    "think_tank": "MERICS",
+    "abbreviation": "MERICS",
+    "email_senders": [
+      "MERICS <publications@merics.de>"
+    ]
+  }
+]
