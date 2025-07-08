@@ -48,7 +48,7 @@ IACI_CACHE_FILE = os.path.join(FREIGHT_CACHE_DIR, "iaci_cache.json")
 # Nikkei-Konstanten inkl Suchzeitraum 
 EMAIL_NIKKEI_ASIA = "nikkeiasia-d-nl@namail.nikkei.com"
 EMAIL_CHINA_UP_CLOSE = "nikkeiasia-w-nl@namail.nikkei.com"
-SEARCH_DAYS = 7
+SEARCH_DAYS = 1
 
 def normalize_url(url):
     """Entfernt Tracking-Parameter aus der URL."""
