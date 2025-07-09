@@ -117,4 +117,91 @@ def resolve_merics_url(url):
             if target:
                 target_data = json_parser.loads(target)
                 target_url = urllib.parse.unquote(target_data["TargetUrl"])
-                logger.info(f
+                logger.info(f"Ziel-URL gefunden: {target_url}")
+                return target_url
+        except Exception as e:
+            logger.warning(f"Konnte MERICS-URL nicht auflösen: {url}, Fehler: {str(e)}")
+    try:
+        response = requests.get(url, allow_redirects=True, timeout=5)
+        return response.url
+    except Exception as e:
+        logger.warning(f"Konnte URL nicht auflösen: {url}, Fehler: {str(e)}")
+        return url
+
+def score_thinktank_article(title, url):
+    """Bewertet einen Artikel auf China-Relevanz."""
+    logger.info(f"Bewerte Think Tank Artikel: {title} (URL: {url})")
+    title_lower = title.lower()
+    score = 5  # MERICS ist immer China-relevant
+    important_keywords = [
+        "economy", "policy", "trade", "geopolitics", "technology", "ai", "semiconductors",
+        "military", "diplomacy", "sanctions", "energy", "climate", "infrastructure"
+    ]
+    positive_modifiers = [
+        "analysis", "report", "brief", "commentary", "working paper", "policy brief",
+        "in depth", "research", "study"
+    ]
+    negative_keywords = [
+        "subscribe", "donate", "event", "webinar", "conference", "membership",
+        "newsletter", "signup", "registration", "legal notice", "privacy policy",
+        "website", "unsubscribe", "profile", "read in browser"
+    ]
+    if any(kw in title_lower for kw in important_keywords):
+        score += 3
+    if any(kw in title_lower for kw in positive_modifiers):
+        score += 2
+    if any(kw in title_lower for kw in negative_keywords):
+        score -= 5
+    if "merics.org" in url and "/report/" in url:
+        score += 3
+    if "merics.org" in url and "/sites/default/files/" in url:
+        score += 2  # PDFs sind relevant, aber etwas niedriger gewichtet
+    logger.info(f"Score für '{title}' (URL: {url}): {score}")
+    return max(score, 0)
+
+def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
+    """Holt alle E-Mails von MERICS-Absendern und extrahiert Artikel."""
+    logger.info("Starte fetch_merics_emails")
+    try:
+        thinktanks = load_thinktanks()
+        merics = next((tt for tt in thinktanks if tt["abbreviation"] == "MERICS"), None)
+        if not merics:
+            logger.error("MERICS nicht in thinktanks.json gefunden")
+            send_email(
+                "Fehler in fetch_merics_emails",
+                "MERICS nicht in thinktanks.json gefunden",
+                email_user, email_password
+            )
+            return [], 0
+
+        email_senders = merics["email_senders"]
+        logger.info(f"Verarbeite MERICS mit Absendern: {email_senders}")
+        email_senders = [extract_email_address(sender) for sender in email_senders]
+        logger.info(f"Bereinigte Absender: {email_senders}")
+
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        try:
+            logger.info(f"Versuche IMAP-Login mit Benutzer: {email_user}")
+            mail.login(email_user, email_password)
+            logger.info("IMAP-Login erfolgreich")
+        except Exception as e:
+            logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
+            send_email(
+                "Fehler in fetch_merics_emails",
+                f"IMAP-Login fehlgeschlagen: {str(e)}",
+                email_user, email_password
+            )
+            return [], 0
+
+        mail.select("inbox")
+        articles = []
+        seen_urls = set()
+        email_count = 0
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        logger.info(f"Suche nach E-Mails seit: {since_date}")
+
+        for sender in email_senders:
+            logger.info(f"Suche nach E-Mails von: {sender}")
+            result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
+            if result != "OK":
+                logger.warning
