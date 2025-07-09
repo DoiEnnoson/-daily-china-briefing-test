@@ -35,7 +35,7 @@ def send_email(subject, body, email_user, email_password, to_email="hadobrockmey
         logger.error(f"Fehler beim Senden der E-Mail an {to_email}: {str(e)}")
 
 def load_thinktanks():
-    """Ladet die Think Tanks aus thinktanks.json."""
+    """Lädt die Think Tanks aus thinktanks.json."""
     try:
         thinktanks_path = os.path.join(BASE_DIR, "thinktanks.json")
         with open(thinktanks_path, "r", encoding="utf-8") as f:
@@ -52,7 +52,7 @@ def extract_email_address(sender):
     return match.group(1) if match else sender
 
 def normalize_url(url):
-    """Entfernt Tracking-Parameter aus der URL, aber behält Query-Parameter bei."""
+    """Entfernt Tracking-Parameter aus der URL, behält aber den Pfad bei."""
     parsed = urllib.parse.urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
@@ -69,8 +69,10 @@ def resolve_merics_url(url):
                 return decoded_url
         response = requests.get(url, allow_redirects=True, timeout=5)
         final_url = response.url
-        logger.debug(f"Ziel-URL gefunden: {final_url}")
-        return final_url
+        if "merics.org" in final_url:
+            logger.debug(f"Ziel-URL gefunden: {final_url}")
+            return final_url
+        return url
     except Exception as e:
         logger.warning(f"Fehler beim Auflösen der URL {url}: {str(e)}")
         return url
@@ -87,12 +89,12 @@ def scrape_web_title(url):
         logger.warning(f"Fehler beim Scrapen des Titels für {url}: {str(e)}")
         return None
 
-def extract_pdf_title(filename, subject=""):
+def extract_pdf_title(url, subject=""):
     """Extrahiert den Titel eines PDFs, bevorzugt aus dem Betreff."""
     if subject and subject != "Kein Betreff":
         logger.debug(f"Verwende Betreff als PDF-Titel: {subject}")
         return subject
-    name = os.path.basename(filename).replace('.pdf', '')
+    name = os.path.basename(url).replace('.pdf', '')
     name = re.sub(r'_\d{6}_WEB_\d', '', name)
     name = name.replace('-', ' ').replace('_', ' ')
     name = re.sub(r'\s+', ' ', name).strip()
@@ -108,23 +110,36 @@ def score_thinktank_article(title, url):
     }
     negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy", "cookie", "website", "profile"]
     title_lower = title.lower()
+
+    # Überprüfung auf negative Keywords
+    if any(keyword in title_lower for keyword in negative_keywords):
+        if "merics.org" in url and ("/report/" in url or "/sites/default/files/" in url):
+            score += 5  # Ausnahme für Reports und PDFs
+            logger.debug(f"Ausnahme für /report/ oder /sites/default/files/ in URL {url}: +5")
+        else:
+            score = -10  # Starke Abwertung für unerwünschte Inhalte
+            logger.debug(f"Negativer Treffer in '{title}': -10")
+            return score
+
+    # Positive Keywords
     for keyword, value in keywords.items():
         if keyword in title_lower:
             score += value
             logger.debug(f"Positiver Treffer für '{keyword}' in '{title}': +{value}")
-    if any(keyword in title_lower for keyword in negative_keywords):
-        score = -10  # Starke Abwertung für unerwünschte Inhalte
-        logger.debug(f"Negativer Treffer in '{title}': -10")
-    if "merics.org" in url and "/report/" in url:
-        score += 3
-        logger.debug(f"Bonus für /report/ in URL {url}: +3")
-    if "merics.org" in url and "/sites/default/files/" in url:
-        score += 2
-        logger.debug(f"Bonus für /sites/default/files/ in URL {url}: +2")
+
+    # Bonus für MERICS-spezifische URLs
+    if "merics.org" in url:
+        if "/report/" in url:
+            score += 3
+            logger.debug(f"Bonus für /report/ in URL {url}: +3")
+        if "/sites/default/files/" in url:
+            score += 2
+            logger.debug(f"Bonus für /sites/default/files/ in URL {url}: +2")
+
     logger.debug(f"Gesamtscore für '{title}' (URL: {url}): {score}")
     return score
 
-def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
+def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
     """Holt MERICS-Artikel aus E-Mails."""
     logger.info("Starte fetch_merics_emails")
     try:
@@ -154,11 +169,6 @@ def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
         email_count = 0
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         logger.info(f"Suche nach E-Mails seit: {since_date}")
-
-        missing_urls = [
-            "https://merics.org/en/report/trade-offs-innovating-china-times-global-technology-rivalry",
-            "https://merics.org/sites/default/files/2025-06/22/ETNC-2025-Report-2025-Quest-for-strategic-autonomy-europe-grapples-with-the-us-china-rivalry.pdf"
-        ]
 
         for sender in email_senders:
             logger.info(f"Suche nach E-Mails von: {sender}")
@@ -210,14 +220,8 @@ def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
                             if not title or len(title) < 5:
                                 logger.info(f"Link übersprungen: Titel zu kurz oder leer: {title}")
                                 continue
-                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]):
-                                # Ausnahme für /report/ oder /sites/default/files/
-                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
-                                    logger.info(f"Ausnahme: Verwende Betreff '{subject}' für {final_url} trotz unerwünschtem Keyword '{title}'")
-                                    title = subject
-                                else:
-                                    logger.info(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
-                                    continue
+
+                            # Spezielle Behandlung für PDFs und Reports
                             if "merics.org" in final_url and "/sites/default/files/" in final_url:
                                 title = extract_pdf_title(final_url, subject)
                                 logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
@@ -225,20 +229,27 @@ def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
                                 web_title = scrape_web_title(final_url)
                                 title = web_title if web_title else subject
                                 logger.debug(f"Web-Titel: {title}")
+
+                            # Überspringen von unerwünschten Links, außer für Reports und PDFs
+                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]):
+                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
+                                    logger.info(f"Ausnahme: Verwende Titel '{title}' für {final_url} trotz unerwünschtem Keyword")
+                                else:
+                                    logger.info(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
+                                    continue
+
                             normalized_url = normalize_url(final_url)
                             if normalized_url in seen_urls:
                                 logger.info(f"Link übersprungen: URL bereits gesehen: {normalized_url}")
                                 continue
-                            if normalized_url in missing_urls:
-                                logger.info(f"Fehlende URL gefunden: {normalized_url} (Titel: {title})")
+
                             score = score_thinktank_article(title, final_url)
                             logger.info(f"Score für '{title}' (URL: {final_url}): {score}")
                             if score > 0:
-                                logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
-                                articles.append((score, f"• {title}"))
+                                formatted_article = f"• [{title}]({final_url})"
+                                logger.info(f"Artikel hinzugefügt: {formatted_article} (Score: {score})")
+                                articles.append((score, formatted_article))
                                 seen_urls.add(normalized_url)
-                            else:
-                                logger.info(f"Link übersprungen: Score zu niedrig: {score}")
 
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
@@ -279,9 +290,9 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=365, max_articles=10)
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["## Think Tanks\n", "\n### MERICS\n"]
+    markdown = ["## Think Tanks\n", "### MERICS\n"]
     if articles:
         for article in articles:
             markdown.append(f"{article}\n")
