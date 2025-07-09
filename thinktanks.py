@@ -58,7 +58,9 @@ def resolve_merics_url(url):
         query_params = urllib.parse.parse_qs(parsed.query)
         if 'target' in query_params:
             target_url = urllib.parse.unquote(query_params['target'][0])
-            target_url = urllib.parse.unquote(target_url)  # Doppelt dekodieren für verschachtelte URLs
+            # Mehrfaches Dekodieren für verschachtelte URLs
+            for _ in range(2):  # Doppelt dekodieren
+                target_url = urllib.parse.unquote(target_url)
             if target_url.startswith("https://merics.org"):
                 logger.debug(f"Aufgelöste Ziel-URL: {target_url}")
                 return target_url
@@ -145,7 +147,7 @@ def score_thinktank_article(title, url):
     logger.debug(f"Gesamtscore für '{title}' (URL: {final_url}): {score}")
     return score
 
-def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
+def fetch_merics_emails(email_user, email_password, days=1, max_articles=10):
     """Holt MERICS-Artikel aus E-Mails."""
     logger.info("Starte fetch_merics_emails")
     try:
@@ -306,7 +308,7 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=1, max_articles=10)
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
     markdown = ["## Think Tanks\n", "### MERICS\n"]
     if articles:
