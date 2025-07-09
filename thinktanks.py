@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 import smtplib
 from email.mime.text import MIMEText
+import re
 
 # Logging einrichten (umfangreich für Debugging)
 logging.basicConfig(
@@ -16,13 +17,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-# Basisverzeichnis
+# Basisverzeichnis (relativ zum Repository-Root)
 BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main", "daily-china-briefing-test")
 THINKTANKS_JSON = os.path.join(BASE_DIR, "thinktanks.json")
 
 def send_warning_email(subject, body, email_user, email_password, recipient):
     """Sendet eine Warn-E-Mail bei Fehlern."""
     logger.info(f"Sende Warn-E-Mail: {subject}")
+    if not email_user or not email_password or not recipient:
+        logger.error("E-Mail-Credentials oder Empfänger fehlen, überspringe Warn-E-Mail")
+        return
     try:
         msg = MIMEText(body)
         msg['Subject'] = subject
@@ -37,20 +41,21 @@ def send_warning_email(subject, body, email_user, email_password, recipient):
 
 def load_thinktanks():
     """Lädt die Think Tanks aus der JSON-Datei."""
+    logger.info(f"Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
     logger.info(f"Lade Think Tanks aus {THINKTANKS_JSON}")
+    if not os.path.exists(THINKTANKS_JSON):
+        logger.error(f"{THINKTANKS_JSON} nicht gefunden")
+        send_warning_email(
+            "Fehler in thinktanks.py",
+            f"{THINKTANKS_JSON} nicht gefunden",
+            "", "", "dein_email@example.com"  # Ersetze mit deinem Empfänger
+        )
+        return []
     try:
         with open(THINKTANKS_JSON, "r", encoding="utf-8") as f:
             thinktanks = json.load(f)
         logger.info(f"Geladen: {len(thinktanks)} Think Tanks")
         return thinktanks
-    except FileNotFoundError:
-        logger.error(f"{THINKTANKS_JSON} nicht gefunden")
-        send_warning_email(
-            "Fehler in thinktanks.py",
-            f"{THINKTANKS_JSON} nicht gefunden",
-            "", "", "hadobrockmeyer@gmail.com"  # Ersetze mit deinem Empfänger
-        )
-        return []
     except json.JSONDecodeError:
         logger.error(f"{THINKTANKS_JSON} ist ungültig")
         send_warning_email(
@@ -59,6 +64,19 @@ def load_thinktanks():
             "", "", "dein_email@example.com"
         )
         return []
+
+def extract_email_address(sender):
+    """Extrahiert die E-Mail-Adresse aus einem Sender-String (z. B. 'MERICS <publications@merics.de>')."""
+    logger.info(f"Extrahiere E-Mail-Adresse aus: {sender}")
+    match = re.search(r'<([^>]+)>', sender)
+    if match:
+        email_addr = match.group(1)
+        logger.info(f"E-Mail-Adresse gefunden: {email_addr}")
+        return email_addr
+    # Fallback: Wenn kein <...> Format, nimm den String direkt
+    email_addr = sender.strip()
+    logger.info(f"E-Mail-Adresse (Fallback): {email_addr}")
+    return email_addr
 
 def fetch_merics_emails(email_user, email_password, recipient, days=30):
     """Holt alle E-Mails von MERICS-Absendern."""
@@ -77,9 +95,12 @@ def fetch_merics_emails(email_user, email_password, recipient, days=30):
 
         email_senders = merics["email_senders"]
         logger.info(f"Verarbeite MERICS mit Absendern: {email_senders}")
+        email_senders = [extract_email_address(sender) for sender in email_senders]
+        logger.info(f"Bereinigte Absender: {email_senders}")
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         try:
+            logger.info(f"Versuche IMAP-Login mit Benutzer: {email_user}")
             mail.login(email_user, email_password)
             logger.info("IMAP-Login erfolgreich")
         except Exception as e:
@@ -142,26 +163,38 @@ def fetch_merics_emails(email_user, email_password, recipient, days=30):
 def main():
     """Hauptfunktion zum Testen der MERICS-E-Mail-Suche."""
     logger.info("Starte Testskript für MERICS-E-Mail-Suche")
+    logger.info(f"Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
         logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
         send_warning_email(
             "Fehler in thinktanks.py",
             "SUBSTACK_MAIL Umgebungsvariable nicht gefunden",
-            "", "", "dein_email@example.com"  # Ersetze mit deinem Empfänger
+            "", "", "dein_email@example.com"
         )
         return
 
-    mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
-    email_user = mail_config.get("GMAIL_USER")
-    email_password = mail_config.get("GMAIL_PASS")
-    recipient = mail_config.get("RECIPIENT", "dein_email@example.com")  # Ersetze mit deinem Empfänger
-    if not email_user or not email_password:
-        logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
+    logger.info(f"SUBSTACK_MAIL gefunden, parse Inhalt")
+    try:
+        mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
+        email_user = mail_config.get("GMAIL_USER")
+        email_password = mail_config.get("GMAIL_PASS")
+        recipient = mail_config.get("RECIPIENT", "dein_email@example.com")  # Ersetze mit deinem Empfänger
+        logger.info(f"Geparsed: GMAIL_USER={email_user}, RECIPIENT={recipient}")
+        if not email_user or not email_password:
+            logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
+            send_warning_email(
+                "Fehler in thinktanks.py",
+                "GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL",
+                email_user, email_password, recipient
+            )
+            return
+    except Exception as e:
+        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
         send_warning_email(
             "Fehler in thinktanks.py",
-            "GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL",
-            email_user, email_password, recipient
+            f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}",
+            "", "", "dein_email@example.com"
         )
         return
 
@@ -173,8 +206,8 @@ def main():
     else:
         markdown.append("Keine MERICS-E-Mails gefunden.")
 
-    # Ausgabe in Datei
     output_file = os.path.join(BASE_DIR, "thinktanks_briefing.md")
+    logger.info(f"Schreibe Ergebnisse nach {output_file}")
     with open(output_file, "w", encoding="utf-8") as f:
         f.write("\n".join(markdown))
     logger.info(f"Ergebnisse in {output_file} gespeichert")
