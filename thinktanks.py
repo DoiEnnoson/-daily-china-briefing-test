@@ -218,20 +218,22 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                                 logger.info(f"Link übersprungen: Mailto-URL {final_url}")
                                 continue
                             if not title or len(title) < 5:
-                                logger.info(f"Link übersprungen: Titel zu kurz oder leer: {title}")
-                                continue
+                                title = subject  # Fallback auf Betreff für leere/kurze Titel
+                                logger.info(f"Titel zu kurz oder leer, verwende Betreff: {title}")
 
                             # Spezielle Behandlung für PDFs und Reports
-                            if "merics.org" in final_url and "/sites/default/files/" in final_url:
-                                title = extract_pdf_title(final_url, subject)
-                                logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
-                            elif "merics.org" in final_url and "/report/" in final_url:
-                                web_title = scrape_web_title(final_url)
-                                title = web_title if web_title else subject
-                                logger.debug(f"Web-Titel: {title}")
+                            if "merics.org" in final_url:
+                                if "/sites/default/files/" in final_url:
+                                    title = extract_pdf_title(final_url, subject)
+                                    logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
+                                elif "/report/" in final_url:
+                                    web_title = scrape_web_title(final_url)
+                                    title = web_title if web_title else subject
+                                    logger.debug(f"Web-Titel: {title}")
 
                             # Überspringen von unerwünschten Links, außer für Reports und PDFs
-                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]):
+                            negative_keywords = ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]
+                            if any(kw in title.lower() for kw in negative_keywords):
                                 if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
                                     logger.info(f"Ausnahme: Verwende Titel '{title}' für {final_url} trotz unerwünschtem Keyword")
                                 else:
@@ -245,9 +247,9 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
 
                             score = score_thinktank_article(title, final_url)
                             logger.info(f"Score für '{title}' (URL: {final_url}): {score}")
-                            if score > 0:
-                                formatted_article = f"• [{title}]({final_url})"
-                                logger.info(f"Artikel hinzugefügt: {formatted_article} (Score: {score})")
+                            if score >= 0:  # Änderung: Auch Score 0 zulassen für PDFs/Reports
+                                formatted_article = f"• [{title}]({final_url})\n"
+                                logger.info(f"Artikel hinzugefügt: {formatted_article.strip()} (Score: {score})")
                                 articles.append((score, formatted_article))
                                 seen_urls.add(normalized_url)
 
@@ -294,8 +296,7 @@ def main():
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
     markdown = ["## Think Tanks\n", "### MERICS\n"]
     if articles:
-        for article in articles:
-            markdown.append(f"{article}\n")
+        markdown.extend(articles)
     else:
         markdown.append("• Keine relevanten MERICS-Artikel gefunden.\n")
     
