@@ -58,6 +58,7 @@ def resolve_merics_url(url):
         query_params = urllib.parse.parse_qs(parsed.query)
         if 'target' in query_params:
             target_url = urllib.parse.unquote(query_params['target'][0])
+            target_url = urllib.parse.unquote(target_url)  # Doppelt dekodieren für verschachtelte URLs
             if target_url.startswith("https://merics.org"):
                 logger.debug(f"Aufgelöste Ziel-URL: {target_url}")
                 return target_url
@@ -108,20 +109,24 @@ def score_thinktank_article(title, url):
     negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy", "cookie", "profile", "confirm", "read in browser"]
 
     title_lower = title.lower()
+    final_url = resolve_merics_url(url)  # Verwende aufgelöste URL für Scoring
 
     # Ausnahmen für /report/ und /sites/default/files/ URLs
-    if "merics.org" in url and ("/report/" in url or "/sites/default/files/" in url):
+    if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
         score += 5  # Basis-Score für relevante URLs
-        logger.debug(f"Bonus für /report/ oder /sites/default/files/ in URL {url}: +5")
+        logger.debug(f"Bonus für /report/ oder /sites/default/files/ in URL {final_url}: +5")
     else:
         score = -10  # Starke Strafe für nicht-relevante URLs
-        logger.debug(f"Keine /report/ oder /sites/default/files/ in URL {url}: -10")
+        logger.debug(f"Keine /report/ oder /sites/default/files/ in URL {final_url}: -10")
         return score
 
     # Negative Schlüsselwörter nur für nicht-relevante URLs anwenden
     if any(keyword in title_lower for keyword in negative_keywords):
-        logger.debug(f"Negative Schlüsselwörter in '{title}': -5")
-        score -= 5
+        if "/report/" in final_url or "/sites/default/files/" in final_url:
+            logger.debug(f"Ausnahme: Ignoriere negatives Schlüsselwort in '{title}' für relevante URL {final_url}")
+        else:
+            logger.debug(f"Negative Schlüsselwörter in '{title}': -5")
+            score -= 5
 
     # Positive Schlüsselwörter
     for keyword, value in keywords.items():
@@ -130,14 +135,14 @@ def score_thinktank_article(title, url):
             logger.debug(f"Positives Schlüsselwort '{keyword}' in '{title}': +{value}")
 
     # Zusätzliche Boni
-    if "/report/" in url:
+    if "/report/" in final_url:
         score += 3
-        logger.debug(f"Bonus für /report/ in URL {url}: +3")
-    if "/sites/default/files/" in url:
+        logger.debug(f"Bonus für /report/ in URL {final_url}: +3")
+    if "/sites/default/files/" in final_url:
         score += 2
-        logger.debug(f"Bonus für /sites/default/files/ in URL {url}: +2")
+        logger.debug(f"Bonus für /sites/default/files/ in URL {final_url}: +2")
 
-    logger.debug(f"Gesamtscore für '{title}' (URL: {url}): {score}")
+    logger.debug(f"Gesamtscore für '{title}' (URL: {final_url}): {score}")
     return score
 
 def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
@@ -249,7 +254,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                                 logger.info(f"Link übersprungen: URL bereits gesehen: {normalized_url}")
                                 continue
 
-                            score = score_thinktank_article(title, final_url)
+                            score = score_thinktank_article(title, href)  # Original-URL für Scoring, final_url für Ausgabe
                             logger.info(f"Score für '{title}' (URL: {final_url}): {score}")
                             if score >= 0:  # Einschließen von PDFs/Berichten mit neutralem Score
                                 formatted_article = f"• [{title}]({final_url})\n"
