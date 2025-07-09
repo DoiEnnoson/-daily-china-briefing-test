@@ -123,7 +123,9 @@ def resolve_merics_url(url):
             logger.warning(f"Konnte MERICS-URL nicht auflösen: {url}, Fehler: {str(e)}")
     try:
         response = requests.get(url, allow_redirects=True, timeout=5)
-        return response.url
+        final_url = response.url
+        logger.info(f"Ziel-URL nach Weiterleitung: {final_url}")
+        return final_url
     except Exception as e:
         logger.warning(f"Konnte URL nicht auflösen: {url}, Fehler: {str(e)}")
         return url
@@ -144,7 +146,7 @@ def score_thinktank_article(title, url):
     negative_keywords = [
         "subscribe", "donate", "event", "webinar", "conference", "membership",
         "newsletter", "signup", "registration", "legal notice", "privacy policy",
-        "website", "unsubscribe", "profile", "read in browser"
+        "website", "unsubscribe", "profile", "read in browser", "pdf here"
     ]
     if any(kw in title_lower for kw in important_keywords):
         score += 3
@@ -201,7 +203,4 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
         logger.info(f"Suche nach E-Mails seit: {since_date}")
 
         for sender in email_senders:
-            logger.info(f"Suche nach E-Mails von: {sender}")
-            result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
-            if result != "OK":
-                logger.warning
+            logger.info(f"Suche nach E
