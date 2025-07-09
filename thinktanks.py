@@ -48,7 +48,7 @@ def load_thinktanks():
         send_warning_email(
             "Fehler in thinktanks.py",
             f"{THINKTANKS_JSON} nicht gefunden",
-            "", "", "dein_email@example.com"  # Ersetze mit deinem Empfänger
+            "", "", "hadobrockmeyer@gmail.com"  # Ersetze mit deinem Empfänger
         )
         return []
     except json.JSONDecodeError:
