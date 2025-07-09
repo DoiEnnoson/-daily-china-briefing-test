@@ -12,16 +12,16 @@ import re
 import logging
 import json
 
-# Logging-Konfiguration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', 
+# Logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.FileHandler('thinktanks.log'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
-# Basisverzeichnis
+# Base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
-    """Sendet eine E-Mail."""
+    """Sends an email."""
     try:
         msg = MIMEText(body, "html")
         msg['Subject'] = subject
@@ -35,7 +35,7 @@ def send_email(subject, body, email_user, email_password, to_email="hadobrockmey
         logger.error(f"Fehler beim Senden der E-Mail an {to_email}: {str(e)}")
 
 def load_thinktanks():
-    """Lädt die Think Tanks aus thinktanks.json."""
+    """Loads think tanks from thinktanks.json."""
     try:
         thinktanks_path = os.path.join(BASE_DIR, "thinktanks.json")
         with open(thinktanks_path, "r", encoding="utf-8") as f:
@@ -47,30 +47,28 @@ def load_thinktanks():
         return []
 
 def extract_email_address(sender):
-    """Extrahiert die E-Mail-Adresse aus einem Absenderstring."""
+    """Extracts email address from sender string."""
     match = re.search(r'<(.+?)>', sender)
     return match.group(1) if match else sender
 
-def normalize_url(url):
-    """Entfernt Tracking-Parameter aus der URL, behält aber den Pfad bei."""
-    parsed = urllib.parse.urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
 def resolve_merics_url(url):
-    """Löst die ursprüngliche URL auf, inkl. Tracking-URLs."""
+    """Resolves the original URL, handling tracking URLs."""
     try:
         parsed = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed.query)
         if 'target' in query_params:
-            target_url = query_params['target'][0]
-            decoded_url = urllib.parse.unquote(target_url)
-            if decoded_url.startswith("https://merics.org"):
-                logger.debug(f"Dekodierte Ziel-URL: {decoded_url}")
-                return decoded_url
+            target_url = urllib.parse.unquote(query_params['target'][0])
+            if target_url.startswith("https://merics.org"):
+                logger.debug(f"Resolved target URL: {target_url}")
+                return target_url
+        # Skip requests for non-merics.org URLs to avoid unnecessary calls
+        if "merics.org" not in url:
+            logger.debug(f"Skipping non-merics.org URL: {url}")
+            return url
         response = requests.get(url, allow_redirects=True, timeout=5)
         final_url = response.url
         if "merics.org" in final_url:
-            logger.debug(f"Ziel-URL gefunden: {final_url}")
+            logger.debug(f"Resolved URL: {final_url}")
             return final_url
         return url
     except Exception as e:
@@ -78,69 +76,75 @@ def resolve_merics_url(url):
         return url
 
 def scrape_web_title(url):
-    """Scraped den Titel einer Webseite."""
+    """Scrapes the title of a webpage."""
     try:
         response = requests.get(url, timeout=5)
         soup = BeautifulSoup(response.text, "lxml")
         title = soup.title.string.strip() if soup.title else ""
-        logger.debug(f"Web-Titel für {url}: {title}")
+        logger.debug(f"Web title for {url}: {title}")
         return title
     except Exception as e:
         logger.warning(f"Fehler beim Scrapen des Titels für {url}: {str(e)}")
         return None
 
 def extract_pdf_title(url, subject=""):
-    """Extrahiert den Titel eines PDFs, bevorzugt aus dem Betreff."""
+    """Extracts the title of a PDF, preferring the email subject."""
     if subject and subject != "Kein Betreff":
-        logger.debug(f"Verwende Betreff als PDF-Titel: {subject}")
+        logger.debug(f"Using email subject as PDF title: {subject}")
         return subject
     name = os.path.basename(url).replace('.pdf', '')
     name = re.sub(r'_\d{6}_WEB_\d', '', name)
-    name = name.replace('-', ' ').replace('_', ' ')
+    name = name.replace('-', ' ').replace('_', ' ').replace('%20', ' ')
     name = re.sub(r'\s+', ' ', name).strip()
-    logger.debug(f"PDF-Titel aus Dateinamen: {name}")
+    logger.debug(f"PDF title from filename: {name}")
     return name
 
 def score_thinktank_article(title, url):
-    """Bewertet einen Artikel auf Relevanz."""
+    """Scores an article based on relevance."""
     score = 0
     keywords = {
         "china": 5, "chinese": 5, "technology": 3, "innovation": 3,
         "geopolitics": 3, "policy": 3, "economy": 2, "report": 2
     }
-    negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy", "cookie", "website", "profile"]
+    negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy", "cookie", "website", "profile", "confirm", "read in browser"]
+
     title_lower = title.lower()
 
-    # Überprüfung auf negative Keywords
+    # Strict filtering: Only allow /report/ or /sites/default/files/ URLs
+    if "merics.org" in url and not ("/report/" in url or "/sites/default/files/" in url):
+        logger.debug(f"Skipping non-report/PDF URL: {url}")
+        return -10
+
+    # Negative keywords check
     if any(keyword in title_lower for keyword in negative_keywords):
         if "merics.org" in url and ("/report/" in url or "/sites/default/files/" in url):
-            score += 5  # Ausnahme für Reports und PDFs
-            logger.debug(f"Ausnahme für /report/ oder /sites/default/files/ in URL {url}: +5")
+            score += 5  # Exception for reports and PDFs
+            logger.debug(f"Exception for /report/ or /sites/default/files/ in URL {url}: +5")
         else:
-            score = -10  # Starke Abwertung für unerwünschte Inhalte
-            logger.debug(f"Negativer Treffer in '{title}': -10")
+            score = -10  # Strong penalty for unwanted content
+            logger.debug(f"Negative keyword in '{title}': -10")
             return score
 
-    # Positive Keywords
+    # Positive keywords
     for keyword, value in keywords.items():
         if keyword in title_lower:
             score += value
-            logger.debug(f"Positiver Treffer für '{keyword}' in '{title}': +{value}")
+            logger.debug(f"Positive keyword '{keyword}' in '{title}': +{value}")
 
-    # Bonus für MERICS-spezifische URLs
+    # Bonus for MERICS-specific URLs
     if "merics.org" in url:
         if "/report/" in url:
             score += 3
-            logger.debug(f"Bonus für /report/ in URL {url}: +3")
+            logger.debug(f"Bonus for /report/ in URL {url}: +3")
         if "/sites/default/files/" in url:
             score += 2
-            logger.debug(f"Bonus für /sites/default/files/ in URL {url}: +2")
+            logger.debug(f"Bonus for /sites/default/files/ in URL {url}: +2")
 
-    logger.debug(f"Gesamtscore für '{title}' (URL: {url}): {score}")
+    logger.debug(f"Total score for '{title}' (URL: {url}): {score}")
     return score
 
 def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
-    """Holt MERICS-Artikel aus E-Mails."""
+    """Fetches MERICS articles from emails."""
     logger.info("Starte fetch_merics_emails")
     try:
         thinktanks = load_thinktanks()
@@ -214,27 +218,30 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             title = link.get_text(strip=True)
                             logger.info(f"Verarbeite Link: {title} (href: {href})")
                             final_url = resolve_merics_url(href)
-                            if final_url.startswith("mailto:"):
-                                logger.info(f"Link übersprungen: Mailto-URL {final_url}")
+
+                            # Skip mailto and non-merics.org URLs
+                            if final_url.startswith("mailto:") or "merics.org" not in final_url:
+                                logger.info(f"Link übersprungen: Ungültige URL {final_url}")
                                 continue
+
+                            # Handle empty or short titles
                             if not title or len(title) < 5:
-                                title = subject  # Fallback auf Betreff für leere/kurze Titel
+                                title = subject
                                 logger.info(f"Titel zu kurz oder leer, verwende Betreff: {title}")
 
-                            # Spezielle Behandlung für PDFs und Reports
-                            if "merics.org" in final_url:
-                                if "/sites/default/files/" in final_url:
-                                    title = extract_pdf_title(final_url, subject)
-                                    logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
-                                elif "/report/" in final_url:
-                                    web_title = scrape_web_title(final_url)
-                                    title = web_title if web_title else subject
-                                    logger.debug(f"Web-Titel: {title}")
+                            # Special handling for PDFs and reports
+                            if "/sites/default/files/" in final_url:
+                                title = extract_pdf_title(final_url, subject)
+                                logger.debug(f"PDF title assigned: {title}")
+                            elif "/report/" in final_url:
+                                web_title = scrape_web_title(final_url)
+                                title = web_title if web_title else subject
+                                logger.debug(f"Report title assigned: {title}")
 
-                            # Überspringen von unerwünschten Links, außer für Reports und PDFs
-                            negative_keywords = ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]
+                            # Skip unwanted titles, except for reports and PDFs
+                            negative_keywords = ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "confirm"]
                             if any(kw in title.lower() for kw in negative_keywords):
-                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
+                                if "/report/" in final_url or "/sites/default/files/" in final_url:
                                     logger.info(f"Ausnahme: Verwende Titel '{title}' für {final_url} trotz unerwünschtem Keyword")
                                 else:
                                     logger.info(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
@@ -247,7 +254,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
 
                             score = score_thinktank_article(title, final_url)
                             logger.info(f"Score für '{title}' (URL: {final_url}): {score}")
-                            if score >= 0:  # Änderung: Auch Score 0 zulassen für PDFs/Reports
+                            if score >= 0:  # Allow score 0 for PDFs/reports
                                 formatted_article = f"• [{title}]({final_url})\n"
                                 logger.info(f"Artikel hinzugefügt: {formatted_article.strip()} (Score: {score})")
                                 articles.append((score, formatted_article))
@@ -269,6 +276,11 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
             logger.info("IMAP-Logout im finally-Block erfolgreich")
         except:
             pass
+
+def normalize_url(url):
+    """Removes tracking parameters, keeping the path."""
+    parsed = urllib.parse.urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 def main():
     logger.info("Starte Testskript für MERICS-Artikel-Extraktion")
@@ -299,7 +311,7 @@ def main():
         markdown.extend(articles)
     else:
         markdown.append("• Keine relevanten MERICS-Artikel gefunden.\n")
-    
+
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
     try:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
