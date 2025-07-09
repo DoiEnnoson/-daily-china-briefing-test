@@ -146,7 +146,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
             print("IMAP-Login erfolgreich")
         except Exception as e:
             logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
-            print(f"❌ ERROR - fetch_merics_emails: IMAP-Login fehlgeschlagen: {str(e)}")
+            print(f"❌ ERROR - fetch_merics_emails: IMAP-Login fehlgeschlagen")
             send_email(
                 "Fehler in fetch_merics_emails",
                 f"<p>IMAP-Login fehlgeschlagen: {str(e)}</p>",
@@ -263,6 +263,13 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
             email_user, email_password
         )
         return [], 0
+    finally:
+        try:
+            mail.logout()
+            logger.info("IMAP-Logout im finally-Block erfolgreich")
+            print("IMAP-Logout im finally-Block erfolgreich")
+        except:
+            pass
 
 def main():
     logger.info("Starte Testskript für MERICS-Artikel-Extraktion")
@@ -291,4 +298,55 @@ def main():
             print("❌ ERROR - main: GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
             send_email(
                 "Fehler in thinktanks.py",
-                "<p>GMAIL_USER oder GMAIL_PASS fehlt in SUB
+                "<p>GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL</p>",
+                email_user, email_password
+            )
+            return
+    except Exception as e:
+        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        print(f"❌ ERROR - main: Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        send_email(
+            "Fehler in thinktanks.py",
+            f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>",
+            "", ""
+        )
+        return
+
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
+    output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
+    markdown = ["## Think Tanks", "", "### MERICS", "<ul>"]
+    if articles:
+        markdown.extend(articles)
+    else:
+        markdown.append("<li>Keine relevanten MERICS-Artikel gefunden.</li>")
+    markdown.append("</ul>")
+
+    logger.info(f"Schreibe Ergebnisse nach {output_file}")
+    print(f"Schreibe Ergebnisse nach {output_file}")
+    try:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(markdown))
+        logger.info(f"Ergebnisse in {output_file} gespeichert")
+        print(f"Ergebnisse in {output_file} gespeichert")
+    except Exception as e:
+        logger.error(f"Fehler beim Schreiben von {output_file}: {str(e)}")
+        print(f"❌ ERROR - main: Fehler beim Schreiben von {output_file}: {str(e)}")
+        send_email(
+            "Fehler in thinktanks.py",
+            f"<p>Fehler beim Schreiben von {output_file}: {str(e)}</p>",
+            email_user, email_password
+        )
+
+    status_message = ["## Think Tanks", "", "### MERICS", "<ul>"]
+    if articles:
+        status_message.extend(articles)
+    else:
+        status_message.append("<li>Keine relevanten MERICS-Artikel gefunden.</li>")
+    status_message.append("</ul>")
+    status_message = "\n".join(status_message)
+    send_email("Think Tanks Status", status_message, email_user, email_password)
+    print(f"Fertig um {datetime.now()}")
+
+if __name__ == "__main__":
+    main()
