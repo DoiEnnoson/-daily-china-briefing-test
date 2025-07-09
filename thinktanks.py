@@ -146,7 +146,8 @@ def score_thinktank_article(title, url):
     negative_keywords = [
         "subscribe", "donate", "event", "webinar", "conference", "membership",
         "newsletter", "signup", "registration", "legal notice", "privacy policy",
-        "website", "unsubscribe", "profile", "read in browser", "pdf here"
+        "website", "unsubscribe", "profile", "read in browser", "pdf here",
+        "on our website", "network"
     ]
     if any(kw in title_lower for kw in important_keywords):
         score += 3
@@ -157,7 +158,7 @@ def score_thinktank_article(title, url):
     if "merics.org" in url and "/report/" in url:
         score += 3
     if "merics.org" in url and "/sites/default/files/" in url:
-        score += 2  # PDFs sind relevant, aber etwas niedriger gewichtet
+        score += 3  # PDFs höher gewichtet
     logger.info(f"Score für '{title}' (URL: {url}): {score}")
     return max(score, 0)
 
@@ -207,11 +208,6 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
             result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
             if result != "OK":
                 logger.warning(f"Fehler bei der Suche nach E-Mails von {sender}: {result}")
-                send_email(
-                    "Fehler in fetch_merics_emails",
-                    f"Fehler bei der Suche nach E-Mails von {sender}: {result}",
-                    email_user, email_password
-                )
                 continue
 
             email_ids = data[0].split()
@@ -228,7 +224,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                 subject = decode_header(msg.get("Subject", "Kein Betreff"))
                 date = msg.get("Date", "Kein Datum")
                 try:
-                    date = parsedate_to_datetime(date).strftime("%Y-%m-%d %H:%M:%S")
+                    date = parsedate_to_datetime(date).strftime("%Y-%m-%d %H:%M")
                 except:
                     date = "Unbekanntes Datum"
                 logger.info(f"E-Mail Betreff: {subject}, Datum: {date}")
@@ -248,18 +244,18 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             href = link.get("href")
                             title = link.get_text(strip=True)
                             logger.info(f"Verarbeite Link: {title} (href: {href})")
-                            # Fallback auf Betreff, wenn Titel ungeeignet
-                            if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here"]):
-                                if "merics.org" in href and ("/report/" in href or "/sites/default/files/" in href):
+                            final_url = resolve_merics_url(href)
+                            if final_url.startswith("mailto:"):
+                                logger.info(f"Link übersprungen: Mailto-URL {final_url}")
+                                continue
+                            # Fallback auf Betreff für /report/ oder /sites/default/files/
+                            if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf"]):
+                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
                                     title = subject
                                     logger.info(f"Fallback auf Betreff als Titel: {title}")
                                 else:
                                     logger.info(f"Link übersprungen: Titel zu kurz oder unerwünscht")
                                     continue
-                            final_url = resolve_merics_url(href)
-                            if final_url.startswith("mailto:"):
-                                logger.info(f"Link übersprungen: Mailto-URL {final_url}")
-                                continue
                             normalized_url = normalize_url(final_url)
                             if normalized_url in seen_urls:
                                 logger.info(f"Link übersprungen: URL bereits gesehen")
@@ -267,7 +263,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             score = score_thinktank_article(title, final_url)
                             if score > 0:
                                 logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
-                                articles.append((score, f'• <a href="{final_url}">{title}</a>'))
+                                articles.append((score, f'- [{title}]({final_url})'))
                                 seen_urls.add(normalized_url)
 
         mail.logout()
@@ -278,10 +274,12 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
         unique_articles = []
         seen_urls.clear()
         for score, article in articles[:max_articles]:
-            url = article.split('href="')[1].split('">')[0]
-            if url not in seen_urls:
-                unique_articles.append(article)
-                seen_urls.add(url)
+            url_match = re.search(r'\]\((.*?)\)', article)
+            if url_match:
+                url = url_match.group(1)
+                if url not in seen_urls:
+                    unique_articles.append(article)
+                    seen_urls.add(url)
 
         logger.info(f"Anzahl eindeutiger MERICS-Artikel: {len(unique_articles)}")
         return unique_articles, email_count
