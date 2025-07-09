@@ -1,6 +1,5 @@
 ## Think Tanks
-
 ### MERICS
-• Beyond "Zeitenwende": US policies and the US-China conflict present Germany with historic challenges
-• Ireland between giants: Dublin’s strategy for surviving US-China tension
-• European Think-tank Network on China (ETNC)
+• [Beyond "Zeitenwende": US policies and the US-China conflict present Germany with historic challenges](https://public-eur.mkt.dynamics.com/api/orgs/7cdc142b-8d43-40f4-82ad-217169f0e4a0/r/tFnTmZXvpkyeincDVHcAAAcAAAA?target=%7B%22TargetUrl%22%3A%22https%253A%252F%252Fmerics.org%252Fen%252Freport%252Fbeyond-zeitenwende-us-policies-and-us-china-conflict-present-germany-historic-challenges%22%2C%22RedirectOptions%22%3A%7B%221%22%3Anull%7D%7D&digest=VGeQPK6v3F0fkGuClZ5KE6UlqJJuCCM%2F1Uqsct9Oos4%3D&secretVersion=7c13c22c20aa46a1b2fc8b71fde4d19a)
+• [Ireland between giants: Dublin’s strategy for surviving US-China tension](https://public-eur.mkt.dynamics.com/api/orgs/7cdc142b-8d43-40f4-82ad-217169f0e4a0/r/tFnTmZXvpkyeincDVHcAAAgAAAA?target=%7B%22TargetUrl%22%3A%22https%253A%252F%252Fmerics.org%252Fen%252Freport%252Fireland-between-giants-dublins-strategy-surviving-us-china-tensions%22%2C%22RedirectOptions%22%3A%7B%221%22%3Anull%7D%7D&digest=GWVLZyRy1YiC%2FvAzBhd3v8g3s8OzHzi4Hn3EdhhHfco%3D&secretVersion=7c13c22c20aa46a1b2fc8b71fde4d19a)
+• [European Think-tank Network on China (ETNC)](https://public-eur.mkt.dynamics.com/api/orgs/7cdc142b-8d43-40f4-82ad-217169f0e4a0/r/tFnTmZXvpkyeincDVHcAAAkAAAA?target=%7B%22TargetUrl%22%3A%22https%253A%252F%252Fmerics.org%252Fen%252Feuropean-think-tank-network-china%22%2C%22RedirectOptions%22%3A%7B%221%22%3Anull%7D%7D&digest=KIBddAWM1lM3ITignl7E%2FYxb5K2LRd6uhjTDn4EOAYM%3D&secretVersion=7c13c22c20aa46a1b2fc8b71fde4d19a)
