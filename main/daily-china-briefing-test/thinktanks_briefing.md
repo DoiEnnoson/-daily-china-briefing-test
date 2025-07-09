@@ -1,8 +1,6 @@
 ## Think Tanks
 
 ### MERICS
-Gefundene E-Mails:
-Betreff: Confirmation your MERICS Subscription, Datum: 2025-06-21 20:07:57
-Betreff: New MERICS report on China's innovation ecosystem, Datum: 2025-06-24 09:39:47
-Betreff: Europe grapples with the US-China rivalry =?utf-8?b?4oCT?= new report
- by the European Think-tank Network on China, Datum: 2025-06-26 13:53:49
+• <a href="https://merics.org/en/report/ireland-between-giants-dublins-strategy-surviving-us-china-tensions">Ireland between giants: Dublin’s strategy for surviving US-China tension</a>
+• <a href="https://merics.org/en/report/beyond-zeitenwende-us-policies-and-us-china-conflict-present-germany-historic-challenges">Beyond "Zeitenwende": US policies and the US-China conflict present Germany with historic challenges</a>
+• <a href="https://merics.org/en/european-think-tank-network-china">European Think-tank Network on China (ETNC)</a>
