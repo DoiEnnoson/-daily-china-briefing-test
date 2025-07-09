@@ -12,7 +12,8 @@ import re
 import logging
 
 # Logging-Konfiguration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', 
+                    handlers=[logging.FileHandler('thinktanks.log'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 # Basisverzeichnis
@@ -56,8 +57,19 @@ def normalize_url(url):
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
 def resolve_merics_url(url):
-    """Löst die ursprüngliche URL auf."""
+    """Löst die ursprüngliche URL auf, inkl. Tracking-URLs."""
     try:
+        # Prüfe, ob es eine Tracking-URL ist
+        parsed = urllib.parse.urlparse(url)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        if 'target' in query_params:
+            # Extrahiere die Ziel-URL aus dem 'target'-Parameter
+            target_url = query_params['target'][0]
+            decoded_url = urllib.parse.unquote(target_url)
+            if decoded_url.startswith("https://merics.org"):
+                logger.debug(f"Dekodierte Ziel-URL: {decoded_url}")
+                return decoded_url
+        # Führe normale Weiterleitungsauflösung durch
         response = requests.get(url, allow_redirects=True, timeout=5)
         final_url = response.url
         logger.debug(f"Ziel-URL gefunden: {final_url}")
@@ -96,15 +108,15 @@ def score_thinktank_article(title, url):
         "china": 5, "chinese": 5, "technology": 3, "innovation": 3,
         "geopolitics": 3, "policy": 3, "economy": 2, "report": 2
     }
-    negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy", "network"]
+    negative_keywords = ["subscribe", "unsubscribe", "donate", "legal", "privacy"]  # "network" entfernt
     title_lower = title.lower()
     for keyword, value in keywords.items():
         if keyword in title_lower:
             score += value
             logger.debug(f"Positiver Treffer für '{keyword}' in '{title}': +{value}")
     if any(keyword in title_lower for keyword in negative_keywords):
-        score -= 5
-        logger.debug(f"Negativer Treffer in '{title}': -5")
+        score -= 2  # Reduzierter Malus
+        logger.debug(f"Negativer Treffer in '{title}': -2")
     if "merics.org" in url and "/report/" in url:
         score += 3
         logger.debug(f"Bonus für /report/ in URL {url}: +3")
@@ -114,7 +126,7 @@ def score_thinktank_article(title, url):
     logger.debug(f"Gesamtscore für '{title}' (URL: {url}): {score}")
     return score
 
-def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
+def fetch_merics_emails(email_user, email_password, days=60, max_articles=10):
     """Holt MERICS-Artikel aus E-Mails."""
     logger.info("Starte fetch_merics_emails")
     try:
@@ -127,7 +139,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
 
         email_senders = merics["email_senders"]
         email_senders = [extract_email_address(sender) for sender in email_senders]
-        logger.debug(f"Bereinigte Absender: {email_senders}")
+        logger.info(f"Bereinigte Absender: {email_senders}")
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         try:
@@ -143,10 +155,10 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
         seen_urls = set()
         email_count = 0
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        logger.debug(f"Suche nach E-Mails seit: {since_date}")
+        logger.info(f"Suche nach E-Mails seit: {since_date}")
 
         for sender in email_senders:
-            logger.debug(f"Suche nach E-Mails von: {sender}")
+            logger.info(f"Suche nach E-Mails von: {sender}")
             result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
             if result != "OK":
                 logger.warning(f"Fehler bei der Suche nach E-Mails von {sender}: {result}")
@@ -154,7 +166,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
 
             email_ids = data[0].split()
             email_count += len(email_ids)
-            logger.debug(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
+            logger.info(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
             for email_id in email_ids:
                 logger.debug(f"Verarbeite E-Mail ID: {email_id}")
                 result, msg_data = mail.fetch(email_id, "(RFC822)")
@@ -211,7 +223,7 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             logger.debug(f"Score für '{title}' (URL: {final_url}): {score}")
                             if score > 0:
                                 logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
-                                articles.append((score, f'• <a href="{final_url}">{title}</a>'))  # Nikkei-Format
+                                articles.append((score, f'• <a href="{final_url}">{title}</a>'))
                                 seen_urls.add(normalized_url)
 
         mail.logout()
@@ -253,7 +265,7 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=60, max_articles=10)
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
     markdown = ["## Think Tanks", "", "### MERICS"]
     if articles:
