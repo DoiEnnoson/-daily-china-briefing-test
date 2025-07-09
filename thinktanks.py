@@ -203,4 +203,159 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
         logger.info(f"Suche nach E-Mails seit: {since_date}")
 
         for sender in email_senders:
-            logger.info(f"Suche nach E
+            logger.info(f"Suche nach E-Mails von: {sender}")
+            result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
+            if result != "OK":
+                logger.warning(f"Fehler bei der Suche nach E-Mails von {sender}: {result}")
+                send_email(
+                    "Fehler in fetch_merics_emails",
+                    f"Fehler bei der Suche nach E-Mails von {sender}: {result}",
+                    email_user, email_password
+                )
+                continue
+
+            email_ids = data[0].split()
+            email_count += len(email_ids)
+            logger.info(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
+            for email_id in email_ids:
+                logger.info(f"Verarbeite E-Mail ID: {email_id}")
+                result, msg_data = mail.fetch(email_id, "(RFC822)")
+                if result != "OK":
+                    logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                    continue
+
+                msg = email.message_from_bytes(msg_data[0][1])
+                subject = decode_header(msg.get("Subject", "Kein Betreff"))
+                date = msg.get("Date", "Kein Datum")
+                try:
+                    date = parsedate_to_datetime(date).strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    date = "Unbekanntes Datum"
+                logger.info(f"E-Mail Betreff: {subject}, Datum: {date}")
+
+                for part in msg.walk():
+                    if part.get_content_type() == "text/html":
+                        charset = part.get_content_charset() or "utf-8"
+                        try:
+                            html_content = part.get_payload(decode=True).decode(charset)
+                        except UnicodeDecodeError:
+                            html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+                        soup = BeautifulSoup(html_content, "lxml")
+                        links = soup.find_all("a", href=True)
+                        logger.info(f"Anzahl gefundener Links: {len(links)}")
+
+                        for link in links:
+                            href = link.get("href")
+                            title = link.get_text(strip=True)
+                            logger.info(f"Verarbeite Link: {title} (href: {href})")
+                            # Fallback auf Betreff, wenn Titel ungeeignet
+                            if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here"]):
+                                if "merics.org" in href and ("/report/" in href or "/sites/default/files/" in href):
+                                    title = subject
+                                    logger.info(f"Fallback auf Betreff als Titel: {title}")
+                                else:
+                                    logger.info(f"Link übersprungen: Titel zu kurz oder unerwünscht")
+                                    continue
+                            final_url = resolve_merics_url(href)
+                            if final_url.startswith("mailto:"):
+                                logger.info(f"Link übersprungen: Mailto-URL {final_url}")
+                                continue
+                            normalized_url = normalize_url(final_url)
+                            if normalized_url in seen_urls:
+                                logger.info(f"Link übersprungen: URL bereits gesehen")
+                                continue
+                            score = score_thinktank_article(title, final_url)
+                            if score > 0:
+                                logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
+                                articles.append((score, f'• <a href="{final_url}">{title}</a>'))
+                                seen_urls.add(normalized_url)
+
+        mail.logout()
+        logger.info("IMAP-Logout erfolgreich")
+
+        # Sortiere nach Score und begrenze auf max_articles
+        articles.sort(reverse=True)
+        unique_articles = []
+        seen_urls.clear()
+        for score, article in articles[:max_articles]:
+            url = article.split('href="')[1].split('">')[0]
+            if url not in seen_urls:
+                unique_articles.append(article)
+                seen_urls.add(url)
+
+        logger.info(f"Anzahl eindeutiger MERICS-Artikel: {len(unique_articles)}")
+        return unique_articles, email_count
+    except Exception as e:
+        logger.error(f"Fehler in fetch_merics_emails: {str(e)}")
+        send_email(
+            "Fehler in fetch_merics_emails",
+            f"Fehler beim Abrufen von MERICS-E-Mails: {str(e)}",
+            email_user, email_password
+        )
+        return [], 0
+
+def main():
+    """Hauptfunktion zum Testen der MERICS-Artikel-Extraktion."""
+    logger.info("Starte Testskript für MERICS-Artikel-Extraktion")
+    logger.info(f"Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    if not substack_mail:
+        logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
+        send_email(
+            "Fehler in thinktanks.py",
+            "SUBSTACK_MAIL Umgebungsvariable nicht gefunden",
+            "", ""
+        )
+        return
+
+    logger.info(f"SUBSTACK_MAIL gefunden, parse Inhalt")
+    try:
+        mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
+        email_user = mail_config.get("GMAIL_USER")
+        email_password = mail_config.get("GMAIL_PASS")
+        logger.info(f"Geparsed: GMAIL_USER={email_user}")
+        if not email_user or not email_password:
+            logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
+            send_email(
+                "Fehler in thinktanks.py",
+                "GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL",
+                email_user, email_password
+            )
+            return
+    except Exception as e:
+        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        send_email(
+            "Fehler in thinktanks.py",
+            f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}",
+            "", ""
+        )
+        return
+
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
+    markdown = ["## Think Tanks", "\n### MERICS"]
+    if articles:
+        markdown.extend(articles)
+    else:
+        markdown.append("Keine relevanten MERICS-Artikel gefunden.")
+
+    output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
+    logger.info(f"Schreibe Ergebnisse nach {output_file}")
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(markdown))
+    logger.info(f"Ergebnisse in {output_file} gespeichert")
+
+    # Status-E-Mail senden
+    status_message = ["## Think Tanks", "\n### MERICS"]
+    if articles:
+        status_message.extend(articles)
+    else:
+        status_message.append("Keine relevanten MERICS-Artikel gefunden.")
+    status_message = "\n".join(status_message)
+    send_email(
+        "Think Tanks Status",
+        status_message,
+        email_user, email_password
+    )
+
+if __name__ == "__main__":
+    main()
