@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 import requests
 import email.header
 
-# Logging einrichten (umfangreich für Debugging)
+# Logging einrichten
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-# Basisverzeichnis (Repository-Root)
+# Basisverzeichnis
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 THINKTANKS_JSON = os.path.join(BASE_DIR, "thinktanks.json")
 
@@ -130,6 +130,31 @@ def resolve_merics_url(url):
         logger.warning(f"Konnte URL nicht auflösen: {url}, Fehler: {str(e)}")
         return url
 
+def extract_pdf_title(filename):
+    """Extrahiert einen lesbaren Titel aus dem PDF-Dateinamen."""
+    name = os.path.basename(filename).replace('.pdf', '')
+    name = re.sub(r'_\d{6}_WEB_\d', '', name)  # Entferne Datum und Zusatz
+    name = name.replace('-', ' ').replace('_', ' ')
+    name = re.sub(r'\s+', ' ', name).strip()
+    # Kürze lange Titel (z. B. ETNC-PDF)
+    if len(name) > 50:
+        name = name[:47] + "..."
+    return name
+
+def scrape_web_title(url):
+    """Scrapt den Titel von einer Webseite."""
+    try:
+        response = requests.get(url, timeout=5)
+        soup = BeautifulSoup(response.text, "lxml")
+        title_tag = soup.find("title")
+        if title_tag:
+            title = title_tag.get_text(strip=True)
+            return title
+        return None
+    except Exception as e:
+        logger.warning(f"Konnte Titel von {url} nicht scrapen: {str(e)}")
+        return None
+
 def score_thinktank_article(title, url):
     """Bewertet einen Artikel auf China-Relevanz."""
     logger.info(f"Bewerte Think Tank Artikel: {title} (URL: {url})")
@@ -147,7 +172,7 @@ def score_thinktank_article(title, url):
         "subscribe", "donate", "event", "webinar", "conference", "membership",
         "newsletter", "signup", "registration", "legal notice", "privacy policy",
         "website", "unsubscribe", "profile", "read in browser", "pdf here",
-        "on our website", "network"
+        "on our website", "as a pdf", "network"
     ]
     if any(kw in title_lower for kw in important_keywords):
         score += 3
@@ -224,10 +249,10 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                 subject = decode_header(msg.get("Subject", "Kein Betreff"))
                 date = msg.get("Date", "Kein Datum")
                 try:
-                    date = parsedate_to_datetime(date).strftime("%Y-%m-%d %H:%M")
+                    date = parsedate_to_datetime(date)
                 except:
-                    date = "Unbekanntes Datum"
-                logger.info(f"E-Mail Betreff: {subject}, Datum: {date}")
+                    date = datetime.now()
+                logger.info(f"E-Mail Betreff: {subject}, Datum: {date.strftime('%Y-%m-%d %H:%M')}")
 
                 for part in msg.walk():
                     if part.get_content_type() == "text/html":
@@ -248,11 +273,15 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             if final_url.startswith("mailto:"):
                                 logger.info(f"Link übersprungen: Mailto-URL {final_url}")
                                 continue
-                            # Fallback auf Betreff für /report/ oder /sites/default/files/
+                            # Fallback auf PDF-Dateinamen oder gescrapten Web-Titel
                             if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf"]):
-                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
-                                    title = subject
-                                    logger.info(f"Fallback auf Betreff als Titel: {title}")
+                                if "merics.org" in final_url and "/sites/default/files/" in final_url:
+                                    title = extract_pdf_title(final_url)
+                                    logger.info(f"PDF-Titel aus Dateinamen: {title}")
+                                elif "merics.org" in final_url and "/report/" in final_url:
+                                    web_title = scrape_web_title(final_url)
+                                    title = web_title if web_title else subject
+                                    logger.info(f"Web-Titel: {title}")
                                 else:
                                     logger.info(f"Link übersprungen: Titel zu kurz oder unerwünscht")
                                     continue
@@ -263,14 +292,14 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             score = score_thinktank_article(title, final_url)
                             if score > 0:
                                 logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
-                                articles.append((score, f'- [{title}]({final_url})'))
+                                articles.append((score, f'• [{title}]({final_url})'))
                                 seen_urls.add(normalized_url)
 
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
 
-        # Sortiere nach Score und begrenze auf max_articles
-        articles.sort(reverse=True)
+        # Sortiere nach Score (höchster zuerst)
+        articles.sort(key=lambda x: x[0], reverse=True)
         unique_articles = []
         seen_urls.clear()
         for score, article in articles[:max_articles]:
@@ -329,12 +358,13 @@ def main():
         )
         return
 
+    # Für Testzwecke: 30 Tage, für Live-Version auf days=1 setzen
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
     markdown = ["## Think Tanks", "\n### MERICS"]
     if articles:
         markdown.extend(articles)
     else:
-        markdown.append("Keine relevanten MERICS-Artikel gefunden.")
+        markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
 
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
@@ -347,7 +377,7 @@ def main():
     if articles:
         status_message.extend(articles)
     else:
-        status_message.append("Keine relevanten MERICS-Artikel gefunden.")
+        status_message.append("• Keine relevanten MERICS-Artikel gefunden.")
     status_message = "\n".join(status_message)
     send_email(
         "Think Tanks Status",
