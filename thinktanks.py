@@ -126,7 +126,7 @@ def score_thinktank_article(title, url):
     logger.debug(f"Gesamtscore für '{title}' (URL: {url}): {score}")
     return score
 
-def fetch_merics_emails(email_user, email_password, days=120, max_articles=10):
+def fetch_merics_emails(email_user, email_password, days=180, max_articles=10):
     """Holt MERICS-Artikel aus E-Mails."""
     logger.info("Starte fetch_merics_emails")
     try:
@@ -210,9 +210,10 @@ def fetch_merics_emails(email_user, email_password, days=120, max_articles=10):
                             if final_url.startswith("mailto:"):
                                 logger.debug(f"Link übersprungen: Mailto-URL {final_url}")
                                 continue
-                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf"]):
-                                logger.debug(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
-                                continue
+                            # Entferne Filter für unerwünschte Keywords vorübergehend
+                            # if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf"]):
+                            #     logger.debug(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
+                            #     continue
                             if "merics.org" in final_url and "/sites/default/files/" in final_url:
                                 title = extract_pdf_title(final_url, subject)
                                 logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
@@ -225,7 +226,7 @@ def fetch_merics_emails(email_user, email_password, days=120, max_articles=10):
                                 logger.debug(f"Link übersprungen: URL bereits gesehen: {normalized_url}")
                                 continue
                             if normalized_url in missing_urls:
-                                logger.info(f"Fehlende URL gefunden: {normalized_url}")
+                                logger.info(f"Fehlende URL gefunden: {normalized_url} (Titel: {title})")
                             score = score_thinktank_article(title, final_url)
                             logger.debug(f"Score für '{title}' (URL: {final_url}): {score}")
                             if score > 0:
@@ -272,16 +273,16 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=120, max_articles=10)
+    articles, email_count = fetch_merics_emails(email_user, email_password, days=180, max_articles=10)
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
     markdown = ["## Think Tanks", "", "### MERICS", ""]
     if articles:
         for i, article in enumerate(articles):
             markdown.append(article)
-            if i < len(articles) - 1:  # Leere Zeile zwischen Artikeln, außer nach dem letzten
-                markdown.append("")
+            markdown.append("")  # Leere Zeile nach jedem Artikel
     else:
         markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
+        markdown.append("")
     
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
     try:
