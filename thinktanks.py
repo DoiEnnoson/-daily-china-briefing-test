@@ -1,194 +1,4 @@
-import imaplib
-import email
-import os
-import json
-import logging
-from datetime import datetime, timedelta
-from email.utils import parsedate_to_datetime
-import smtplib
-from email.mime.text import MIMEText
-import re
-import urllib.parse
-import json as json_parser
-from bs4 import BeautifulSoup
-import requests
-import email.header
-
-# Logging einrichten
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger()
-
-# Basisverzeichnis
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-THINKTANKS_JSON = os.path.join(BASE_DIR, "thinktanks.json")
-
-def decode_header(header):
-    """Dekodiert E-Mail-Header (z. B. Betreff) mit korrektem Encoding."""
-    try:
-        decoded = email.header.decode_header(header)[0][0]
-        if isinstance(decoded, bytes):
-            charset = email.header.decode_header(header)[0][1] or 'utf-8'
-            return decoded.decode(charset, errors='replace')
-        return decoded
-    except Exception as e:
-        logger.warning(f"Fehler beim Dekodieren des Headers: {str(e)}")
-        return header
-
-def send_email(subject, body, email_user, email_password, recipient="hadobrockmeyer@gmail.com"):
-    """Sendet eine E-Mail (Warnung oder Status)."""
-    logger.info(f"Sende E-Mail: {subject} an {recipient}")
-    if not email_user or not email_password:
-        logger.error("E-Mail-Credentials fehlen, überspringe E-Mail")
-        return
-    try:
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = email_user
-        msg['To'] = recipient
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(email_user, email_password)
-            server.send_message(msg)
-        logger.info(f"E-Mail erfolgreich an {recipient} gesendet")
-    except Exception as e:
-        logger.error(f"Fehler beim Senden der E-Mail an {recipient}: {str(e)}")
-
-def load_thinktanks():
-    """Lädt die Think Tanks aus der JSON-Datei."""
-    logger.info(f"Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
-    logger.info(f"Lade Think Tanks aus {THINKTANKS_JSON}")
-    logger.info(f"Inhalt von {BASE_DIR}:")
-    try:
-        for item in os.listdir(BASE_DIR):
-            logger.info(f" - {item}")
-    except Exception as e:
-        logger.error(f"Konnte Verzeichnis nicht auflisten: {str(e)}")
-    if not os.path.exists(THINKTANKS_JSON):
-        logger.error(f"{THINKTANKS_JSON} nicht gefunden")
-        send_email(
-            "Fehler in thinktanks.py",
-            f"{THINKTANKS_JSON} nicht gefunden",
-            os.getenv("GMAIL_USER", ""), os.getenv("GMAIL_PASS", "")
-        )
-        return []
-    try:
-        with open(THINKTANKS_JSON, "r", encoding="utf-8") as f:
-            thinktanks = json.load(f)
-        logger.info(f"Geladen: {len(thinktanks)} Think Tanks")
-        logger.info(f"Inhalt von thinktanks.json: {json.dumps(thinktanks, indent=2)}")
-        return thinktanks
-    except json.JSONDecodeError:
-        logger.error(f"{THINKTANKS_JSON} ist ungültig")
-        send_email(
-            "Fehler in thinktanks.py",
-            f"{THINKTANKS_JSON} ist ungültig",
-            os.getenv("GMAIL_USER", ""), os.getenv("GMAIL_PASS", "")
-        )
-        return []
-
-def extract_email_address(sender):
-    """Extrahiert die E-Mail-Adresse aus einem Sender-String."""
-    logger.info(f"Extrahiere E-Mail-Adresse aus: {sender}")
-    match = re.search(r'<([^>]+)>', sender)
-    if match:
-        email_addr = match.group(1)
-        logger.info(f"E-Mail-Adresse gefunden: {email_addr}")
-        return email_addr
-    email_addr = sender.strip()
-    logger.info(f"E-Mail-Adresse (Fallback): {email_addr}")
-    return email_addr
-
-def normalize_url(url):
-    """Entfernt Tracking-Parameter aus der URL."""
-    parsed = urllib.parse.urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-
-def resolve_merics_url(url):
-    """Löst MERICS-Tracking-URLs auf die Ziel-URL auf."""
-    logger.info(f"Auflösen der URL: {url}")
-    if "public-eur.mkt.dynamics.com" in url:
-        try:
-            parsed = urllib.parse.urlparse(url)
-            query_params = urllib.parse.parse_qs(parsed.query)
-            target = query_params.get("target", [None])[0]
-            if target:
-                target_data = json_parser.loads(target)
-                target_url = urllib.parse.unquote(target_data["TargetUrl"])
-                logger.info(f"Ziel-URL gefunden: {target_url}")
-                return target_url
-        except Exception as e:
-            logger.warning(f"Konnte MERICS-URL nicht auflösen: {url}, Fehler: {str(e)}")
-    try:
-        response = requests.get(url, allow_redirects=True, timeout=5)
-        final_url = response.url
-        logger.info(f"Ziel-URL nach Weiterleitung: {final_url}")
-        return final_url
-    except Exception as e:
-        logger.warning(f"Konnte URL nicht auflösen: {url}, Fehler: {str(e)}")
-        return url
-
-def extract_pdf_title(filename):
-    """Extrahiert einen lesbaren Titel aus dem PDF-Dateinamen."""
-    name = os.path.basename(filename).replace('.pdf', '')
-    name = re.sub(r'_\d{6}_WEB_\d', '', name)  # Entferne Datum und Zusatz
-    name = name.replace('-', ' ').replace('_', ' ')
-    name = re.sub(r'\s+', ' ', name).strip()
-    # Kürze lange Titel (z. B. ETNC-PDF)
-    if len(name) > 50:
-        name = name[:47] + "..."
-    return name
-
-def scrape_web_title(url):
-    """Scrapt den Titel von einer Webseite."""
-    try:
-        response = requests.get(url, timeout=5)
-        soup = BeautifulSoup(response.text, "lxml")
-        title_tag = soup.find("title")
-        if title_tag:
-            title = title_tag.get_text(strip=True)
-            return title
-        return None
-    except Exception as e:
-        logger.warning(f"Konnte Titel von {url} nicht scrapen: {str(e)}")
-        return None
-
-def score_thinktank_article(title, url):
-    """Bewertet einen Artikel auf China-Relevanz."""
-    logger.info(f"Bewerte Think Tank Artikel: {title} (URL: {url})")
-    title_lower = title.lower()
-    score = 5  # MERICS ist immer China-relevant
-    important_keywords = [
-        "economy", "policy", "trade", "geopolitics", "technology", "ai", "semiconductors",
-        "military", "diplomacy", "sanctions", "energy", "climate", "infrastructure"
-    ]
-    positive_modifiers = [
-        "analysis", "report", "brief", "commentary", "working paper", "policy brief",
-        "in depth", "research", "study"
-    ]
-    negative_keywords = [
-        "subscribe", "donate", "event", "webinar", "conference", "membership",
-        "newsletter", "signup", "registration", "legal notice", "privacy policy",
-        "website", "unsubscribe", "profile", "read in browser", "pdf here",
-        "on our website", "as a pdf", "network"
-    ]
-    if any(kw in title_lower for kw in important_keywords):
-        score += 3
-    if any(kw in title_lower for kw in positive_modifiers):
-        score += 2
-    if any(kw in title_lower for kw in negative_keywords):
-        score -= 5
-    if "merics.org" in url and "/report/" in url:
-        score += 3
-    if "merics.org" in url and "/sites/default/files/" in url:
-        score += 3  # PDFs höher gewichtet
-    logger.info(f"Score für '{title}' (URL: {url}): {score}")
-    return max(score, 0)
-
 def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
-    """Holt alle E-Mails von MERICS-Absendern und extrahiert Artikel."""
     logger.info("Starte fetch_merics_emails")
     try:
         thinktanks = load_thinktanks()
@@ -273,7 +83,6 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             if final_url.startswith("mailto:"):
                                 logger.info(f"Link übersprungen: Mailto-URL {final_url}")
                                 continue
-                            # Fallback auf PDF-Dateinamen oder gescrapten Web-Titel
                             if not title or len(title) < 10 or any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf"]):
                                 if "merics.org" in final_url and "/sites/default/files/" in final_url:
                                     title = extract_pdf_title(final_url)
@@ -292,18 +101,18 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
                             score = score_thinktank_article(title, final_url)
                             if score > 0:
                                 logger.info(f"Artikel hinzugefügt: {title} (URL: {final_url}, Score: {score})")
-                                articles.append((score, f'• [{title}]({final_url})'))
+                                # Änderung: HTML-Links statt Markdown
+                                articles.append((score, f'• <a href="{final_url}">{title}</a>'))
                                 seen_urls.add(normalized_url)
 
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
 
-        # Sortiere nach Score (höchster zuerst)
         articles.sort(key=lambda x: x[0], reverse=True)
         unique_articles = []
         seen_urls.clear()
         for score, article in articles[:max_articles]:
-            url_match = re.search(r'\]\((.*?)\)', article)
+            url_match = re.search(r'href="(.*?)"', article)
             if url_match:
                 url = url_match.group(1)
                 if url not in seen_urls:
@@ -320,70 +129,3 @@ def fetch_merics_emails(email_user, email_password, days=30, max_articles=10):
             email_user, email_password
         )
         return [], 0
-
-def main():
-    """Hauptfunktion zum Testen der MERICS-Artikel-Extraktion."""
-    logger.info("Starte Testskript für MERICS-Artikel-Extraktion")
-    logger.info(f"Aktuelles Arbeitsverzeichnis: {os.getcwd()}")
-    substack_mail = os.getenv("SUBSTACK_MAIL")
-    if not substack_mail:
-        logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
-        send_email(
-            "Fehler in thinktanks.py",
-            "SUBSTACK_MAIL Umgebungsvariable nicht gefunden",
-            "", ""
-        )
-        return
-
-    logger.info(f"SUBSTACK_MAIL gefunden, parse Inhalt")
-    try:
-        mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
-        email_user = mail_config.get("GMAIL_USER")
-        email_password = mail_config.get("GMAIL_PASS")
-        logger.info(f"Geparsed: GMAIL_USER={email_user}")
-        if not email_user or not email_password:
-            logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
-            send_email(
-                "Fehler in thinktanks.py",
-                "GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL",
-                email_user, email_password
-            )
-            return
-    except Exception as e:
-        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
-        send_email(
-            "Fehler in thinktanks.py",
-            f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}",
-            "", ""
-        )
-        return
-
-    # Für Testzwecke: 30 Tage, für Live-Version auf days=1 setzen
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=30, max_articles=10)
-    markdown = ["## Think Tanks", "\n### MERICS"]
-    if articles:
-        markdown.extend(articles)
-    else:
-        markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
-
-    output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    logger.info(f"Schreibe Ergebnisse nach {output_file}")
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(markdown))
-    logger.info(f"Ergebnisse in {output_file} gespeichert")
-
-    # Status-E-Mail senden
-    status_message = ["## Think Tanks", "\n### MERICS"]
-    if articles:
-        status_message.extend(articles)
-    else:
-        status_message.append("• Keine relevanten MERICS-Artikel gefunden.")
-    status_message = "\n".join(status_message)
-    send_email(
-        "Think Tanks Status",
-        status_message,
-        email_user, email_password
-    )
-
-if __name__ == "__main__":
-    main()
