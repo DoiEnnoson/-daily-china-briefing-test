@@ -59,17 +59,14 @@ def normalize_url(url):
 def resolve_merics_url(url):
     """Löst die ursprüngliche URL auf, inkl. Tracking-URLs."""
     try:
-        # Prüfe, ob es eine Tracking-URL ist
         parsed = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed.query)
         if 'target' in query_params:
-            # Extrahiere die Ziel-URL aus dem 'target'-Parameter
             target_url = query_params['target'][0]
             decoded_url = urllib.parse.unquote(target_url)
             if decoded_url.startswith("https://merics.org"):
                 logger.debug(f"Dekodierte Ziel-URL: {decoded_url}")
                 return decoded_url
-        # Führe normale Weiterleitungsauflösung durch
         response = requests.get(url, allow_redirects=True, timeout=5)
         final_url = response.url
         logger.debug(f"Ziel-URL gefunden: {final_url}")
@@ -93,12 +90,13 @@ def scrape_web_title(url):
 def extract_pdf_title(filename, subject=""):
     """Extrahiert den Titel eines PDFs, bevorzugt aus dem Betreff."""
     if subject and subject != "Kein Betreff":
+        logger.debug(f"Verwende Betreff als PDF-Titel: {subject}")
         return subject
     name = os.path.basename(filename).replace('.pdf', '')
     name = re.sub(r'_\d{6}_WEB_\d', '', name)
     name = name.replace('-', ' ').replace('_', ' ')
     name = re.sub(r'\s+', ' ', name).strip()
-    logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {name}")
+    logger.debug(f"PDF-Titel aus Dateinamen: {name}")
     return name
 
 def score_thinktank_article(title, url):
@@ -157,7 +155,6 @@ def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         logger.info(f"Suche nach E-Mails seit: {since_date}")
 
-        # Gezielte Suche nach fehlenden URLs
         missing_urls = [
             "https://merics.org/en/report/trade-offs-innovating-china-times-global-technology-rivalry",
             "https://merics.org/sites/default/files/2025-06/22/ETNC-2025-Report-2025-Quest-for-strategic-autonomy-europe-grapples-with-the-us-china-rivalry.pdf"
@@ -213,9 +210,14 @@ def fetch_merics_emails(email_user, email_password, days=365, max_articles=10):
                             if not title or len(title) < 5:
                                 logger.info(f"Link übersprungen: Titel zu kurz oder leer: {title}")
                                 continue
-                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "pdf here", "on our website", "as a pdf", "cookie"]):
-                                logger.info(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
-                                continue
+                            if any(kw in title.lower() for kw in ["subscribe", "unsubscribe", "donate", "legal notice", "privacy policy", "website", "read in browser", "profile", "cookie"]):
+                                # Ausnahme für /report/ oder /sites/default/files/
+                                if "merics.org" in final_url and ("/report/" in final_url or "/sites/default/files/" in final_url):
+                                    logger.info(f"Ausnahme: Verwende Betreff '{subject}' für {final_url} trotz unerwünschtem Keyword '{title}'")
+                                    title = subject
+                                else:
+                                    logger.info(f"Link übersprungen: Unerwünschtes Keyword in Titel: {title}")
+                                    continue
                             if "merics.org" in final_url and "/sites/default/files/" in final_url:
                                 title = extract_pdf_title(final_url, subject)
                                 logger.debug(f"PDF-Titel aus Dateinamen oder Betreff: {title}")
@@ -279,26 +281,24 @@ def main():
 
     articles, email_count = fetch_merics_emails(email_user, email_password, days=365, max_articles=10)
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["## Think Tanks", "", "### MERICS", ""]
+    markdown = ["## Think Tanks\n", "\n### MERICS\n"]
     if articles:
         for article in articles:
-            markdown.append(article)
-            markdown.append("")  # Leere Zeile nach jedem Artikel
+            markdown.append(f"{article}\n")
     else:
-        markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
-        markdown.append("")
+        markdown.append("• Keine relevanten MERICS-Artikel gefunden.\n")
     
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
     try:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(markdown))
+            f.write("".join(markdown))
         logger.info(f"Ergebnisse in {output_file} gespeichert")
     except Exception as e:
         logger.error(f"Fehler beim Schreiben von {output_file}: {str(e)}")
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Schreiben von {output_file}: {str(e)}</p>", email_user, email_password)
 
-    status_message = "\n".join(markdown)
+    status_message = "".join(markdown)
     send_email("Think Tanks Status", status_message, email_user, email_password)
 
 if __name__ == "__main__":
