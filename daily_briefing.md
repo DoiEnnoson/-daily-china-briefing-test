@@ -1,4 +1,4 @@
-Daily China Briefing - 13 Oct 2025
+Daily China Briefing - 14 Oct 2025
 ==================================================
 ## 🚢 Frachtraten Indizies
 • <a href='https://www.drewry.co.uk/supply-chain-advisors/supply-chain-expertise/world-container-index-assessed-by-drewry'>WCI</a>: 1651.00 (↓ -1%) (Stand 09.10.2025)
