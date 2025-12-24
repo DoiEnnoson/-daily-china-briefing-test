@@ -843,7 +843,6 @@ def fetch_scfi():
     print("DEBUG - fetch_scfi: Starting to fetch SCFI data")
     url = "https://en.sse.net.cn/currentIndex?indexName=scfi"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-    today_str = date.today().isoformat()
     cache = load_scfi_cache()
 
     try:
@@ -867,6 +866,7 @@ def fetch_scfi():
         last_value = float(line_data_list[0]["lastContent"])
         scfi_date = None
 
+        # Datum parsen und in DD.MM.YYYY Format konvertieren
         for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
             try:
                 scfi_date = datetime.strptime(current_date, fmt).strftime("%d.%m.%Y")
@@ -879,57 +879,56 @@ def fetch_scfi():
 
         print(f"DEBUG - fetch_scfi: SCFI-Wert {scfi_value:.2f} per API ausgelesen (Datum: {scfi_date})")
 
+        # Prozentuale Veränderung berechnen
         pct_change = None
         if last_value is not None:
             pct_change = ((scfi_value - last_value) / last_value) * 100 if last_value != 0 else 0
             print(f"DEBUG - fetch_scfi: Calculated percent change: {pct_change:.2f}% (Current: {scfi_value}, Previous: {last_value})")
 
-        latest_cache_date = max(cache.keys(), default=None)
-        should_save = True
-        if latest_cache_date:
-            latest_entry = cache[latest_cache_date]
-            if latest_entry["value"] == scfi_value and latest_entry["api_date"] == current_date:
-                should_save = False
-                print("DEBUG - fetch_scfi: Kein Cache-Update nötig (Wert und Datum unverändert)")
-
-        if should_save:
-            cache[today_str] = {"value": scfi_value, "api_date": current_date}
-            save_scfi_cache(cache)
+        # HIER IST DIE WICHTIGE ÄNDERUNG:
+        # Prüfen, ob dieser Wert bereits im Cache existiert
+        if scfi_date in cache:
+            existing_value = cache[scfi_date]["value"]
+            if existing_value == scfi_value:
+                print(f"DEBUG - fetch_scfi: Wert für {scfi_date} bereits im Cache vorhanden, kein Update nötig")
+                return scfi_value, pct_change, scfi_date, None
+            else:
+                print(f"DEBUG - fetch_scfi: Wert für {scfi_date} hat sich geändert ({existing_value} -> {scfi_value}), aktualisiere Cache")
+        
+        # Neuen Wert zum Cache HINZUFÜGEN (nicht überschreiben!)
+        cache[scfi_date] = {"value": scfi_value}
+        save_scfi_cache(cache)
+        print(f"DEBUG - fetch_scfi: Neuer SCFI-Wert {scfi_value:.2f} für {scfi_date} zum Cache hinzugefügt")
 
         return scfi_value, pct_change, scfi_date, None
 
     except Exception as e:
         print(f"ERROR - fetch_scfi: Failed to fetch SCFI data: {str(e)}")
         warning_message = None
-        latest_cache_date = max(cache.keys(), default=None)
-        ten_days_ago = (date.today() - timedelta(days=10)).isoformat()
-
-        if latest_cache_date:
+        
+        # Bei Fehler: Neuesten Wert aus dem Cache verwenden
+        if cache:
+            # Sortiere die Daten nach Datum und nimm den neuesten
+            sorted_dates = sorted(cache.keys(), key=lambda d: parse_date(d), reverse=True)
+            latest_cache_date = sorted_dates[0]
             latest_entry = cache[latest_cache_date]
             scfi_value = latest_entry["value"]
-            api_date_str = latest_entry["api_date"]
-            scfi_date = None
+            scfi_date = latest_cache_date
+            
+            # Prüfe, ob der Cache-Wert nicht älter als 10 Tage ist
+            ten_days_ago = date.today() - timedelta(days=10)
+            cache_date_obj = parse_date(latest_cache_date).date()
+            
+            if cache_date_obj >= ten_days_ago:
+                print(f"DEBUG - fetch_scfi: SCFI-Wert {scfi_value:.2f} aus Cache verwendet (Datum: {scfi_date})")
+                warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} (Datum: {scfi_date}) genutzt"
+                return scfi_value, None, scfi_date, warning_message
+            else:
+                warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} zu alt (Datum: {scfi_date})"
+        else:
+            warning_message = "API ausgefallen, kein Cache verfügbar"
 
-            for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"]:
-                try:
-                    scfi_date = datetime.strptime(api_date_str, fmt).strftime("%d.%m.%Y")
-                    break
-                except ValueError:
-                    continue
-            if scfi_date is None:
-                scfi_date = date.today().strftime("%d.%m.%Y")
-
-            try:
-                api_date = datetime.strptime(api_date_str, "%Y-%m-%d")
-                if api_date >= datetime.strptime(ten_days_ago, "%Y-%m-%d"):
-                    print(f"DEBUG - fetch_scfi: SCFI-Wert {scfi_value:.2f} aus Cache verwendet (Datum: {scfi_date})")
-                    warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} (Datum: {api_date_str}) genutzt"
-                    return scfi_value, None, scfi_date, warning_message
-                else:
-                    warning_message = f"API nicht erreichbar, Cache-Wert {scfi_value} zu alt (Datum: {api_date_str})"
-            except ValueError:
-                warning_message = f"API nicht erreichbar, Cache-Datum ungültig (Datum: {api_date_str})"
-
+        # Fallback-Wert
         scfi_value = 1869.59
         scfi_date = date.today().strftime("%d.%m.%Y")
         warning_message = warning_message or "API ausgefallen, kein Cache verfügbar, Fallback 1869.59 genutzt"
