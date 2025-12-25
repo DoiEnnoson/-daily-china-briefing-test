@@ -191,7 +191,7 @@ def parse_merics_email(msg):
     # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        formatted_article = f"\n• [{title}]({found_link})"
+        formatted_article = f"• [{title}]({found_link})"
         articles.append(formatted_article)
         logger.info(f"MERICS Artikel erstellt: {title}")
     else:
@@ -307,32 +307,32 @@ def main():
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
     
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["\n## Think Tanks\n", "\n### MERICS"]
+    markdown = ["## Think Tanks", "### MERICS"]
     
     if articles:
         markdown.extend(articles)
     else:
-        markdown.append("\n• Keine relevanten MERICS-Artikel gefunden.")
+        markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
 
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
     try:
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
-            f.write("".join(markdown))
+            f.write("\n".join(markdown))
         logger.info(f"Ergebnisse in {output_file} gespeichert")
         
         # Zeige Vorschau
         print("\n" + "="*50)
         print("VORSCHAU DER AUSGABE:")
         print("="*50)
-        print("".join(markdown))
+        print("\n".join(markdown))
         print("="*50 + "\n")
         
     except Exception as e:
         logger.error(f"Fehler beim Schreiben von {output_file}: {str(e)}")
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Schreiben von {output_file}: {str(e)}</p>", email_user, email_password)
 
-    status_message = "".join(markdown)
+    status_message = "\n".join(markdown)
     send_email("Think Tanks Status - Verbessert", status_message, email_user, email_password)
 
 if __name__ == "__main__":
