@@ -191,7 +191,7 @@ def parse_merics_email(msg):
     # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        formatted_article = f'• <a href="{found_link}">{title}</a>'
+        formatted_article = f"• [{title}]({found_link})"
         articles.append(formatted_article)
         logger.info(f"MERICS Artikel erstellt: {title}")
     else:
@@ -309,7 +309,9 @@ def main():
     # Briefing erstellen (wie in der Hauptdatei)
     briefing = []
     briefing.append("## Think Tanks")
+    briefing.append("")  # Leerzeile
     briefing.append("### MERICS")
+    briefing.append("")  # Leerzeile
     
     if articles:
         briefing.extend(articles)
@@ -318,6 +320,8 @@ def main():
 
     # Konvertiere zu HTML für E-Mail (doppeltes <br> für Absätze)
     html_content = "<br><br>\n".join(briefing)
+    # Konvertiere Markdown-Links zu HTML
+    html_content = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', html_content)
     
     # E-Mail senden
     send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
