@@ -306,22 +306,35 @@ def main():
     # Suche nach E-Mails der letzten 30 Tage für bessere Testabdeckung
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
     
-    # Briefing erstellen (wie in der Hauptdatei)
+    # Briefing erstellen mit korrekten Abständen
     briefing = []
     briefing.append("## Think Tanks")
-    briefing.append("")  # Leerzeile
     briefing.append("### MERICS")
-    briefing.append("")  # Leerzeile
     
     if articles:
         briefing.extend(articles)
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
 
-    # Konvertiere zu HTML für E-Mail (doppeltes <br> für Absätze)
-    html_content = "<br><br>\n".join(briefing)
-    # Konvertiere Markdown-Links zu HTML
-    html_content = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', html_content)
+    # Konvertiere zu HTML für E-Mail
+    # Zuerst Markdown-Links zu HTML konvertieren
+    html_lines = []
+    for line in briefing:
+        # Konvertiere Markdown-Links zu HTML
+        html_line = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', line)
+        html_lines.append(html_line)
+    
+    # Jetzt mit korrekten Abständen zusammenbauen:
+    # - Nach "## Think Tanks": 1 Absatz
+    # - Nach "### MERICS": KEIN Absatz (direkt die Artikel)
+    # - Zwischen Artikeln: KEIN Absatz
+    html_content = html_lines[0] + "<br><br>\n"  # ## Think Tanks
+    html_content += html_lines[1] + "<br>\n"  # ### MERICS (nur 1x <br>)
+    # Restliche Zeilen (Artikel) mit einfachem <br>
+    for i in range(2, len(html_lines)):
+        html_content += html_lines[i]
+        if i < len(html_lines) - 1:  # Nicht nach dem letzten Artikel
+            html_content += "<br>\n"
     
     # E-Mail senden
     send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
