@@ -321,10 +321,12 @@ def main():
     # Briefing mit korrekten Abständen zusammenbauen
     markdown_lines = []
     markdown_lines.append(briefing[0])  # ## Think Tanks
-    markdown_lines.append("")  # Leerzeile nur nach Hauptüberschrift
+    markdown_lines.append("")  # Leerzeile
     markdown_lines.append(briefing[2])  # ### MERICS
-    # Artikel OHNE Leerzeilen dazwischen
+    # Artikel mit <br> für Zeilenumbruch
     for i in range(3, len(briefing)):
+        if i > 3:  # Vor jedem Artikel außer dem ersten ein <br>
+            markdown_lines.append("<br>")
         markdown_lines.append(briefing[i])
 
     markdown_text = "\n".join(markdown_lines)
