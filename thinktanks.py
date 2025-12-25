@@ -306,34 +306,29 @@ def main():
     # Suche nach E-Mails der letzten 30 Tage für bessere Testabdeckung
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
     
-    output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["## Think Tanks", "### MERICS"]
+    # Briefing erstellen (wie in der Hauptdatei)
+    briefing = []
+    briefing.append("## Think Tanks")
+    briefing.append("### MERICS")
     
     if articles:
-        markdown.extend(articles)
+        briefing.extend(articles)
     else:
-        markdown.append("• Keine relevanten MERICS-Artikel gefunden.")
+        briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
 
-    logger.info(f"Schreibe Ergebnisse nach {output_file}")
-    try:
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(markdown))
-        logger.info(f"Ergebnisse in {output_file} gespeichert")
-        
-        # Zeige Vorschau
-        print("\n" + "="*50)
-        print("VORSCHAU DER AUSGABE:")
-        print("="*50)
-        print("\n".join(markdown))
-        print("="*50 + "\n")
-        
-    except Exception as e:
-        logger.error(f"Fehler beim Schreiben von {output_file}: {str(e)}")
-        send_email("Fehler in thinktanks.py", f"<p>Fehler beim Schreiben von {output_file}: {str(e)}</p>", email_user, email_password)
-
-    status_message = "\n".join(markdown)
-    send_email("Think Tanks Status - Verbessert", status_message, email_user, email_password)
+    # Konvertiere zu HTML für E-Mail
+    html_content = "<br>\n".join(briefing)
+    
+    # E-Mail senden
+    send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
+    logger.info("E-Mail erfolgreich versendet")
+    
+    # Vorschau auf Konsole
+    print("\n" + "="*50)
+    print("VORSCHAU DER E-MAIL:")
+    print("="*50)
+    print("\n".join(briefing))
+    print("="*50 + "\n")
 
 if __name__ == "__main__":
     main()
