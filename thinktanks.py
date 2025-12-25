@@ -191,7 +191,7 @@ def parse_merics_email(msg):
     # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        formatted_article = f"• [{title}]({found_link})"
+        formatted_article = f'• <a href="{found_link}">{title}</a>'
         articles.append(formatted_article)
         logger.info(f"MERICS Artikel erstellt: {title}")
     else:
@@ -316,8 +316,8 @@ def main():
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
 
-    # Konvertiere zu HTML für E-Mail
-    html_content = "<br>\n".join(briefing)
+    # Konvertiere zu HTML für E-Mail (doppeltes <br> für Absätze)
+    html_content = "<br><br>\n".join(briefing)
     
     # E-Mail senden
     send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
