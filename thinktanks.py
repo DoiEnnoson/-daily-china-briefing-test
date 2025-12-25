@@ -318,8 +318,19 @@ def main():
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
 
-    # ← NEU: Markdown richtig zu HTML konvertieren
-    markdown_text = "\n".join(briefing)
+    # Briefing mit korrekten Abständen zusammenbauen
+    markdown_lines = []
+    markdown_lines.append(briefing[0])  # ## Think Tanks
+    markdown_lines.append("")  # Leerzeile
+    markdown_lines.append(briefing[2])  # ### MERICS
+    markdown_lines.append("")  # Leerzeile vor Artikeln
+    # Restliche Artikel mit Leerzeilen dazwischen
+    for i in range(3, len(briefing)):
+        markdown_lines.append(briefing[i])
+        if i < len(briefing) - 1:  # Nicht nach dem letzten
+            markdown_lines.append("")  # Leerzeile zwischen Artikeln
+
+    markdown_text = "\n".join(markdown_lines)
     html_content = markdown.markdown(markdown_text)
     
     # E-Mail senden
