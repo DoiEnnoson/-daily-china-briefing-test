@@ -191,7 +191,7 @@ def parse_merics_email(msg):
     # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        formatted_article = f"• [{title}]({found_link})\n\n"
+        formatted_article = f"\n• [{title}]({found_link})"
         articles.append(formatted_article)
         logger.info(f"MERICS Artikel erstellt: {title}")
     else:
@@ -307,12 +307,12 @@ def main():
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
     
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["## Think Tanks\n\n", "### MERICS\n\n"]
+    markdown = ["\n## Think Tanks", "\n### MERICS"]
     
     if articles:
         markdown.extend(articles)
     else:
-        markdown.append("• Keine relevanten MERICS-Artikel gefunden.\n")
+        markdown.append("\n• Keine relevanten MERICS-Artikel gefunden.")
 
     logger.info(f"Schreibe Ergebnisse nach {output_file}")
     try:
