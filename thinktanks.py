@@ -191,7 +191,7 @@ def parse_merics_email(msg):
     # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        formatted_article = f"• [{title}]({found_link})\n"
+        formatted_article = f"• [{title}]({found_link})\n\n"
         articles.append(formatted_article)
         logger.info(f"MERICS Artikel erstellt: {title}")
     else:
