@@ -307,7 +307,7 @@ def main():
     articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
     
     output_file = os.path.join(BASE_DIR, "main", "daily-china-briefing-test", "thinktanks_briefing.md")
-    markdown = ["\n## Think Tanks", "\n### MERICS"]
+    markdown = ["\n## Think Tanks\n", "\n### MERICS"]
     
     if articles:
         markdown.extend(articles)
