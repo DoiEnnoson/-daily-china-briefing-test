@@ -254,6 +254,8 @@ def parse_csis_geopolitics_email(msg):
         title = None
         current_element = link
         
+        # Methode 1: Suche in großer Tabelle mit mehreren <tr>
+        found_table_with_multiple_trs = None
         for level in range(5):
             parent_table = current_element.find_parent("table")
             if not parent_table:
@@ -262,23 +264,38 @@ def parse_csis_geopolitics_email(msg):
             all_trs = parent_table.find_all("tr")
             
             if len(all_trs) > 3:
-                em_text4_elements = parent_table.find_all(class_="em_text4")
-                if em_text4_elements:
-                    # Nimm das LETZTE em_text4 Element (meist der Podcast-Titel)
-                    last_em_text4 = em_text4_elements[-1]
-                    title = last_em_text4.get_text(strip=True)
-                    title = " ".join(title.split())
-                    break
+                found_table_with_multiple_trs = parent_table
+                break
             
             current_element = parent_table
         
-        # Fallback: Übergeordnete Tabelle
+        if found_table_with_multiple_trs:
+            # Finde alle em_text4 Elemente
+            all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
+            
+            # Durchsuche RÜCKWÄRTS und überspringe "New Episodes:"
+            for title_cell in reversed(all_em_text4):
+                title_text = title_cell.get_text(strip=True)
+                title_text = " ".join(title_text.split())
+                
+                # Skip Überschrift
+                if "new episodes:" in title_text.lower():
+                    continue
+                
+                if title_text and len(title_text) > 20:
+                    title = title_text
+                    break
+        
+        # Methode 2: Fallback - übergeordnete Tabelle
         if not title:
             parent_table = link.find_parent("table")
             if parent_table:
-                em_text4 = parent_table.find(class_="em_text4")
-                if em_text4:
-                    title = " ".join(em_text4.get_text(strip=True).split())
+                title_cell = parent_table.find("td", class_="em_text4")
+                if title_cell:
+                    title_text = title_cell.get_text(strip=True)
+                    title_text = " ".join(title_text.split())
+                    if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
+                        title = title_text
         
         if not title:
             continue
