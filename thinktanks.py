@@ -616,6 +616,7 @@ def parse_csis_trustee_email(msg):
         "visit our microsite",
         "trustee chair in chinese business",
         "our new non-resident",
+        "non-resident affiliate",
         "upcoming virtual event",
         "upcoming event",
         "register here",
