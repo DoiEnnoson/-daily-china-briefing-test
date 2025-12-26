@@ -331,15 +331,22 @@ def fetch_csis_geopolitics_emails(mail, days=120):
 
 def main():
     """Hauptfunktion."""
+    # E-Mail-Credentials aus Umgebungsvariable laden
+    substack_mail = os.getenv("SUBSTACK_MAIL")
+    if not substack_mail:
+        logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
+        return
+
     try:
-        # E-Mail-Credentials laden
-        substack_mail_path = os.path.join(BASE_DIR, "SUBSTACK_MAIL")
-        with open(substack_mail_path, "r") as f:
-            content = f.read()
-            email_user = re.search(r'GMAIL_USER="([^"]+)"', content).group(1)
-            email_password = re.search(r'GMAIL_PASS="([^"]+)"', content).group(1)
+        mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
+        email_user = mail_config.get("GMAIL_USER")
+        email_password = mail_config.get("GMAIL_PASS")
+        
+        if not email_user or not email_password:
+            logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
+            return
     except Exception as e:
-        logger.error(f"Fehler beim Laden der Credentials: {str(e)}")
+        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
         return
     
     # EINMAL IMAP-Verbindung aufbauen
