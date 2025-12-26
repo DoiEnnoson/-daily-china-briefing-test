@@ -189,9 +189,10 @@ def parse_merics_email(msg):
     
     return articles
 
-def fetch_merics_emails(email_user, email_password, days=7):
+def fetch_merics_emails(mail, email_user, email_password, days=7):
     """
     Holt MERICS-Artikel aus E-Mails mit verbessertem Parsing.
+    Verwendet eine bestehende IMAP-Verbindung.
     """
     try:
         thinktanks = load_thinktanks()
@@ -203,15 +204,6 @@ def fetch_merics_emails(email_user, email_password, days=7):
 
         email_senders = merics["email_senders"]
         email_senders = [extract_email_address(sender) for sender in email_senders]
-
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        try:
-            mail.login(email_user, email_password)
-            logger.info("IMAP-Login erfolgreich")
-        except Exception as e:
-            logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
-            send_email("Fehler in fetch_merics_emails", f"<p>IMAP-Login fehlgeschlagen: {str(e)}</p>", email_user, email_password)
-            return [], 0
 
         mail.select("inbox")
         all_articles = []
@@ -249,21 +241,13 @@ def fetch_merics_emails(email_user, email_password, days=7):
                             all_articles.append(article)
                             seen_urls.add(url)
 
-        mail.logout()
-        logger.info("IMAP-Logout erfolgreich")
-        logger.info(f"Anzahl eindeutiger MERICS-Artikel: {len(all_articles)}")
+        logger.info(f"MERICS: {len(all_articles)} Artikel gefunden")
         return all_articles, email_count
         
     except Exception as e:
         logger.error(f"Fehler in fetch_merics_emails: {str(e)}")
         send_email("Fehler in fetch_merics_emails", f"<p>Fehler beim Abrufen von MERICS-E-Mails: {str(e)}</p>", email_user, email_password)
         return [], 0
-    finally:
-        try:
-            mail.logout()
-            logger.info("IMAP-Logout im finally-Block erfolgreich")
-        except:
-            pass
 
 def score_csis_article(title, description=""):
     """Bewertet einen CSIS-Artikel auf China-Relevanz."""
@@ -480,19 +464,12 @@ def parse_csis_geopolitics_email(msg):
     
     return articles
 
-def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
+def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=180):
     """
     Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
+    Verwendet eine bestehende IMAP-Verbindung.
     """
     try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        try:
-            mail.login(email_user, email_password)
-            logger.info("IMAP-Login erfolgreich für CSIS")
-        except Exception as e:
-            logger.error(f"IMAP-Login fehlgeschlagen für CSIS: {str(e)}")
-            return [], 0
-        
         mail.select("inbox")
         all_articles = []
         seen_urls = set()
@@ -504,14 +481,12 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
         
         if result != "OK":
             logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS: {result}")
-            mail.logout()
             return [], 0
         
         email_ids = data[0].split()
         
         if not email_ids:
             logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
-            mail.logout()
             return [], 0
         
         for email_id in email_ids:
@@ -538,19 +513,12 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
                         all_articles.append(article)
                         seen_urls.add(url)
         
-        mail.logout()
-        logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
+        logger.info(f"CSIS: {len(all_articles)} Artikel gefunden")
         return all_articles, len(email_ids)
         
     except Exception as e:
         logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
         return [], 0
-    finally:
-        try:
-            mail.logout()
-            logger.info("IMAP-Logout für CSIS erfolgreich")
-        except:
-            pass
 
 def main():
     logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
@@ -573,11 +541,25 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    # Suche nach E-Mails der letzten 30 Tage für MERICS
-    merics_articles, merics_count = fetch_merics_emails(email_user, email_password, days=30)
+    # Einmal IMAP-Verbindung aufbauen
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(email_user, email_password)
+        logger.info("IMAP-Login erfolgreich")
+    except Exception as e:
+        logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
+        return
     
-    # Suche nach CSIS Geopolitics (bis August = ca. 120 Tage)
-    csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(email_user, email_password, days=120)
+    try:
+        # Suche nach E-Mails der letzten 30 Tage für MERICS
+        merics_articles, merics_count = fetch_merics_emails(mail, email_user, email_password, days=30)
+        
+        # Suche nach CSIS Geopolitics (bis August = ca. 120 Tage)
+        csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120)
+    finally:
+        # Einmal IMAP-Logout
+        mail.logout()
+        logger.info("IMAP-Logout erfolgreich")
     
     # Briefing erstellen mit korrekten Abständen
     briefing = []
