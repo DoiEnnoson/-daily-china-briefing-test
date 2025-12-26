@@ -400,30 +400,57 @@ def parse_csis_geopolitics_email(msg):
         title = None
         description = ""
         
-        # Methode 1: Gehe zur parent <table> und suche DORT nach em_text4
-        parent_table = link.find_parent("table")
-        if parent_table:
-            logger.debug(f"Parent <table> gefunden")
-            # Suche in der GESAMTEN Tabelle nach em_text4
-            title_cell = parent_table.find("td", class_="em_text4")
-            if title_cell:
-                logger.debug(f"em_text4 cell gefunden!")
-                # Hole den Text aus dem <td> oder aus einem <span> darin
-                title_text = title_cell.get_text(strip=True)
-                # Bereinige den Titel (entferne extra Whitespace)
-                title_text = " ".join(title_text.split())
-                logger.debug(f"Gefundener Text: {title_text[:100]}...")
-                
-                # Prüfe ob es ein gültiger Titel ist (länger als 20 Zeichen)
-                if title_text and len(title_text) > 20:
-                    title = title_text
-                    logger.info(f"✓ Titel aus <td class='em_text4'> gefunden: {title[:60]}...")
-                else:
-                    logger.debug(f"Text zu kurz (<20 Zeichen): {len(title_text)} Zeichen")
-            else:
-                logger.debug(f"Kein em_text4 in parent table gefunden")
-        else:
-            logger.debug(f"Kein parent <table> gefunden")
+        # Methode 1: Suche RÜCKWÄRTS nach dem VORHERIGEN em_text4 Element
+        # Start beim Link und gehe zur parent <tr>
+        current_tr = link.find_parent("tr")
+        if current_tr:
+            logger.debug(f"Gefunden: parent <tr>")
+            # Suche alle VORHERIGEN <tr> Elemente in der gleichen Tabelle
+            parent_table = current_tr.find_parent("table")
+            if parent_table:
+                # Finde ALLE <tr> in dieser Tabelle
+                all_trs = parent_table.find_all("tr")
+                # Finde den Index der aktuellen <tr>
+                try:
+                    current_index = all_trs.index(current_tr)
+                    logger.debug(f"Current TR ist Index {current_index} von {len(all_trs)}")
+                    
+                    # Gehe RÜCKWÄRTS durch die vorherigen <tr> Elemente
+                    for i in range(current_index - 1, -1, -1):
+                        prev_tr = all_trs[i]
+                        # Suche nach em_text4 in dieser vorherigen <tr>
+                        title_cell = prev_tr.find("td", class_="em_text4")
+                        if title_cell:
+                            title_text = title_cell.get_text(strip=True)
+                            title_text = " ".join(title_text.split())
+                            logger.debug(f"Gefunden in TR[{i}]: {title_text[:60]}...")
+                            
+                            # Prüfe ob es ein gültiger PODCAST-Titel ist (nicht die Überschrift)
+                            # Podcast-Titel sind oft Fragen oder enthalten spezifische Themen
+                            if title_text and len(title_text) > 20:
+                                # Skip wenn es "New Episodes:" enthält - das ist die Überschrift
+                                if "new episodes:" in title_text.lower():
+                                    logger.debug(f"→ Überspringe Überschrift: {title_text[:40]}...")
+                                    continue
+                                
+                                title = title_text
+                                logger.info(f"✓ Titel aus vorheriger <tr> gefunden: {title[:60]}...")
+                                break
+                except ValueError:
+                    logger.debug("Could not find current TR in list")
+        
+        # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle (Fallback)
+        if not title:
+            parent_table = link.find_parent("table")
+            if parent_table:
+                logger.debug(f"Fallback: Suche in parent <table>")
+                title_cell = parent_table.find("td", class_="em_text4")
+                if title_cell:
+                    title_text = title_cell.get_text(strip=True)
+                    title_text = " ".join(title_text.split())
+                    if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
+                        title = title_text
+                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
         
         # Methode 2: Falls nicht gefunden, suche weiter oben - gehe zu mehreren parent tables
         if not title:
