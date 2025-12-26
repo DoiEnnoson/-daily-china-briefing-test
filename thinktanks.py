@@ -13,7 +13,7 @@ import logging
 import json
 
 # Logging-Konfiguration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.FileHandler('thinktanks.log'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
@@ -394,31 +394,57 @@ def parse_csis_geopolitics_email(msg):
         
         processed_count += 1
         logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
+        logger.debug(f"Link-Text: {link_text[:50]}...")
         
         # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
         title = None
         description = ""
         
-        # Methode 1: Suche nach <td class="em_text4"> - das ist wo die Podcast-Titel stehen
-        # Gehe mehrere Ebenen nach oben, um die ganze Tabellen-Struktur zu finden
-        parent_table = link.find_parent(["table"])
+        # Methode 1: Gehe zur parent <table> und suche DORT nach em_text4
+        parent_table = link.find_parent("table")
         if parent_table:
-            # Suche in der ganzen Tabelle nach em_text4 (Podcast-Titel)
+            logger.debug(f"Parent <table> gefunden")
+            # Suche in der GESAMTEN Tabelle nach em_text4
             title_cell = parent_table.find("td", class_="em_text4")
             if title_cell:
+                logger.debug(f"em_text4 cell gefunden!")
                 # Hole den Text aus dem <td> oder aus einem <span> darin
                 title_text = title_cell.get_text(strip=True)
                 # Bereinige den Titel (entferne extra Whitespace)
                 title_text = " ".join(title_text.split())
+                logger.debug(f"Gefundener Text: {title_text[:100]}...")
                 
                 # Prüfe ob es ein gültiger Titel ist (länger als 20 Zeichen)
                 if title_text and len(title_text) > 20:
                     title = title_text
                     logger.info(f"✓ Titel aus <td class='em_text4'> gefunden: {title[:60]}...")
+                else:
+                    logger.debug(f"Text zu kurz (<20 Zeichen): {len(title_text)} Zeichen")
+            else:
+                logger.debug(f"Kein em_text4 in parent table gefunden")
+        else:
+            logger.debug(f"Kein parent <table> gefunden")
         
-        # Methode 2: Falls kein title_cell gefunden, suche nach <strong> oder <b>
+        # Methode 2: Falls nicht gefunden, suche weiter oben - gehe zu mehreren parent tables
         if not title:
-            parent = link.find_parent(["table", "tr", "td"])
+            # Manchmal ist der Titel in einer übergeordneten Tabellen-Struktur
+            current = link
+            for _ in range(5):  # Gehe bis zu 5 Ebenen hoch
+                current = current.find_parent("table")
+                if not current:
+                    break
+                title_cell = current.find("td", class_="em_text4")
+                if title_cell:
+                    title_text = title_cell.get_text(strip=True)
+                    title_text = " ".join(title_text.split())
+                    if title_text and len(title_text) > 20:
+                        title = title_text
+                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
+                        break
+        
+        # Methode 3: Suche nach <strong> oder <b> als Fallback
+        if not title:
+            parent = link.find_parent(["tr", "td"])
             if parent:
                 strong_tags = parent.find_all(["strong", "b"])
                 for strong in strong_tags:
@@ -429,7 +455,7 @@ def parse_csis_geopolitics_email(msg):
                         logger.info(f"✓ Titel aus <strong>/<b> gefunden: {title[:60]}...")
                         break
         
-        # Methode 3: Verwende Link-Text als letzten Ausweg
+        # Methode 4: Verwende Link-Text als letzten Ausweg
         if not title and link_text and len(link_text) > 20:
             if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
                 title = link_text
