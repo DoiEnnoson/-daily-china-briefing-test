@@ -401,43 +401,53 @@ def parse_csis_geopolitics_email(msg):
         description = ""
         
         # Methode 1: Suche RÜCKWÄRTS nach dem VORHERIGEN em_text4 Element
-        # Start beim Link und gehe zur parent <tr>
-        current_tr = link.find_parent("tr")
-        if current_tr:
-            logger.debug(f"Gefunden: parent <tr>")
-            # Suche alle VORHERIGEN <tr> Elemente in der gleichen Tabelle
-            parent_table = current_tr.find_parent("table")
-            if parent_table:
-                # Finde ALLE <tr> in dieser Tabelle
-                all_trs = parent_table.find_all("tr")
-                # Finde den Index der aktuellen <tr>
-                try:
-                    current_index = all_trs.index(current_tr)
-                    logger.debug(f"Current TR ist Index {current_index} von {len(all_trs)}")
-                    
-                    # Gehe RÜCKWÄRTS durch die vorherigen <tr> Elemente
-                    for i in range(current_index - 1, -1, -1):
-                        prev_tr = all_trs[i]
-                        # Suche nach em_text4 in dieser vorherigen <tr>
-                        title_cell = prev_tr.find("td", class_="em_text4")
-                        if title_cell:
-                            title_text = title_cell.get_text(strip=True)
-                            title_text = " ".join(title_text.split())
-                            logger.debug(f"Gefunden in TR[{i}]: {title_text[:60]}...")
-                            
-                            # Prüfe ob es ein gültiger PODCAST-Titel ist (nicht die Überschrift)
-                            # Podcast-Titel sind oft Fragen oder enthalten spezifische Themen
-                            if title_text and len(title_text) > 20:
-                                # Skip wenn es "New Episodes:" enthält - das ist die Überschrift
-                                if "new episodes:" in title_text.lower():
-                                    logger.debug(f"→ Überspringe Überschrift: {title_text[:40]}...")
-                                    continue
-                                
-                                title = title_text
-                                logger.info(f"✓ Titel aus vorheriger <tr> gefunden: {title[:60]}...")
-                                break
-                except ValueError:
-                    logger.debug("Could not find current TR in list")
+        # Problem: Links sind oft in verschachtelten Tabellen!
+        # Lösung: Gehe mehrere Tabellen-Ebenen nach oben
+        
+        current_element = link
+        found_table_with_multiple_trs = None
+        
+        # Gehe bis zu 5 Ebenen hoch, um eine Tabelle mit mehreren <tr> zu finden
+        for level in range(5):
+            current_element = current_element.find_parent("table")
+            if not current_element:
+                break
+            
+            # Zähle wie viele <tr> diese Tabelle hat
+            all_trs = current_element.find_all("tr", recursive=False)
+            logger.debug(f"Ebene {level}: Tabelle mit {len(all_trs)} direkten <tr> Elementen")
+            
+            # Wenn die Tabelle mehr als 3 <tr> hat, ist es wahrscheinlich die richtige
+            if len(all_trs) > 3:
+                found_table_with_multiple_trs = current_element
+                logger.debug(f"→ Gefunden: Tabelle mit {len(all_trs)} <tr> Elementen!")
+                break
+        
+        if found_table_with_multiple_trs:
+            # Finde alle <td class="em_text4"> in dieser Tabelle
+            all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
+            logger.debug(f"Gefunden: {len(all_em_text4)} em_text4 Elemente in großer Tabelle")
+            
+            # Finde das em_text4 Element das VOR dem Link kommt
+            # Durchsuche rückwärts
+            link_position = str(link)  # Position des Links im HTML
+            
+            for title_cell in reversed(all_em_text4):
+                title_text = title_cell.get_text(strip=True)
+                title_text = " ".join(title_text.split())
+                
+                # Skip wenn es die Überschrift ist
+                if "new episodes:" in title_text.lower():
+                    logger.debug(f"→ Überspringe Überschrift: {title_text[:40]}...")
+                    continue
+                
+                # Prüfe ob dieses em_text4 VOR dem Link im HTML steht
+                title_position = str(title_cell)
+                if title_text and len(title_text) > 20:
+                    # Nimm das LETZTE em_text4 das wir finden (= das nächste VOR dem Link)
+                    title = title_text
+                    logger.info(f"✓ Titel aus großer Tabelle gefunden: {title[:60]}...")
+                    break
         
         # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle (Fallback)
         if not title:
