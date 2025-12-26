@@ -113,7 +113,6 @@ def parse_merics_email(msg):
     except:
         date = datetime.now()
     
-    logger.info(f"Parse MERICS E-Mail: {subject}")
     
     # HTML-Inhalt finden
     html_content = None
@@ -187,7 +186,6 @@ def parse_merics_email(msg):
         title = clean_merics_title(subject)
         formatted_article = f"• [{title}]({found_link})"
         articles.append(formatted_article)
-        logger.info(f"MERICS Artikel: {title}")
     
     return articles
 
@@ -195,7 +193,6 @@ def fetch_merics_emails(email_user, email_password, days=7):
     """
     Holt MERICS-Artikel aus E-Mails mit verbessertem Parsing.
     """
-    logger.info("Starte fetch_merics_emails mit verbessertem Parser")
     try:
         thinktanks = load_thinktanks()
         merics = next((tt for tt in thinktanks if tt["abbreviation"] == "MERICS"), None)
@@ -206,7 +203,6 @@ def fetch_merics_emails(email_user, email_password, days=7):
 
         email_senders = merics["email_senders"]
         email_senders = [extract_email_address(sender) for sender in email_senders]
-        logger.info(f"Bereinigte Absender: {email_senders}")
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         try:
@@ -222,10 +218,8 @@ def fetch_merics_emails(email_user, email_password, days=7):
         seen_urls = set()
         email_count = 0
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        logger.info(f"Suche nach E-Mails seit: {since_date}")
 
         for sender in email_senders:
-            logger.info(f"Suche nach E-Mails von: {sender}")
             result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
             if result != "OK":
                 logger.warning(f"Fehler bei der Suche nach E-Mails von {sender}: {result}")
@@ -233,7 +227,6 @@ def fetch_merics_emails(email_user, email_password, days=7):
 
             email_ids = data[0].split()
             email_count += len(email_ids)
-            logger.info(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
             
             for email_id in email_ids:
                 result, msg_data = mail.fetch(email_id, "(RFC822)")
@@ -327,7 +320,6 @@ def parse_csis_geopolitics_email(msg):
     if isinstance(subject, bytes):
         subject = subject.decode()
     
-    logger.info(f"Parse CSIS Geopolitics E-Mail: {subject}")
     
     # HTML-Inhalt finden
     html_content = None
@@ -492,7 +484,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
     """
     Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
     """
-    logger.info("Starte fetch_csis_geopolitics_emails")
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         try:
@@ -509,7 +500,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         sender_email = "geopolitics@csis.org"
         
-        logger.info(f"Suche nach E-Mails von {sender_email} seit {since_date}")
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
@@ -518,7 +508,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
             return [], 0
         
         email_ids = data[0].split()
-        logger.info(f"CSIS Geopolitics: Anzahl gefundener E-Mails: {len(email_ids)}")
         
         if not email_ids:
             logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
@@ -537,10 +526,8 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
             subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
             if isinstance(subject, bytes):
                 subject = subject.decode()
-            logger.info(f"CSIS E-Mail Betreff: {subject}")
             
             articles = parse_csis_geopolitics_email(msg)
-            logger.info(f"Aus dieser E-Mail extrahiert: {len(articles)} Artikel")
             
             # Duplikate filtern
             for article in articles:
@@ -550,7 +537,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
                     if url not in seen_urls:
                         all_articles.append(article)
                         seen_urls.add(url)
-                        logger.info(f"Artikel hinzugefügt: {article[:100]}...")
         
         mail.logout()
         logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
@@ -578,7 +564,6 @@ def main():
         mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
         email_user = mail_config.get("GMAIL_USER")
         email_password = mail_config.get("GMAIL_PASS")
-        logger.info(f"Geparsed: GMAIL_USER={email_user}")
         if not email_user or not email_password:
             logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
             send_email("Fehler in thinktanks.py", "<p>GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL</p>", email_user, email_password)
@@ -613,7 +598,6 @@ def main():
     briefing.append("#### Geopolitics & Foreign Policy")
     if csis_geo_articles:
         briefing.extend(csis_geo_articles)
-        logger.info(f"CSIS Geopolitics: {len(csis_geo_articles)} Artikel hinzugefügt")
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
         logger.warning(f"CSIS Geopolitics: Keine Artikel gefunden (E-Mails durchsucht: {csis_geo_count})")
