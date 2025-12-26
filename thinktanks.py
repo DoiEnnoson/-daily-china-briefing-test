@@ -394,42 +394,45 @@ def parse_csis_geopolitics_email(msg):
         processed_count += 1
         logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
         
-        # Finde den Titel: Suche nach vorherigem <strong> oder großem Text
+        # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
         title = None
         description = ""
         
-        # Suche rückwärts nach dem Titel im Parent-Element
-        parent = link.find_parent(["p", "div", "td", "table"])
-        if parent:
-            # Methode 1: Suche nach <strong> oder <b> VOR dem Link
-            strong_tags = parent.find_all(["strong", "b"])
-            for strong in strong_tags:
-                strong_text = strong.get_text(strip=True)
-                # Muss eine Frage sein (typisch für Podcast-Titel)
-                if strong_text and len(strong_text) > 20 and "?" in strong_text:
-                    title = strong_text
-                    logger.debug(f"Titel aus <strong> gefunden: {title[:50]}...")
-                    break
-            
-            # Methode 2: Falls kein <strong>, suche nach großem Text-Block
-            if not title:
-                # Hole allen Text und suche nach Fragen
-                full_text = parent.get_text(separator="\n", strip=True)
-                lines = full_text.split("\n")
+        # Methode 1: Suche nach <td class="em_text4"> - das ist wo die Podcast-Titel stehen
+        # Gehe mehrere Ebenen nach oben, um die ganze Tabellen-Struktur zu finden
+        parent_table = link.find_parent(["table"])
+        if parent_table:
+            # Suche in der ganzen Tabelle nach em_text4 (Podcast-Titel)
+            title_cell = parent_table.find("td", class_="em_text4")
+            if title_cell:
+                # Hole den Text aus dem <td> oder aus einem <span> darin
+                title_text = title_cell.get_text(strip=True)
+                # Bereinige den Titel (entferne extra Whitespace)
+                title_text = " ".join(title_text.split())
                 
-                for line in lines:
-                    line = line.strip()
-                    # Podcast-Titel sind oft Fragen und länger als 30 Zeichen
-                    if len(line) > 30 and "?" in line and not any(skip in line.lower() for skip in skip_patterns):
-                        title = line
-                        logger.debug(f"Titel aus Text gefunden: {title[:50]}...")
+                # Prüfe ob es ein gültiger Titel ist (länger als 20 Zeichen)
+                if title_text and len(title_text) > 20:
+                    title = title_text
+                    logger.info(f"✓ Titel aus <td class='em_text4'> gefunden: {title[:60]}...")
+        
+        # Methode 2: Falls kein title_cell gefunden, suche nach <strong> oder <b>
+        if not title:
+            parent = link.find_parent(["table", "tr", "td"])
+            if parent:
+                strong_tags = parent.find_all(["strong", "b"])
+                for strong in strong_tags:
+                    strong_text = strong.get_text(strip=True)
+                    strong_text = " ".join(strong_text.split())
+                    if strong_text and len(strong_text) > 20:
+                        title = strong_text
+                        logger.info(f"✓ Titel aus <strong>/<b> gefunden: {title[:60]}...")
                         break
         
         # Methode 3: Verwende Link-Text als letzten Ausweg
         if not title and link_text and len(link_text) > 20:
             if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
                 title = link_text
-                logger.debug(f"Fallback: Verwende Link-Text als Titel: {title[:50]}...")
+                logger.info(f"✓ Fallback: Verwende Link-Text als Titel: {title[:60]}...")
         
         if not title:
             logger.warning(f"Kein Titel gefunden für Link: {href[:50]}...")
