@@ -298,6 +298,11 @@ def parse_csis_geopolitics_email(msg):
     """
     Spezialisierter Parser für CSIS Geopolitics & Foreign Policy Newsletter.
     Extrahiert Podcast-Episoden mit China-Relevanz.
+    
+    Struktur: Die E-Mail enthält mehrere Episode-Abschnitte, jeder mit:
+    - em_text4 mit Episode-Titel (oft in <span>)
+    - Beschreibung
+    - "Listen Here" Button mit Link
     """
     articles = []
     
@@ -318,128 +323,79 @@ def parse_csis_geopolitics_email(msg):
             break
     
     if not html_content:
-        logger.warning("Keine HTML-Inhalte in CSIS E-Mail gefunden")
+        logger.warning("Keine HTML-Inhalte in CSIS Geopolitics E-Mail gefunden")
         return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Strategie: Finde alle Links, die zu csis.org führen
-    all_links = soup.find_all("a", href=True)
-    logger.info(f"Geopolitics Parser - {len(all_links)} Links gefunden")
+    # Finde alle em_text4 Elemente (Titel)
+    all_em_text4 = soup.find_all("td", class_="em_text4")
     
-    processed_count = 0
-    skipped_no_title = 0
-    skipped_score = 0
+    logger.info(f"Geopolitics Parser - {len(all_em_text4)} em_text4 Elemente gefunden")
     
-    for link in all_links:
-        href = link.get("href", "")
-        link_text = link.get_text(strip=True)
+    # Gehe durch alle em_text4 Elemente und suche den nächsten "Listen Here" Link
+    for title_cell in all_em_text4:
+        title_text = title_cell.get_text(strip=True)
+        title_text = " ".join(title_text.split())
         
-        # Muss ein CSIS/Pardot Link sein
-        if "csis.org" not in href and "pardot.csis.org" not in href:
+        # Überspringe "New Episodes:" Header
+        if "new episodes:" in title_text.lower():
+            logger.info(f"Geopolitics Parser - Überspringe Header: {title_text}")
             continue
         
-        # Skip Newsletter-Footer und UI-Links FRÜH
-        skip_patterns = [
-            "unsubscribe", "preferences", "forward", "view it in your browser",
-            "email not displaying", "www.csis.org/geopolitics", "www.csis.org$",
-            "privacy-policy", "my-mailing-preferences"
-        ]
-        
-        if any(skip in href.lower() for skip in skip_patterns):
+        # Titel muss mindestens 15 Zeichen haben
+        if len(title_text) < 15:
             continue
         
-        if any(skip in link_text.lower() for skip in skip_patterns):
-            continue
+        logger.info(f"Geopolitics Parser - Gefundener Titel: {title_text}")
         
-        # Skip Social Media Links
-        if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
-            continue
+        # Suche nach dem nächsten "Listen Here" Link NACH diesem em_text4
+        # Gehe durch alle nachfolgenden Elemente
+        current = title_cell
+        found_link = None
         
-        processed_count += 1
-        
-        # Finde den Titel
-        title = None
-        description = ""
-        
-        # Methode 1: Suche RÜCKWÄRTS nach dem VORHERIGEN em_text4 Element
-        current_element = link
-        found_table_with_multiple_trs = None
-        
-        # Gehe bis zu 5 Ebenen hoch, um eine Tabelle mit mehreren <tr> zu finden
-        for level in range(5):
-            current_element = current_element.find_parent("table")
-            if not current_element:
+        # Suche in den nächsten 10 Geschwister-Elementen
+        for _ in range(10):
+            current = current.find_next("td")
+            if not current:
                 break
             
-            all_trs = current_element.find_all("tr")
-            
-            if len(all_trs) > 3:
-                found_table_with_multiple_trs = current_element
-                break
-        
-        if found_table_with_multiple_trs:
-            all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
-            
-            for title_cell in reversed(all_em_text4):
-                title_text = title_cell.get_text(strip=True)
-                title_text = " ".join(title_text.split())
+            # Suche nach einem Link mit "Listen Here" Text
+            links = current.find_all("a", href=True)
+            for link in links:
+                link_text = link.get_text(strip=True).lower()
+                href = link.get("href", "")
                 
-                if "new episodes:" in title_text.lower():
-                    continue
-                
-                if title_text and len(title_text) > 20:
-                    title = title_text
-                    break
-        
-        # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle
-        if not title:
-            parent_table = link.find_parent("table")
-            if parent_table:
-                title_cell = parent_table.find("td", class_="em_text4")
-                if title_cell:
-                    title_text = title_cell.get_text(strip=True)
-                    title_text = " ".join(title_text.split())
-                    if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
-                        title = title_text
-        
-        # Methode 3: Suche nach <strong> oder <b>
-        if not title:
-            parent = link.find_parent(["tr", "td"])
-            if parent:
-                strong_tags = parent.find_all(["strong", "b"])
-                for strong in strong_tags:
-                    strong_text = strong.get_text(strip=True)
-                    strong_text = " ".join(strong_text.split())
-                    if strong_text and len(strong_text) > 20:
-                        title = strong_text
+                if "listen here" in link_text or "listen on csis" in link_text:
+                    if "csis.org" in href or "pardot.csis.org" in href:
+                        found_link = href
+                        logger.info(f"Geopolitics Parser - Link gefunden: {href[:60]}...")
                         break
+            
+            if found_link:
+                break
         
-        # Methode 4: Verwende Link-Text als letzten Ausweg
-        if not title and link_text and len(link_text) > 20:
-            if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
-                title = link_text
-        
-        if not title:
-            skipped_no_title += 1
+        if not found_link:
+            logger.info(f"Geopolitics Parser - Kein Link für Titel gefunden: {title_text[:50]}...")
             continue
         
         # Score berechnen
-        score = score_csis_article(title, description)
+        score = score_csis_article(title_text, "")
+        logger.info(f"Geopolitics Parser - Score: {score}")
         
         if score > 0:
             # Duplikats-Check
-            if title in [art.split('](')[0].split('[')[1] for art in articles]:
+            if title_text in [art.split('](')[0].split('[')[1] for art in articles]:
+                logger.info(f"Geopolitics Parser - Duplikat übersprungen")
                 continue
             
-            formatted_article = f"• [{title}]({href})"
+            formatted_article = f"• [{title_text}]({found_link})"
             articles.append(formatted_article)
-            logger.info(f"Geopolitics Parser - Artikel: {title[:50]}... (Score: {score})")
+            logger.info(f"Geopolitics Parser - Artikel hinzugefügt: {title_text[:50]}...")
         else:
-            skipped_score += 1
+            logger.info(f"Geopolitics Parser - Score zu niedrig: {score}")
     
-    logger.info(f"Geopolitics Parser - Verarbeitet: {processed_count}, Kein Titel: {skipped_no_title}, Score niedrig: {skipped_score}, Extrahiert: {len(articles)}")
-    
+    logger.info(f"Geopolitics Parser - {len(articles)} Artikel extrahiert")
     return articles
 
 def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
