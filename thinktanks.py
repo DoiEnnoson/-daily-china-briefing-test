@@ -413,9 +413,9 @@ def parse_csis_geopolitics_email(msg):
             if not current_element:
                 break
             
-            # Zähle wie viele <tr> diese Tabelle hat
-            all_trs = current_element.find_all("tr", recursive=False)
-            logger.debug(f"Ebene {level}: Tabelle mit {len(all_trs)} direkten <tr> Elementen")
+            # Zähle wie viele <tr> diese Tabelle hat (inkl. tbody!)
+            all_trs = current_element.find_all("tr")  # OHNE recursive=False!
+            logger.debug(f"Ebene {level}: Tabelle mit {len(all_trs)} <tr> Elementen")
             
             # Wenn die Tabelle mehr als 3 <tr> hat, ist es wahrscheinlich die richtige
             if len(all_trs) > 3:
