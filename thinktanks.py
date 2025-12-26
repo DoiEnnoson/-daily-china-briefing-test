@@ -362,78 +362,91 @@ def parse_csis_geopolitics_email(msg):
     csis_links = [link for link in all_links if "csis.org" in link.get("href", "")]
     logger.info(f"Davon csis.org Links: {len(csis_links)}")
     
+    processed_count = 0
+    
     for link in all_links:
         href = link.get("href", "")
+        link_text = link.get_text(strip=True)
         
         # CSIS Podcast/Analysis Links
         if "csis.org" not in href:
             continue
         
-        # Skip Newsletter-Footer Links
-        if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "forward"]):
-            logger.debug(f"Überspringe Footer-Link: {href}")
+        # Skip Newsletter-Footer und UI-Links FRÜH
+        skip_patterns = [
+            "unsubscribe", "preferences", "forward", "view it in your browser",
+            "email not displaying", "www.csis.org/geopolitics", "www.csis.org$"
+        ]
+        
+        if any(skip in href.lower() for skip in skip_patterns):
+            logger.debug(f"Überspringe Footer-Link: {href[:50]}...")
             continue
         
-        logger.debug(f"Verarbeite CSIS Link: {href[:80]}...")
+        if any(skip in link_text.lower() for skip in skip_patterns):
+            logger.debug(f"Überspringe Footer-Text: {link_text[:50]}...")
+            continue
+        
+        # Nur Links zu /analysis/ oder /podcasts/ oder spezifischen Artikeln
+        if not any(path in href for path in ["/analysis/", "/podcast/", "/event/"]):
+            logger.debug(f"Kein Analyse/Podcast-Link: {href[:50]}...")
+            continue
+        
+        processed_count += 1
+        logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
         
         # Finde den Titel: Suche nach vorherigem <strong> oder großem Text
         title = None
         description = ""
         
-        # Suche rückwärts nach dem Titel
-        parent = link.find_parent(["p", "div", "td"])
+        # Suche rückwärts nach dem Titel im Parent-Element
+        parent = link.find_parent(["p", "div", "td", "table"])
         if parent:
-            # Suche nach <strong> oder <b> vor dem Link
+            # Methode 1: Suche nach <strong> oder <b> VOR dem Link
             strong_tags = parent.find_all(["strong", "b"])
             for strong in strong_tags:
-                if strong.get_text(strip=True) and len(strong.get_text(strip=True)) > 15:
-                    title = strong.get_text(strip=True)
+                strong_text = strong.get_text(strip=True)
+                # Muss eine Frage sein (typisch für Podcast-Titel)
+                if strong_text and len(strong_text) > 20 and "?" in strong_text:
+                    title = strong_text
                     logger.debug(f"Titel aus <strong> gefunden: {title[:50]}...")
                     break
             
-            # Falls kein <strong>, nimm den Text vor dem Link
+            # Methode 2: Falls kein <strong>, suche nach großem Text-Block
             if not title:
-                text_before = parent.get_text(strip=True)
-                # Entferne "Listen Here" und ähnliche
-                text_before = text_before.replace("Listen Here", "").strip()
-                if len(text_before) > 20:
-                    # Nimm die erste Zeile als Titel
-                    lines = text_before.split("\n")
-                    for line in lines:
-                        if len(line) > 20 and "?" in line:  # Podcast-Titel sind oft Fragen
-                            title = line.strip()
-                            logger.debug(f"Titel aus Text gefunden: {title[:50]}...")
-                            break
-            
-            # Beschreibung = Text zwischen Titel und Link
-            if title:
-                full_text = parent.get_text(strip=True)
-                if title in full_text:
-                    desc_start = full_text.find(title) + len(title)
-                    desc_end = full_text.find("Listen Here")
-                    if desc_end > desc_start:
-                        description = full_text[desc_start:desc_end].strip()[:200]
+                # Hole allen Text und suche nach Fragen
+                full_text = parent.get_text(separator="\n", strip=True)
+                lines = full_text.split("\n")
+                
+                for line in lines:
+                    line = line.strip()
+                    # Podcast-Titel sind oft Fragen und länger als 30 Zeichen
+                    if len(line) > 30 and "?" in line and not any(skip in line.lower() for skip in skip_patterns):
+                        title = line
+                        logger.debug(f"Titel aus Text gefunden: {title[:50]}...")
+                        break
         
-        # Fallback: Verwende Link-Text als Titel
+        # Methode 3: Verwende Link-Text als letzten Ausweg
+        if not title and link_text and len(link_text) > 20:
+            if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
+                title = link_text
+                logger.debug(f"Fallback: Verwende Link-Text als Titel: {title[:50]}...")
+        
         if not title:
-            title = link.get_text(strip=True)
-            if len(title) < 15 or "listen here" in title.lower():
-                logger.debug(f"Link-Text zu kurz oder 'Listen Here': {title}")
-                continue
-            logger.debug(f"Fallback: Verwende Link-Text als Titel: {title[:50]}...")
+            logger.warning(f"Kein Titel gefunden für Link: {href[:50]}...")
+            continue
         
         # Score berechnen
         score = score_csis_article(title, description)
-        logger.info(f"Score für '{title[:50]}...': {score}")
+        logger.info(f"Score für '{title[:60]}...': {score}")
         
         if score > 0:
             formatted_article = f"• [{title}]({href})"
             articles.append(formatted_article)
-            logger.info(f"✅ CSIS Artikel akzeptiert: {title[:50]}... (Score: {score})")
+            logger.info(f"✅ CSIS Artikel akzeptiert: {title[:60]}... (Score: {score})")
         else:
-            logger.info(f"❌ CSIS Artikel abgelehnt (Score 0): {title[:50]}...")
+            logger.info(f"❌ CSIS Artikel abgelehnt (Score 0): {title[:60]}...")
     
-    logger.info(f"Parse-Ergebnis: {len(articles)} Artikel extrahiert")
+    logger.info(f"Parse-Ergebnis: {len(articles)} Artikel aus {processed_count} verarbeiteten Links extrahiert")
     return articles
 
 def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
