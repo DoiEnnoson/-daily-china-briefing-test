@@ -600,6 +600,39 @@ def parse_csis_trustee_email(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
+    # Liste bekannter CSIS-Personen (nur Namen → Skip)
+    csis_staff = [
+        "scott kennedy", "ilaria mazzocco", "ryan featherston", "isabella mccallum",
+        "andy yang", "qingfeng yu", "jeannette l. chu", "michael davidson",
+        "john l. holden", "margaret jackson", "claire reade", "daniel h. rosen",
+        "deborah seligsohn", "logan wright", "ruixue jia", "hongbin li",
+        "ethan michelson", "yu zhou", "elizabeth knup", "teevrat garg",
+        "jessica teets", "han shen lin", "michael szonyi", "evelyn cheng"
+    ]
+    
+    # Negative Keywords (sehr streng)
+    negative_keywords = [
+        "view in your browser",
+        "visit our microsite",
+        "trustee chair in chinese business",
+        "our new non-resident",
+        "upcoming virtual event",
+        "upcoming event",
+        "register here",
+        "amcham",
+        "e-magazine",
+        "first digital report",
+        "email not displaying",
+        "manage preferences",
+        "privacy policy",
+        "follow us",
+        "unsubscribe",
+        "copyright",
+        "panelists",
+        "moderator",
+        "speaker"
+    ]
+    
     # Finde alle Links
     all_links = soup.find_all("a", href=True)
     seen_titles = set()
@@ -614,7 +647,7 @@ def parse_csis_trustee_email(msg):
         if "csis.org" not in href and "pardot.csis.org" not in href:
             continue
         
-        # Skip unwichtige Links
+        # Skip unwichtige Links (strenger)
         skip_patterns = [
             "mailto:",
             "unsubscribe",
@@ -626,55 +659,97 @@ def parse_csis_trustee_email(msg):
             "linkedin.com",
             "instagram.com",
             "youtube.com",
-            "www.csis.org/analysis",
-            "www.csis.org/events",
+            "www.csis.org/analysis$",
+            "www.csis.org/events$",
             "www.csis.org/about",
             "www.csis.org/people",
             "www.csis.org/podcasts$",
-            "register here",
-            "watch here",  # Event-Links
-            "csis.org$"  # Nur die Hauptseite
+            "www.csis.org$",
+            "/chinese-business-and-economics$",
+            "bigdatachina.csis.org$"
         ]
         
-        if any(skip in href.lower() or skip in link_text.lower() for skip in skip_patterns):
+        if any(skip in href.lower() for skip in skip_patterns):
             continue
         
-        # Suche nach Button-Links (Read Here, Listen Here, Watch Here für Content, nicht Events)
-        content_buttons = ["read here", "listen here"]
-        
-        # Finde Titel in der Nähe des Links
+        # Suche nach Titel in der Nähe des Links
         title = None
         
-        # Methode 1: Suche nach vorherigem <strong> oder <b> Text
-        parent = link.find_parent(["td", "tr", "div"])
-        if parent:
-            # Suche alle strong/b Tags im Parent
-            strong_tags = parent.find_all(["strong", "b", "em"])
-            for strong in strong_tags:
-                strong_text = strong.get_text(strip=True)
-                if strong_text and len(strong_text) > 10:
-                    # Überspringe Datum-Strings
-                    if re.match(r'^[A-Z][a-z]+ \d+, \d{4}$', strong_text):
-                        continue
-                    # Überspringe kurze Labels
-                    if strong_text.lower() in ["csis chart", "video explainer", "november 2025"]:
-                        continue
-                    title = strong_text
-                    break
+        # Methode 1: Suche RÜCKWÄRTS nach Content vor "Read/Listen/Watch Here" Buttons
+        # Diese Buttons sind in Tabellen mit rotem Hintergrund (#e31836)
+        button_texts = ["read here", "listen here", "watch here", "subscribe"]
         
-        # Methode 2: Verwende Link-Text wenn er lang genug ist
-        if not title and link_text and len(link_text) > 15:
-            if not any(btn in link_text.lower() for btn in ["read here", "listen here", "watch here"]):
+        if any(btn in link_text.lower() for btn in button_texts):
+            # Button gefunden! Suche nach Titel VOR diesem Button
+            parent_table = link.find_parent("table")
+            if parent_table:
+                # Gehe durch vorherige Geschwister-Tabellen
+                prev_tables = parent_table.find_all_previous("table", limit=3)
+                for prev_table in prev_tables:
+                    # Suche nach Text in <a>, <strong>, <b>, <em> Tags
+                    content_tags = prev_table.find_all(["a", "strong", "b", "em"])
+                    for tag in content_tags:
+                        text = tag.get_text(strip=True)
+                        if text and len(text) > 30:  # Mindestens 30 Zeichen
+                            title = text
+                            break
+                    if title:
+                        break
+        
+        # Methode 2: Link-Text selbst (wenn lang genug und kein Button)
+        if not title and link_text and len(link_text) > 30:
+            if not any(btn in link_text.lower() for btn in button_texts):
                 title = link_text
         
+        # Methode 3: Suche nach vorherigem <a> oder <strong> im selben Parent
         if not title:
+            parent = link.find_parent(["td", "tr", "div"])
+            if parent:
+                # Suche alle Links/Bold-Text im Parent
+                content_elements = parent.find_all(["a", "strong", "b"])
+                for elem in content_elements:
+                    elem_text = elem.get_text(strip=True)
+                    if elem_text and len(elem_text) > 30 and elem != link:
+                        title = elem_text
+                        break
+        
+        if not title:
+            logger.debug(f"Trustee Chair - Kein Titel für Link: {href[:60]}...")
             continue
         
-        # Duplikats-Check
+        # STRENGE FILTER
+        title_lower = title.lower()
+        
+        # 1. Negative Keywords
+        if any(neg in title_lower for neg in negative_keywords):
+            logger.debug(f"Trustee Chair - Negatives Keyword: {title[:40]}...")
+            continue
+        
+        # 2. Nur Personen-Namen (Name + optional Title)
+        is_only_name = False
+        for staff_name in csis_staff:
+            if title_lower == staff_name or title_lower.startswith(staff_name + ","):
+                is_only_name = True
+                break
+        
+        if is_only_name:
+            logger.debug(f"Trustee Chair - Nur Name: {title}")
+            continue
+        
+        # 3. Titel muss mindestens 30 Zeichen haben
+        if len(title) < 30:
+            logger.debug(f"Trustee Chair - Zu kurz: {title}")
+            continue
+        
+        # 4. Duplikats-Check
         if title in seen_titles:
+            logger.debug(f"Trustee Chair - Duplikat: {title[:40]}...")
             continue
         
         seen_titles.add(title)
+        
+        # 5. Bereinige Titel von Datumsangaben am Ende
+        title = re.sub(r',?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+,?\s+\d{4}$', '', title)
         
         # Resolve Tracking URL
         resolved_url = resolve_tracking_url(href)
