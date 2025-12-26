@@ -325,6 +325,11 @@ def parse_csis_geopolitics_email(msg):
     
     # Strategie: Finde alle Links, die zu csis.org führen
     all_links = soup.find_all("a", href=True)
+    logger.info(f"Geopolitics Parser - {len(all_links)} Links gefunden")
+    
+    processed_count = 0
+    skipped_no_title = 0
+    skipped_score = 0
     
     for link in all_links:
         href = link.get("href", "")
@@ -350,6 +355,8 @@ def parse_csis_geopolitics_email(msg):
         # Skip Social Media Links
         if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
             continue
+        
+        processed_count += 1
         
         # Finde den Titel
         title = None
@@ -414,6 +421,7 @@ def parse_csis_geopolitics_email(msg):
                 title = link_text
         
         if not title:
+            skipped_no_title += 1
             continue
         
         # Score berechnen
@@ -426,6 +434,11 @@ def parse_csis_geopolitics_email(msg):
             
             formatted_article = f"• [{title}]({href})"
             articles.append(formatted_article)
+            logger.info(f"Geopolitics Parser - Artikel: {title[:50]}... (Score: {score})")
+        else:
+            skipped_score += 1
+    
+    logger.info(f"Geopolitics Parser - Verarbeitet: {processed_count}, Kein Titel: {skipped_no_title}, Score niedrig: {skipped_score}, Extrahiert: {len(articles)}")
     
     return articles
 
@@ -441,6 +454,8 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         sender_email = "geopolitics@csis.org"
         
+        logger.info(f"Geopolitics - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
@@ -453,6 +468,8 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
             logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
             return [], 0
         
+        logger.info(f"Geopolitics - {len(email_ids)} E-Mails gefunden")
+        
         for email_id in email_ids:
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
@@ -461,7 +478,14 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
             
             msg = email.message_from_bytes(msg_data[0][1])
             
+            # Betreff loggen
+            subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+            if isinstance(subject, bytes):
+                subject = subject.decode()
+            logger.info(f"Geopolitics - Betreff: {subject}")
+            
             articles = parse_csis_geopolitics_email(msg)
+            logger.info(f"Geopolitics - {len(articles)} Artikel aus dieser E-Mail extrahiert")
             
             # Duplikate filtern
             for article in articles:
@@ -471,6 +495,7 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
                     if url not in seen_urls:
                         all_articles.append(article)
                         seen_urls.add(url)
+                        logger.info(f"Geopolitics - Artikel hinzugefügt: {article[:80]}...")
         
         logger.info(f"CSIS Geopolitics: {len(all_articles)} Artikel gefunden")
         return all_articles, len(email_ids)
