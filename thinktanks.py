@@ -113,7 +113,7 @@ def parse_merics_email(msg):
     except:
         date = datetime.now()
     
-    logger.info(f"Parse MERICS E-Mail: {subject} vom {date.strftime('%Y-%m-%d')}")
+    logger.info(f"Parse MERICS E-Mail: {subject}")
     
     # HTML-Inhalt finden
     html_content = None
@@ -127,13 +127,11 @@ def parse_merics_email(msg):
             break
     
     if not html_content:
-        logger.warning("Keine HTML-Inhalte gefunden")
         return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
     # Suche nach dem Hauptlink
-    # MERICS nutzt typischerweise "on our website", "Read more", "download", etc.
     main_link_texts = [
         "on our website",
         "read more", 
@@ -173,7 +171,6 @@ def parse_merics_email(msg):
             resolved_url = resolve_tracking_url(href)
             if "merics.org" in resolved_url:
                 found_link = resolved_url
-                logger.info(f"Hauptlink gefunden über Text '{link_text}': {found_link}")
                 break
     
     # Strategie 2: Falls kein Link über Text gefunden, nimm den ersten merics.org Link
@@ -183,7 +180,6 @@ def parse_merics_email(msg):
             resolved_url = resolve_tracking_url(href)
             if "merics.org" in resolved_url and not any(skip in resolved_url.lower() for skip in ["unsubscribe", "profile"]):
                 found_link = resolved_url
-                logger.info(f"Hauptlink gefunden als erster merics.org Link: {found_link}")
                 break
     
     # Wenn ein Link gefunden wurde, erstelle Artikel
@@ -191,9 +187,7 @@ def parse_merics_email(msg):
         title = clean_merics_title(subject)
         formatted_article = f"• [{title}]({found_link})"
         articles.append(formatted_article)
-        logger.info(f"MERICS Artikel erstellt: {title}")
-    else:
-        logger.warning(f"Kein geeigneter Link in E-Mail gefunden: {subject}")
+        logger.info(f"MERICS Artikel: {title}")
     
     return articles
 
@@ -354,10 +348,8 @@ def parse_csis_geopolitics_email(msg):
     
     # Strategie: Finde alle Links, die zu csis.org führen
     all_links = soup.find_all("a", href=True)
-    logger.info(f"Anzahl gefundener Links in E-Mail: {len(all_links)}")
     
     csis_links = [link for link in all_links if "csis.org" in link.get("href", "")]
-    logger.info(f"Davon csis.org Links: {len(csis_links)}")
     
     processed_count = 0
     
@@ -387,7 +379,6 @@ def parse_csis_geopolitics_email(msg):
             continue
         
         processed_count += 1
-        logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
         
         # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
         title = None
@@ -435,7 +426,6 @@ def parse_csis_geopolitics_email(msg):
                 if title_text and len(title_text) > 20:
                     # Nimm das LETZTE em_text4 das wir finden (= das nächste VOR dem Link)
                     title = title_text
-                    logger.info(f"✓ Titel aus großer Tabelle gefunden: {title[:60]}...")
                     break
         
         # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle (Fallback)
@@ -448,7 +438,6 @@ def parse_csis_geopolitics_email(msg):
                     title_text = " ".join(title_text.split())
                     if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
                         title = title_text
-                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
         
         # Methode 2: Falls nicht gefunden, suche weiter oben - gehe zu mehreren parent tables
         if not title:
@@ -464,7 +453,6 @@ def parse_csis_geopolitics_email(msg):
                     title_text = " ".join(title_text.split())
                     if title_text and len(title_text) > 20:
                         title = title_text
-                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
                         break
         
         # Methode 3: Suche nach <strong> oder <b> als Fallback
@@ -477,22 +465,18 @@ def parse_csis_geopolitics_email(msg):
                     strong_text = " ".join(strong_text.split())
                     if strong_text and len(strong_text) > 20:
                         title = strong_text
-                        logger.info(f"✓ Titel aus <strong>/<b> gefunden: {title[:60]}...")
                         break
         
         # Methode 4: Verwende Link-Text als letzten Ausweg
         if not title and link_text and len(link_text) > 20:
             if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
                 title = link_text
-                logger.info(f"✓ Fallback: Verwende Link-Text als Titel: {title[:60]}...")
         
         if not title:
-            logger.warning(f"Kein Titel gefunden für Link: {href[:50]}...")
             continue
         
         # Score berechnen
         score = score_csis_article(title, description)
-        logger.info(f"Score für '{title[:60]}...': {score}")
         
         if score > 0:
             # Duplikats-Check: Überspringe wenn gleicher Titel bereits gesehen
@@ -501,11 +485,7 @@ def parse_csis_geopolitics_email(msg):
             
             formatted_article = f"• [{title}]({href})"
             articles.append(formatted_article)
-            logger.info(f"✅ CSIS Artikel akzeptiert: {title[:60]}... (Score: {score})")
-        else:
-            logger.info(f"❌ CSIS Artikel abgelehnt (Score 0): {title[:60]}...")
     
-    logger.info(f"Parse-Ergebnis: {len(articles)} Artikel aus {processed_count} verarbeiteten Links extrahiert")
     return articles
 
 def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
