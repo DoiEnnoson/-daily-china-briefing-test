@@ -507,6 +507,11 @@ def parse_csis_geopolitics_email(msg):
         logger.info(f"Score für '{title[:60]}...': {score}")
         
         if score > 0:
+            # Duplikats-Check: Überspringe wenn gleicher Titel bereits gesehen
+            if title in [art.split('](')[0].split('[')[1] for art in articles]:
+                logger.debug(f"Duplikat übersprungen (gleicher Titel): {title[:60]}...")
+                continue
+            
             formatted_article = f"• [{title}]({href})"
             articles.append(formatted_article)
             logger.info(f"✅ CSIS Artikel akzeptiert: {title[:60]}... (Score: {score})")
