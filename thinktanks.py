@@ -479,6 +479,7 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
         logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
         return [], 0
 
+def main():
     logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
