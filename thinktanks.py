@@ -13,7 +13,7 @@ import logging
 import json
 
 # Logging-Konfiguration
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s',
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.FileHandler('thinktanks.log'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
@@ -64,14 +64,12 @@ def resolve_tracking_url(url):
             target_data = json.loads(target_json)
             if 'TargetUrl' in target_data:
                 final_url = urllib.parse.unquote(target_data['TargetUrl'])
-                logger.debug(f"Dynamics URL aufgelöst: {url} -> {final_url}")
                 return final_url
         
         # Fallback: Folge den Redirects
         if "public-eur.mkt.dynamics.com" in url or "clicks.mlsend.com" in url:
             response = requests.get(url, allow_redirects=True, timeout=5)
             final_url = response.url
-            logger.debug(f"Redirect aufgelöst: {url} -> {final_url}")
             return final_url
             
         return url
@@ -244,7 +242,6 @@ def fetch_merics_emails(email_user, email_password, days=7):
             logger.info(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
             
             for email_id in email_ids:
-                logger.debug(f"Verarbeite E-Mail ID: {email_id}")
                 result, msg_data = mail.fetch(email_id, "(RFC822)")
                 if result != "OK":
                     logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
@@ -380,21 +377,17 @@ def parse_csis_geopolitics_email(msg):
         ]
         
         if any(skip in href.lower() for skip in skip_patterns):
-            logger.debug(f"Überspringe Footer-Link: {href[:50]}...")
             continue
         
         if any(skip in link_text.lower() for skip in skip_patterns):
-            logger.debug(f"Überspringe Footer-Text: {link_text[:50]}...")
             continue
         
         # Skip Social Media Links (Facebook, Twitter, LinkedIn, etc.)
         if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
-            logger.debug(f"Überspringe Social Media Link: {href[:50]}...")
             continue
         
         processed_count += 1
         logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
-        logger.debug(f"Link-Text: {link_text[:50]}...")
         
         # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
         title = None
@@ -415,18 +408,15 @@ def parse_csis_geopolitics_email(msg):
             
             # Zähle wie viele <tr> diese Tabelle hat (inkl. tbody!)
             all_trs = current_element.find_all("tr")  # OHNE recursive=False!
-            logger.debug(f"Ebene {level}: Tabelle mit {len(all_trs)} <tr> Elementen")
             
             # Wenn die Tabelle mehr als 3 <tr> hat, ist es wahrscheinlich die richtige
             if len(all_trs) > 3:
                 found_table_with_multiple_trs = current_element
-                logger.debug(f"→ Gefunden: Tabelle mit {len(all_trs)} <tr> Elementen!")
                 break
         
         if found_table_with_multiple_trs:
             # Finde alle <td class="em_text4"> in dieser Tabelle
             all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
-            logger.debug(f"Gefunden: {len(all_em_text4)} em_text4 Elemente in großer Tabelle")
             
             # Finde das em_text4 Element das VOR dem Link kommt
             # Durchsuche rückwärts
@@ -438,7 +428,6 @@ def parse_csis_geopolitics_email(msg):
                 
                 # Skip wenn es die Überschrift ist
                 if "new episodes:" in title_text.lower():
-                    logger.debug(f"→ Überspringe Überschrift: {title_text[:40]}...")
                     continue
                 
                 # Prüfe ob dieses em_text4 VOR dem Link im HTML steht
@@ -453,7 +442,6 @@ def parse_csis_geopolitics_email(msg):
         if not title:
             parent_table = link.find_parent("table")
             if parent_table:
-                logger.debug(f"Fallback: Suche in parent <table>")
                 title_cell = parent_table.find("td", class_="em_text4")
                 if title_cell:
                     title_text = title_cell.get_text(strip=True)
@@ -509,7 +497,6 @@ def parse_csis_geopolitics_email(msg):
         if score > 0:
             # Duplikats-Check: Überspringe wenn gleicher Titel bereits gesehen
             if title in [art.split('](')[0].split('[')[1] for art in articles]:
-                logger.debug(f"Duplikat übersprungen (gleicher Titel): {title[:60]}...")
                 continue
             
             formatted_article = f"• [{title}]({href})"
@@ -559,7 +546,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
             return [], 0
         
         for email_id in email_ids:
-            logger.debug(f"Verarbeite CSIS E-Mail ID: {email_id}")
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
                 logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
@@ -586,7 +572,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
                         seen_urls.add(url)
                         logger.info(f"Artikel hinzugefügt: {article[:100]}...")
                     else:
-                        logger.debug(f"Duplikat übersprungen: {url}")
         
         mail.logout()
         logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
