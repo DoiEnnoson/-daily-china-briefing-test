@@ -518,11 +518,18 @@ def main():
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
     
+    # CSIS Header IMMER anzeigen
+    briefing.append("")  # Leerzeile
+    briefing.append("### CSIS")
+    
     # CSIS Geopolitics
+    briefing.append("#### Geopolitics & Foreign Policy")
     if csis_geo_articles:
-        briefing.append("")  # Leerzeile vor nächstem Think Tank
-        briefing.append("### CSIS Geopolitics & Foreign Policy")
         briefing.extend(csis_geo_articles)
+        logger.info(f"CSIS Geopolitics: {len(csis_geo_articles)} Artikel hinzugefügt")
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+        logger.warning(f"CSIS Geopolitics: Keine Artikel gefunden (E-Mails durchsucht: {csis_geo_count})")
 
     # Konvertiere zu HTML für E-Mail
     # Zuerst Markdown-Links zu HTML konvertieren
