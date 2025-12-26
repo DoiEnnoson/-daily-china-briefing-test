@@ -12,11 +12,12 @@ import re
 import logging
 import json
 
-# Logging-Konfiguration - nur INFO-Level für Production
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+# Logging-Konfiguration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s',
                     handlers=[logging.FileHandler('thinktanks.log'), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
+# Basisverzeichnis
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
@@ -29,16 +30,18 @@ def send_email(subject, body, email_user, email_password, to_email="hadobrockmey
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(email_user, email_password)
             server.send_message(msg)
-        logger.info(f"E-Mail erfolgreich gesendet: {subject}")
+        logger.info(f"E-Mail erfolgreich an {to_email} gesendet: {subject}")
     except Exception as e:
-        logger.error(f"Fehler beim Senden der E-Mail: {str(e)}")
+        logger.error(f"Fehler beim Senden der E-Mail an {to_email}: {str(e)}")
 
 def load_thinktanks():
     """Lädt Think Tanks aus thinktanks.json."""
     try:
         thinktanks_path = os.path.join(BASE_DIR, "thinktanks.json")
         with open(thinktanks_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            thinktanks = json.load(f)
+        logger.info(f"Geladen: {len(thinktanks)} Think Tanks")
+        return thinktanks
     except Exception as e:
         logger.error(f"Fehler beim Laden von thinktanks.json: {str(e)}")
         return []
@@ -49,28 +52,36 @@ def extract_email_address(sender):
     return match.group(1) if match else sender
 
 def resolve_tracking_url(url):
-    """Löst Tracking-URLs auf."""
+    """Löst Tracking-URLs auf (Dynamics, Mailchimp, etc.)."""
     try:
+        # Dynamics-URLs mit msdynmkt_target Parameter
         parsed = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed.query)
         
         if 'msdynmkt_target' in query_params:
             target_json = query_params['msdynmkt_target'][0]
+            import json
             target_data = json.loads(target_json)
             if 'TargetUrl' in target_data:
-                return urllib.parse.unquote(target_data['TargetUrl'])
+                final_url = urllib.parse.unquote(target_data['TargetUrl'])
+                logger.debug(f"Dynamics URL aufgelöst: {url} -> {final_url}")
+                return final_url
         
+        # Fallback: Folge den Redirects
         if "public-eur.mkt.dynamics.com" in url or "clicks.mlsend.com" in url:
             response = requests.get(url, allow_redirects=True, timeout=5)
-            return response.url
+            final_url = response.url
+            logger.debug(f"Redirect aufgelöst: {url} -> {final_url}")
+            return final_url
             
         return url
     except Exception as e:
-        logger.warning(f"URL-Auflösung fehlgeschlagen: {str(e)}")
+        logger.warning(f"Fehler beim Auflösen der URL {url}: {str(e)}")
         return url
 
 def clean_merics_title(subject):
-    """Bereinigt MERICS E-Mail-Betreff."""
+    """Bereinigt MERICS E-Mail-Betreff für Titel."""
+    # Entferne Präfixe
     prefixes = [
         "MERICS China Security & Risk Tracker: ",
         "MERICS China Essentials Special Issue: ",
@@ -87,12 +98,24 @@ def clean_merics_title(subject):
     return cleaned.strip()
 
 def parse_merics_email(msg):
-    """Parst eine MERICS E-Mail und extrahiert den Hauptartikel-Link."""
+    """
+    Spezialisierter Parser für MERICS E-Mails.
+    Extrahiert Hauptartikel aus dem E-Mail-Betreff und findet den primären Link.
+    """
     articles = []
     
-    subject = decode_header(msg.get("Subject", ""))[0][0]
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
     if isinstance(subject, bytes):
         subject = subject.decode()
+    
+    # Datum extrahieren
+    try:
+        date = email.utils.parsedate_to_datetime(msg.get("Date", ""))
+    except:
+        date = datetime.now()
+    
+    logger.info(f"Parse MERICS E-Mail: {subject} vom {date.strftime('%Y-%m-%d')}")
     
     # HTML-Inhalt finden
     html_content = None
@@ -106,80 +129,135 @@ def parse_merics_email(msg):
             break
     
     if not html_content:
+        logger.warning("Keine HTML-Inhalte gefunden")
         return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Suche nach Hauptlink
-    main_link_texts = ["on our website", "read more", "download the pdf", "as a pdf", "here", "full tracker"]
+    # Suche nach dem Hauptlink
+    # MERICS nutzt typischerweise "on our website", "Read more", "download", etc.
+    main_link_texts = [
+        "on our website",
+        "read more", 
+        "download the pdf",
+        "as a pdf",
+        "here",
+        "full tracker"
+    ]
+    
     found_link = None
     all_links = soup.find_all("a", href=True)
     
-    # Strategie 1: Link mit CTA-Text
+    # Strategie 1: Finde den ersten relevanten Link zum Hauptartikel
     for link in all_links:
         href = link.get("href", "")
         link_text = link.get_text(strip=True).lower()
         
-        skip_patterns = ["mailto:", "unsubscribe", "privacy", "legal", "cookie", "profile", "linkedin", "twitter", "facebook", "youtube"]
+        # Überspringe unwichtige Links
+        skip_patterns = [
+            "mailto:",
+            "unsubscribe",
+            "privacy",
+            "legal",
+            "cookie",
+            "profile",
+            "linkedin",
+            "twitter",
+            "facebook",
+            "youtube"
+        ]
+        
         if any(pattern in href.lower() or pattern in link_text for pattern in skip_patterns):
             continue
         
+        # Suche nach typischen MERICS-Hauptlink-Texten
         if any(main_text in link_text for main_text in main_link_texts):
             resolved_url = resolve_tracking_url(href)
             if "merics.org" in resolved_url:
                 found_link = resolved_url
+                logger.info(f"Hauptlink gefunden über Text '{link_text}': {found_link}")
                 break
     
-    # Strategie 2: Erster merics.org Link
+    # Strategie 2: Falls kein Link über Text gefunden, nimm den ersten merics.org Link
     if not found_link:
         for link in all_links:
             href = link.get("href", "")
             resolved_url = resolve_tracking_url(href)
             if "merics.org" in resolved_url and not any(skip in resolved_url.lower() for skip in ["unsubscribe", "profile"]):
                 found_link = resolved_url
+                logger.info(f"Hauptlink gefunden als erster merics.org Link: {found_link}")
                 break
     
+    # Wenn ein Link gefunden wurde, erstelle Artikel
     if found_link:
         title = clean_merics_title(subject)
-        articles.append(f"• [{title}]({found_link})")
+        formatted_article = f"• [{title}]({found_link})"
+        articles.append(formatted_article)
+        logger.info(f"MERICS Artikel erstellt: {title}")
+    else:
+        logger.warning(f"Kein geeigneter Link in E-Mail gefunden: {subject}")
     
     return articles
 
-def fetch_merics_emails(mail, days=30):
-    """Holt MERICS-Artikel aus E-Mails. Nutzt bestehende IMAP-Verbindung."""
+def fetch_merics_emails(email_user, email_password, days=7):
+    """
+    Holt MERICS-Artikel aus E-Mails mit verbessertem Parsing.
+    """
+    logger.info("Starte fetch_merics_emails mit verbessertem Parser")
     try:
         thinktanks = load_thinktanks()
         merics = next((tt for tt in thinktanks if tt["abbreviation"] == "MERICS"), None)
         if not merics:
             logger.error("MERICS nicht in thinktanks.json gefunden")
+            send_email("Fehler in fetch_merics_emails", "<p>MERICS nicht in thinktanks.json gefunden</p>", email_user, email_password)
             return [], 0
 
-        email_senders = [extract_email_address(sender) for sender in merics["email_senders"]]
+        email_senders = merics["email_senders"]
+        email_senders = [extract_email_address(sender) for sender in email_senders]
+        logger.info(f"Bereinigte Absender: {email_senders}")
+
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        try:
+            mail.login(email_user, email_password)
+            logger.info("IMAP-Login erfolgreich")
+        except Exception as e:
+            logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
+            send_email("Fehler in fetch_merics_emails", f"<p>IMAP-Login fehlgeschlagen: {str(e)}</p>", email_user, email_password)
+            return [], 0
+
         mail.select("inbox")
         all_articles = []
         seen_urls = set()
         email_count = 0
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        
-        logger.info(f"Suche MERICS E-Mails seit {since_date}")
+        logger.info(f"Suche nach E-Mails seit: {since_date}")
 
         for sender in email_senders:
+            logger.info(f"Suche nach E-Mails von: {sender}")
             result, data = mail.search(None, f'FROM "{sender}" SINCE {since_date}')
             if result != "OK":
+                logger.warning(f"Fehler bei der Suche nach E-Mails von {sender}: {result}")
                 continue
 
             email_ids = data[0].split()
             email_count += len(email_ids)
+            logger.info(f"Anzahl gefundener E-Mails von {sender}: {len(email_ids)}")
             
             for email_id in email_ids:
+                logger.debug(f"Verarbeite E-Mail ID: {email_id}")
                 result, msg_data = mail.fetch(email_id, "(RFC822)")
                 if result != "OK":
+                    logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
                     continue
 
                 msg = email.message_from_bytes(msg_data[0][1])
+                
+                # Nutze den spezialisierten Parser
                 articles = parse_merics_email(msg)
                 
+                # Duplikate filtern
                 for article in articles:
+                    # Extrahiere URL aus Markdown-Link
                     url_match = re.search(r'\((https?://[^\)]+)\)', article)
                     if url_match:
                         url = url_match.group(1)
@@ -187,243 +265,422 @@ def fetch_merics_emails(mail, days=30):
                             all_articles.append(article)
                             seen_urls.add(url)
 
-        logger.info(f"MERICS: {len(all_articles)} Artikel gefunden")
+        mail.logout()
+        logger.info("IMAP-Logout erfolgreich")
+        logger.info(f"Anzahl eindeutiger MERICS-Artikel: {len(all_articles)}")
         return all_articles, email_count
         
     except Exception as e:
         logger.error(f"Fehler in fetch_merics_emails: {str(e)}")
+        send_email("Fehler in fetch_merics_emails", f"<p>Fehler beim Abrufen von MERICS-E-Mails: {str(e)}</p>", email_user, email_password)
         return [], 0
+    finally:
+        try:
+            mail.logout()
+            logger.info("IMAP-Logout im finally-Block erfolgreich")
+        except:
+            pass
 
-def score_csis_article(title, description):
-    """Bewertet CSIS Geopolitics Artikel nach Relevanz."""
-    score = 0
-    keywords = {
-        "china": 3, "chinese": 3, "beijing": 3, "xi jinping": 3,
-        "taiwan": 2, "hong kong": 2, "south china sea": 2,
-        "asia": 1, "indo-pacific": 2, "asean": 1, "india": 1,
-        "north korea": 1, "japan": 1, "korea": 1
-    }
+def score_csis_article(title, description=""):
+    """Bewertet einen CSIS-Artikel auf China-Relevanz."""
+    title_lower = title.lower()
+    desc_lower = description.lower()
+    content = f"{title_lower} {desc_lower}"
     
-    text = f"{title.lower()} {description.lower()}"
-    for keyword, points in keywords.items():
-        if keyword in text:
-            score += points
+    # MUSS China-Bezug haben
+    china_keywords = [
+        "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
+        "taiwan", "hong kong", "prc", "ccp", "communist party",
+        "sino-", "u.s.-china", "us-china", "asean"  # ASEAN oft China-relevant
+    ]
     
-    return score
+    if not any(kw in content for kw in china_keywords):
+        return 0
+    
+    score = 5  # Basis-Score für China-Erwähnung
+    
+    # Wichtige Themen
+    important_topics = [
+        "technology", "trade", "security", "military", "defense",
+        "economy", "tariff", "semiconductor", "ai", "geopolitics",
+        "indo-pacific", "south china sea", "strait"
+    ]
+    
+    for topic in important_topics:
+        if topic in content:
+            score += 2
+    
+    # Negative Keywords (andere Regionen ohne China-Bezug)
+    negative_keywords = [
+        "venezuela", "gaza", "israel", "palestine", "ukraine", "russia",
+        "europe", "africa", "middle east"
+    ]
+    
+    # Nur abziehen wenn China NICHT erwähnt wird
+    if not any(kw in content for kw in china_keywords):
+        for neg in negative_keywords:
+            if neg in content:
+                score -= 5
+    
+    return max(score, 0)
 
 def parse_csis_geopolitics_email(msg):
-    """Parst CSIS Geopolitics E-Mail und extrahiert relevante Podcast-Links."""
-    subject = decode_header(msg.get("Subject", ""))[0][0]
+    """
+    Spezialisierter Parser für CSIS Geopolitics & Foreign Policy Newsletter.
+    Extrahiert Podcast-Episoden mit China-Relevanz.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
     if isinstance(subject, bytes):
         subject = subject.decode()
     
-    logger.info(f"Parse CSIS E-Mail: {subject}")
+    logger.info(f"Parse CSIS Geopolitics E-Mail: {subject}")
     
+    # HTML-Inhalt finden
     html_content = None
     for part in msg.walk():
         if part.get_content_type() == "text/html":
             charset = part.get_content_charset() or "utf-8"
             try:
                 html_content = part.get_payload(decode=True).decode(charset)
-            except:
+            except UnicodeDecodeError:
                 html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
             break
     
     if not html_content:
-        return []
+        logger.warning("Keine HTML-Inhalte in CSIS E-Mail gefunden")
+        return articles
     
-    soup = BeautifulSoup(html_content, 'html.parser')
-    all_links = soup.find_all('a', href=True)
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Strategie: Finde alle Links, die zu csis.org führen
+    all_links = soup.find_all("a", href=True)
+    logger.info(f"Anzahl gefundener Links in E-Mail: {len(all_links)}")
+    
     csis_links = [link for link in all_links if "csis.org" in link.get("href", "")]
+    logger.info(f"Davon csis.org Links: {len(csis_links)}")
     
-    articles = []
     processed_count = 0
     
-    for link in csis_links:
+    for link in all_links:
         href = link.get("href", "")
-        link_text = link.get_text(strip=True).lower()
+        link_text = link.get_text(strip=True)
         
-        # Skip Footer-Links
-        footer_keywords = ["privacy", "unsubscribe", "preferences", "view it in your browser"]
-        if any(keyword in link_text for keyword in footer_keywords):
+        # Muss ein CSIS/Pardot Link sein
+        if "csis.org" not in href and "pardot.csis.org" not in href:
+            continue
+        
+        # Skip Newsletter-Footer und UI-Links FRÜH
+        skip_patterns = [
+            "unsubscribe", "preferences", "forward", "view it in your browser",
+            "email not displaying", "www.csis.org/geopolitics", "www.csis.org$",
+            "privacy-policy", "my-mailing-preferences"
+        ]
+        
+        if any(skip in href.lower() for skip in skip_patterns):
+            logger.debug(f"Überspringe Footer-Link: {href[:50]}...")
+            continue
+        
+        if any(skip in link_text.lower() for skip in skip_patterns):
+            logger.debug(f"Überspringe Footer-Text: {link_text[:50]}...")
+            continue
+        
+        # Skip Social Media Links (Facebook, Twitter, LinkedIn, etc.)
+        if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
+            logger.debug(f"Überspringe Social Media Link: {href[:50]}...")
             continue
         
         processed_count += 1
+        logger.info(f"Verarbeite CSIS Link #{processed_count}: {href[:80]}...")
+        logger.debug(f"Link-Text: {link_text[:50]}...")
         
-        # Titel-Extraktion: Multi-Level Table Search
+        # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
         title = None
-        current_element = link
+        description = ""
         
-        # Methode 1: Suche in großer Tabelle mit mehreren <tr>
+        # Methode 1: Suche RÜCKWÄRTS nach dem VORHERIGEN em_text4 Element
+        # Problem: Links sind oft in verschachtelten Tabellen!
+        # Lösung: Gehe mehrere Tabellen-Ebenen nach oben
+        
+        current_element = link
         found_table_with_multiple_trs = None
+        
+        # Gehe bis zu 5 Ebenen hoch, um eine Tabelle mit mehreren <tr> zu finden
         for level in range(5):
-            parent_table = current_element.find_parent("table")
-            if not parent_table:
+            current_element = current_element.find_parent("table")
+            if not current_element:
                 break
             
-            all_trs = parent_table.find_all("tr")
+            # Zähle wie viele <tr> diese Tabelle hat (inkl. tbody!)
+            all_trs = current_element.find_all("tr")  # OHNE recursive=False!
+            logger.debug(f"Ebene {level}: Tabelle mit {len(all_trs)} <tr> Elementen")
             
+            # Wenn die Tabelle mehr als 3 <tr> hat, ist es wahrscheinlich die richtige
             if len(all_trs) > 3:
-                found_table_with_multiple_trs = parent_table
+                found_table_with_multiple_trs = current_element
+                logger.debug(f"→ Gefunden: Tabelle mit {len(all_trs)} <tr> Elementen!")
                 break
-            
-            current_element = parent_table
         
         if found_table_with_multiple_trs:
-            # Finde alle em_text4 Elemente
+            # Finde alle <td class="em_text4"> in dieser Tabelle
             all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
+            logger.debug(f"Gefunden: {len(all_em_text4)} em_text4 Elemente in großer Tabelle")
             
-            # Durchsuche RÜCKWÄRTS und überspringe "New Episodes:"
+            # Finde das em_text4 Element das VOR dem Link kommt
+            # Durchsuche rückwärts
+            link_position = str(link)  # Position des Links im HTML
+            
             for title_cell in reversed(all_em_text4):
                 title_text = title_cell.get_text(strip=True)
                 title_text = " ".join(title_text.split())
                 
-                # Skip Überschrift
+                # Skip wenn es die Überschrift ist
                 if "new episodes:" in title_text.lower():
+                    logger.debug(f"→ Überspringe Überschrift: {title_text[:40]}...")
                     continue
                 
+                # Prüfe ob dieses em_text4 VOR dem Link im HTML steht
+                title_position = str(title_cell)
                 if title_text and len(title_text) > 20:
+                    # Nimm das LETZTE em_text4 das wir finden (= das nächste VOR dem Link)
                     title = title_text
+                    logger.info(f"✓ Titel aus großer Tabelle gefunden: {title[:60]}...")
                     break
         
-        # Methode 2: Fallback - übergeordnete Tabelle
+        # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle (Fallback)
         if not title:
             parent_table = link.find_parent("table")
             if parent_table:
+                logger.debug(f"Fallback: Suche in parent <table>")
                 title_cell = parent_table.find("td", class_="em_text4")
                 if title_cell:
                     title_text = title_cell.get_text(strip=True)
                     title_text = " ".join(title_text.split())
                     if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
                         title = title_text
+                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
+        
+        # Methode 2: Falls nicht gefunden, suche weiter oben - gehe zu mehreren parent tables
+        if not title:
+            # Manchmal ist der Titel in einer übergeordneten Tabellen-Struktur
+            current = link
+            for _ in range(5):  # Gehe bis zu 5 Ebenen hoch
+                current = current.find_parent("table")
+                if not current:
+                    break
+                title_cell = current.find("td", class_="em_text4")
+                if title_cell:
+                    title_text = title_cell.get_text(strip=True)
+                    title_text = " ".join(title_text.split())
+                    if title_text and len(title_text) > 20:
+                        title = title_text
+                        logger.info(f"✓ Titel aus übergeordneter Tabelle gefunden: {title[:60]}...")
+                        break
+        
+        # Methode 3: Suche nach <strong> oder <b> als Fallback
+        if not title:
+            parent = link.find_parent(["tr", "td"])
+            if parent:
+                strong_tags = parent.find_all(["strong", "b"])
+                for strong in strong_tags:
+                    strong_text = strong.get_text(strip=True)
+                    strong_text = " ".join(strong_text.split())
+                    if strong_text and len(strong_text) > 20:
+                        title = strong_text
+                        logger.info(f"✓ Titel aus <strong>/<b> gefunden: {title[:60]}...")
+                        break
+        
+        # Methode 4: Verwende Link-Text als letzten Ausweg
+        if not title and link_text and len(link_text) > 20:
+            if "listen here" not in link_text.lower() and "read more" not in link_text.lower():
+                title = link_text
+                logger.info(f"✓ Fallback: Verwende Link-Text als Titel: {title[:60]}...")
         
         if not title:
+            logger.warning(f"Kein Titel gefunden für Link: {href[:50]}...")
             continue
         
         # Score berechnen
-        score = score_csis_article(title, "")
+        score = score_csis_article(title, description)
+        logger.info(f"Score für '{title[:60]}...': {score}")
         
         if score > 0:
-            # Duplikats-Check
+            # Duplikats-Check: Überspringe wenn gleicher Titel bereits gesehen
             if title in [art.split('](')[0].split('[')[1] for art in articles]:
+                logger.debug(f"Duplikat übersprungen (gleicher Titel): {title[:60]}...")
                 continue
             
-            articles.append(f"• [{title}]({href})")
+            formatted_article = f"• [{title}]({href})"
+            articles.append(formatted_article)
+            logger.info(f"✅ CSIS Artikel akzeptiert: {title[:60]}... (Score: {score})")
+        else:
+            logger.info(f"❌ CSIS Artikel abgelehnt (Score 0): {title[:60]}...")
     
-    logger.info(f"CSIS: {len(articles)} Artikel extrahiert")
+    logger.info(f"Parse-Ergebnis: {len(articles)} Artikel aus {processed_count} verarbeiteten Links extrahiert")
     return articles
 
-def fetch_csis_geopolitics_emails(mail, days=120):
-    """Holt CSIS Geopolitics Artikel. Nutzt bestehende IMAP-Verbindung."""
+def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
+    """
+    Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
+    """
+    logger.info("Starte fetch_csis_geopolitics_emails")
     try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        try:
+            mail.login(email_user, email_password)
+            logger.info("IMAP-Login erfolgreich für CSIS")
+        except Exception as e:
+            logger.error(f"IMAP-Login fehlgeschlagen für CSIS: {str(e)}")
+            return [], 0
+        
         mail.select("inbox")
         all_articles = []
+        seen_urls = set()
+        
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         sender_email = "geopolitics@csis.org"
         
-        logger.info(f"Suche CSIS E-Mails seit {since_date}")
+        logger.info(f"Suche nach E-Mails von {sender_email} seit {since_date}")
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS: {result}")
+            mail.logout()
             return [], 0
         
         email_ids = data[0].split()
-        logger.info(f"CSIS: {len(email_ids)} E-Mails gefunden")
+        logger.info(f"CSIS Geopolitics: Anzahl gefundener E-Mails: {len(email_ids)}")
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            mail.logout()
+            return [], 0
         
         for email_id in email_ids:
+            logger.debug(f"Verarbeite CSIS E-Mail ID: {email_id}")
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
                 continue
             
             msg = email.message_from_bytes(msg_data[0][1])
+            
+            # Betreff loggen
+            subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+            if isinstance(subject, bytes):
+                subject = subject.decode()
+            logger.info(f"CSIS E-Mail Betreff: {subject}")
+            
             articles = parse_csis_geopolitics_email(msg)
-            all_articles.extend(articles)
+            logger.info(f"Aus dieser E-Mail extrahiert: {len(articles)} Artikel")
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+                        logger.info(f"Artikel hinzugefügt: {article[:100]}...")
+                    else:
+                        logger.debug(f"Duplikat übersprungen: {url}")
         
-        logger.info(f"CSIS: {len(all_articles)} Artikel gesamt")
+        mail.logout()
+        logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
         return all_articles, len(email_ids)
         
     except Exception as e:
         logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
         return [], 0
+    finally:
+        try:
+            mail.logout()
+            logger.info("IMAP-Logout für CSIS erfolgreich")
+        except:
+            pass
 
 def main():
-    """Hauptfunktion."""
-    # E-Mail-Credentials aus Umgebungsvariable laden
+    logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
         logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
+        send_email("Fehler in thinktanks.py", "<p>SUBSTACK_MAIL Umgebungsvariable nicht gefunden</p>", "", "")
         return
 
     try:
         mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
         email_user = mail_config.get("GMAIL_USER")
         email_password = mail_config.get("GMAIL_PASS")
-        
+        logger.info(f"Geparsed: GMAIL_USER={email_user}")
         if not email_user or not email_password:
             logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
+            send_email("Fehler in thinktanks.py", "<p>GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL</p>", email_user, email_password)
             return
     except Exception as e:
         logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
+
+    # Suche nach E-Mails der letzten 30 Tage für MERICS
+    merics_articles, merics_count = fetch_merics_emails(email_user, email_password, days=30)
     
-    # EINMAL IMAP-Verbindung aufbauen
-    try:
-        logger.info("Stelle IMAP-Verbindung her...")
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_user, email_password)
-        logger.info("IMAP-Login erfolgreich")
-    except Exception as e:
-        logger.error(f"IMAP-Login fehlgeschlagen: {str(e)}")
-        return
+    # Suche nach CSIS Geopolitics (bis August = ca. 120 Tage)
+    csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(email_user, email_password, days=120)
     
-    try:
-        # MERICS E-Mails abrufen
-        merics_articles, _ = fetch_merics_emails(mail, days=30)
-        
-        # CSIS E-Mails abrufen
-        csis_articles, _ = fetch_csis_geopolitics_emails(mail, days=120)
-        
-    finally:
-        # EINMAL IMAP-Logout
-        mail.logout()
-        logger.info("IMAP-Logout erfolgreich")
-    
-    # Briefing erstellen
+    # Briefing erstellen mit korrekten Abständen
     briefing = []
     briefing.append("## Think Tanks")
+    
+    # MERICS
     briefing.append("### MERICS")
     if merics_articles:
         briefing.extend(merics_articles)
     else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
+        briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
     
-    briefing.append("")
+    # CSIS Header IMMER anzeigen
+    briefing.append("")  # Leerzeile
     briefing.append("### CSIS")
+    
+    # CSIS Geopolitics
     briefing.append("#### Geopolitics & Foreign Policy")
-    if csis_articles:
-        briefing.extend(csis_articles)
+    if csis_geo_articles:
+        briefing.extend(csis_geo_articles)
+        logger.info(f"CSIS Geopolitics: {len(csis_geo_articles)} Artikel hinzugefügt")
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # HTML-Konvertierung
+        logger.warning(f"CSIS Geopolitics: Keine Artikel gefunden (E-Mails durchsucht: {csis_geo_count})")
+
+    # Konvertiere zu HTML für E-Mail
+    # Zuerst Markdown-Links zu HTML konvertieren
     html_lines = []
     for line in briefing:
+        # Konvertiere Markdown-Links zu HTML
         html_line = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', line)
         html_lines.append(html_line)
     
-    html_content = html_lines[0] + "<br><br>\n"
-    html_content += html_lines[1] + "<br>\n"
+    # Jetzt mit korrekten Abständen zusammenbauen:
+    # - Nach "## Think Tanks": 1 Absatz
+    # - Nach "### MERICS": KEIN Absatz (direkt die Artikel)
+    # - Zwischen Artikeln: KEIN Absatz
+    html_content = html_lines[0] + "<br><br>\n"  # ## Think Tanks
+    html_content += html_lines[1] + "<br>\n"  # ### MERICS (nur 1x <br>)
+    # Restliche Zeilen (Artikel) mit einfachem <br>
     for i in range(2, len(html_lines)):
         html_content += html_lines[i]
-        if i < len(html_lines) - 1:
+        if i < len(html_lines) - 1:  # Nicht nach dem letzten Artikel
             html_content += "<br>\n"
     
     # E-Mail senden
     send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
+    logger.info("E-Mail erfolgreich versendet")
     
-    # Konsolen-Ausgabe
+    # Vorschau auf Konsole
     print("\n" + "="*50)
-    print("BRIEFING:")
+    print("VORSCHAU DER E-MAIL:")
     print("="*50)
     print("\n".join(briefing))
     print("="*50 + "\n")
