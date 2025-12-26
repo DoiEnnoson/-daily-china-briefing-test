@@ -350,18 +350,17 @@ def parse_csis_geopolitics_email(msg):
             break
     
     if not html_content:
-        logger.warning("Keine HTML-Inhalte gefunden")
+        logger.warning("Keine HTML-Inhalte in CSIS E-Mail gefunden")
         return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # CSIS Geopolitics hat ein spezifisches Format:
-    # Episode-Titel sind oft in <strong> oder <b> Tags
-    # Gefolgt von Beschreibung
-    # Dann "Listen Here" Link
-    
-    # Strategie: Finde alle Links, die zu csis.org/analysis führen
+    # Strategie: Finde alle Links, die zu csis.org führen
     all_links = soup.find_all("a", href=True)
+    logger.info(f"Anzahl gefundener Links in E-Mail: {len(all_links)}")
+    
+    csis_links = [link for link in all_links if "csis.org" in link.get("href", "")]
+    logger.info(f"Davon csis.org Links: {len(csis_links)}")
     
     for link in all_links:
         href = link.get("href", "")
@@ -372,7 +371,10 @@ def parse_csis_geopolitics_email(msg):
         
         # Skip Newsletter-Footer Links
         if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "forward"]):
+            logger.debug(f"Überspringe Footer-Link: {href}")
             continue
+        
+        logger.debug(f"Verarbeite CSIS Link: {href[:80]}...")
         
         # Finde den Titel: Suche nach vorherigem <strong> oder großem Text
         title = None
@@ -386,6 +388,7 @@ def parse_csis_geopolitics_email(msg):
             for strong in strong_tags:
                 if strong.get_text(strip=True) and len(strong.get_text(strip=True)) > 15:
                     title = strong.get_text(strip=True)
+                    logger.debug(f"Titel aus <strong> gefunden: {title[:50]}...")
                     break
             
             # Falls kein <strong>, nimm den Text vor dem Link
@@ -399,6 +402,7 @@ def parse_csis_geopolitics_email(msg):
                     for line in lines:
                         if len(line) > 20 and "?" in line:  # Podcast-Titel sind oft Fragen
                             title = line.strip()
+                            logger.debug(f"Titel aus Text gefunden: {title[:50]}...")
                             break
             
             # Beschreibung = Text zwischen Titel und Link
@@ -414,16 +418,22 @@ def parse_csis_geopolitics_email(msg):
         if not title:
             title = link.get_text(strip=True)
             if len(title) < 15 or "listen here" in title.lower():
+                logger.debug(f"Link-Text zu kurz oder 'Listen Here': {title}")
                 continue
+            logger.debug(f"Fallback: Verwende Link-Text als Titel: {title[:50]}...")
         
         # Score berechnen
         score = score_csis_article(title, description)
+        logger.info(f"Score für '{title[:50]}...': {score}")
         
         if score > 0:
             formatted_article = f"• [{title}]({href})"
             articles.append(formatted_article)
-            logger.info(f"CSIS Geopolitics Artikel gefunden: {title} (Score: {score})")
+            logger.info(f"✅ CSIS Artikel akzeptiert: {title[:50]}... (Score: {score})")
+        else:
+            logger.info(f"❌ CSIS Artikel abgelehnt (Score 0): {title[:50]}...")
     
+    logger.info(f"Parse-Ergebnis: {len(articles)} Artikel extrahiert")
     return articles
 
 def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
@@ -433,8 +443,12 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
     logger.info("Starte fetch_csis_geopolitics_emails")
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_user, email_password)
-        logger.info("IMAP-Login erfolgreich")
+        try:
+            mail.login(email_user, email_password)
+            logger.info("IMAP-Login erfolgreich für CSIS")
+        except Exception as e:
+            logger.error(f"IMAP-Login fehlgeschlagen für CSIS: {str(e)}")
+            return [], 0
         
         mail.select("inbox")
         all_articles = []
@@ -447,20 +461,35 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
-            logger.warning(f"IMAP-Suche fehlgeschlagen: {result}")
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS: {result}")
             mail.logout()
             return [], 0
         
         email_ids = data[0].split()
-        logger.info(f"Gefundene E-Mails: {len(email_ids)}")
+        logger.info(f"CSIS Geopolitics: Anzahl gefundener E-Mails: {len(email_ids)}")
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            mail.logout()
+            return [], 0
         
         for email_id in email_ids:
+            logger.debug(f"Verarbeite CSIS E-Mail ID: {email_id}")
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
                 continue
             
             msg = email.message_from_bytes(msg_data[0][1])
+            
+            # Betreff loggen
+            subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+            if isinstance(subject, bytes):
+                subject = subject.decode()
+            logger.info(f"CSIS E-Mail Betreff: {subject}")
+            
             articles = parse_csis_geopolitics_email(msg)
+            logger.info(f"Aus dieser E-Mail extrahiert: {len(articles)} Artikel")
             
             # Duplikate filtern
             for article in articles:
@@ -470,14 +499,23 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
                     if url not in seen_urls:
                         all_articles.append(article)
                         seen_urls.add(url)
+                        logger.info(f"Artikel hinzugefügt: {article[:100]}...")
+                    else:
+                        logger.debug(f"Duplikat übersprungen: {url}")
         
         mail.logout()
-        logger.info(f"CSIS Geopolitics: {len(all_articles)} relevante Artikel gefunden")
+        logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
         return all_articles, len(email_ids)
         
     except Exception as e:
         logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
         return [], 0
+    finally:
+        try:
+            mail.logout()
+            logger.info("IMAP-Logout für CSIS erfolgreich")
+        except:
+            pass
 
 def main():
     logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
