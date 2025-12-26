@@ -254,8 +254,6 @@ def parse_csis_geopolitics_email(msg):
         title = None
         current_element = link
         
-        # Methode 1: Suche in großer Tabelle mit mehreren <tr>
-        found_table_with_multiple_trs = None
         for level in range(5):
             parent_table = current_element.find_parent("table")
             if not parent_table:
@@ -264,38 +262,23 @@ def parse_csis_geopolitics_email(msg):
             all_trs = parent_table.find_all("tr")
             
             if len(all_trs) > 3:
-                found_table_with_multiple_trs = parent_table
-                break
+                em_text4_elements = parent_table.find_all(class_="em_text4")
+                if em_text4_elements:
+                    # Nimm das LETZTE em_text4 Element (meist der Podcast-Titel)
+                    last_em_text4 = em_text4_elements[-1]
+                    title = last_em_text4.get_text(strip=True)
+                    title = " ".join(title.split())
+                    break
             
             current_element = parent_table
         
-        if found_table_with_multiple_trs:
-            # Finde alle em_text4 Elemente
-            all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
-            
-            # Durchsuche RÜCKWÄRTS und überspringe "New Episodes:"
-            for title_cell in reversed(all_em_text4):
-                title_text = title_cell.get_text(strip=True)
-                title_text = " ".join(title_text.split())
-                
-                # Skip Überschrift
-                if "new episodes:" in title_text.lower():
-                    continue
-                
-                if title_text and len(title_text) > 20:
-                    title = title_text
-                    break
-        
-        # Methode 2: Fallback - übergeordnete Tabelle
+        # Fallback: Übergeordnete Tabelle
         if not title:
             parent_table = link.find_parent("table")
             if parent_table:
-                title_cell = parent_table.find("td", class_="em_text4")
-                if title_cell:
-                    title_text = title_cell.get_text(strip=True)
-                    title_text = " ".join(title_text.split())
-                    if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
-                        title = title_text
+                em_text4 = parent_table.find(class_="em_text4")
+                if em_text4:
+                    title = " ".join(em_text4.get_text(strip=True).split())
         
         if not title:
             continue
@@ -348,22 +331,15 @@ def fetch_csis_geopolitics_emails(mail, days=120):
 
 def main():
     """Hauptfunktion."""
-    # E-Mail-Credentials aus Umgebungsvariable laden
-    substack_mail = os.getenv("SUBSTACK_MAIL")
-    if not substack_mail:
-        logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
-        return
-
     try:
-        mail_config = dict(pair.split("=", 1) for pair in substack_mail.split(";") if "=" in pair)
-        email_user = mail_config.get("GMAIL_USER")
-        email_password = mail_config.get("GMAIL_PASS")
-        
-        if not email_user or not email_password:
-            logger.error("GMAIL_USER oder GMAIL_PASS fehlt in SUBSTACK_MAIL")
-            return
+        # E-Mail-Credentials laden
+        substack_mail_path = os.path.join(BASE_DIR, "SUBSTACK_MAIL")
+        with open(substack_mail_path, "r") as f:
+            content = f.read()
+            email_user = re.search(r'GMAIL_USER="([^"]+)"', content).group(1)
+            email_password = re.search(r'GMAIL_PASS="([^"]+)"', content).group(1)
     except Exception as e:
-        logger.error(f"Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}")
+        logger.error(f"Fehler beim Laden der Credentials: {str(e)}")
         return
     
     # EINMAL IMAP-Verbindung aufbauen
