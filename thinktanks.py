@@ -281,7 +281,204 @@ def fetch_merics_emails(email_user, email_password, days=7):
         except:
             pass
 
-def main():
+def score_csis_article(title, description=""):
+    """Bewertet einen CSIS-Artikel auf China-Relevanz."""
+    title_lower = title.lower()
+    desc_lower = description.lower()
+    content = f"{title_lower} {desc_lower}"
+    
+    # MUSS China-Bezug haben
+    china_keywords = [
+        "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
+        "taiwan", "hong kong", "prc", "ccp", "communist party",
+        "sino-", "u.s.-china", "us-china", "asean"  # ASEAN oft China-relevant
+    ]
+    
+    if not any(kw in content for kw in china_keywords):
+        return 0
+    
+    score = 5  # Basis-Score für China-Erwähnung
+    
+    # Wichtige Themen
+    important_topics = [
+        "technology", "trade", "security", "military", "defense",
+        "economy", "tariff", "semiconductor", "ai", "geopolitics",
+        "indo-pacific", "south china sea", "strait"
+    ]
+    
+    for topic in important_topics:
+        if topic in content:
+            score += 2
+    
+    # Negative Keywords (andere Regionen ohne China-Bezug)
+    negative_keywords = [
+        "venezuela", "gaza", "israel", "palestine", "ukraine", "russia",
+        "europe", "africa", "middle east"
+    ]
+    
+    # Nur abziehen wenn China NICHT erwähnt wird
+    if not any(kw in content for kw in china_keywords):
+        for neg in negative_keywords:
+            if neg in content:
+                score -= 5
+    
+    return max(score, 0)
+
+def parse_csis_geopolitics_email(msg):
+    """
+    Spezialisierter Parser für CSIS Geopolitics & Foreign Policy Newsletter.
+    Extrahiert Podcast-Episoden mit China-Relevanz.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Parse CSIS Geopolitics E-Mail: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # CSIS Geopolitics hat ein spezifisches Format:
+    # Episode-Titel sind oft in <strong> oder <b> Tags
+    # Gefolgt von Beschreibung
+    # Dann "Listen Here" Link
+    
+    # Strategie: Finde alle Links, die zu csis.org/analysis führen
+    all_links = soup.find_all("a", href=True)
+    
+    for link in all_links:
+        href = link.get("href", "")
+        
+        # CSIS Podcast/Analysis Links
+        if "csis.org" not in href:
+            continue
+        
+        # Skip Newsletter-Footer Links
+        if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "forward"]):
+            continue
+        
+        # Finde den Titel: Suche nach vorherigem <strong> oder großem Text
+        title = None
+        description = ""
+        
+        # Suche rückwärts nach dem Titel
+        parent = link.find_parent(["p", "div", "td"])
+        if parent:
+            # Suche nach <strong> oder <b> vor dem Link
+            strong_tags = parent.find_all(["strong", "b"])
+            for strong in strong_tags:
+                if strong.get_text(strip=True) and len(strong.get_text(strip=True)) > 15:
+                    title = strong.get_text(strip=True)
+                    break
+            
+            # Falls kein <strong>, nimm den Text vor dem Link
+            if not title:
+                text_before = parent.get_text(strip=True)
+                # Entferne "Listen Here" und ähnliche
+                text_before = text_before.replace("Listen Here", "").strip()
+                if len(text_before) > 20:
+                    # Nimm die erste Zeile als Titel
+                    lines = text_before.split("\n")
+                    for line in lines:
+                        if len(line) > 20 and "?" in line:  # Podcast-Titel sind oft Fragen
+                            title = line.strip()
+                            break
+            
+            # Beschreibung = Text zwischen Titel und Link
+            if title:
+                full_text = parent.get_text(strip=True)
+                if title in full_text:
+                    desc_start = full_text.find(title) + len(title)
+                    desc_end = full_text.find("Listen Here")
+                    if desc_end > desc_start:
+                        description = full_text[desc_start:desc_end].strip()[:200]
+        
+        # Fallback: Verwende Link-Text als Titel
+        if not title:
+            title = link.get_text(strip=True)
+            if len(title) < 15 or "listen here" in title.lower():
+                continue
+        
+        # Score berechnen
+        score = score_csis_article(title, description)
+        
+        if score > 0:
+            formatted_article = f"• [{title}]({href})"
+            articles.append(formatted_article)
+            logger.info(f"CSIS Geopolitics Artikel gefunden: {title} (Score: {score})")
+    
+    return articles
+
+def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
+    """
+    Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
+    """
+    logger.info("Starte fetch_csis_geopolitics_emails")
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(email_user, email_password)
+        logger.info("IMAP-Login erfolgreich")
+        
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "geopolitics@csis.org"
+        
+        logger.info(f"Suche nach E-Mails von {sender_email} seit {since_date}")
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen: {result}")
+            mail.logout()
+            return [], 0
+        
+        email_ids = data[0].split()
+        logger.info(f"Gefundene E-Mails: {len(email_ids)}")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_csis_geopolitics_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        mail.logout()
+        logger.info(f"CSIS Geopolitics: {len(all_articles)} relevante Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
+        return [], 0
+
     logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
@@ -303,18 +500,28 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    # Suche nach E-Mails der letzten 30 Tage für bessere Testabdeckung
-    articles, email_count = fetch_merics_emails(email_user, email_password, days=30)
+    # Suche nach E-Mails der letzten 30 Tage für MERICS
+    merics_articles, merics_count = fetch_merics_emails(email_user, email_password, days=30)
+    
+    # Suche nach CSIS Geopolitics (bis August = ca. 120 Tage)
+    csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(email_user, email_password, days=120)
     
     # Briefing erstellen mit korrekten Abständen
     briefing = []
     briefing.append("## Think Tanks")
-    briefing.append("### MERICS")
     
-    if articles:
-        briefing.extend(articles)
+    # MERICS
+    briefing.append("### MERICS")
+    if merics_articles:
+        briefing.extend(merics_articles)
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
+    
+    # CSIS Geopolitics
+    if csis_geo_articles:
+        briefing.append("")  # Leerzeile vor nächstem Think Tank
+        briefing.append("### CSIS Geopolitics & Foreign Policy")
+        briefing.extend(csis_geo_articles)
 
     # Konvertiere zu HTML für E-Mail
     # Zuerst Markdown-Links zu HTML konvertieren
