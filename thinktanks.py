@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 # Basisverzeichnis
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Globale Zeitfenster-Einstellung für alle CSIS-Newsletter
+GLOBAL_CSIS_DAYS = 120  # 4 Monate für alle CSIS-Newsletter
+
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
     try:
@@ -398,10 +401,13 @@ def parse_csis_geopolitics_email(msg):
     logger.info(f"Geopolitics Parser - {len(articles)} Artikel extrahiert")
     return articles
 
-def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
+def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=None):
     """
     Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
     """
+    if days is None:
+        days = GLOBAL_CSIS_DAYS
+    
     try:
         mail.select("inbox")
         all_articles = []
@@ -563,10 +569,130 @@ def parse_csis_freeman_email(msg):
     
     return articles
 
-def fetch_csis_freeman_emails(mail, email_user, email_password, days=120):
+def parse_csis_trustee_email(msg):
+    """
+    Spezialisierter Parser für CSIS Trustee Chair Newsletter.
+    Extrahiert Reports, Charts, Videos und Podcast-Episoden (keine Events).
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Trustee Chair - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CSIS Trustee E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle Links
+    all_links = soup.find_all("a", href=True)
+    seen_titles = set()
+    
+    logger.info(f"Trustee Chair Parser - {len(all_links)} Links gefunden")
+    
+    for link in all_links:
+        href = link.get("href", "")
+        link_text = link.get_text(strip=True)
+        
+        # Muss ein CSIS/Pardot Link sein
+        if "csis.org" not in href and "pardot.csis.org" not in href:
+            continue
+        
+        # Skip unwichtige Links
+        skip_patterns = [
+            "mailto:",
+            "unsubscribe",
+            "privacy",
+            "preferences",
+            "view it in your browser",
+            "facebook.com",
+            "twitter.com",
+            "linkedin.com",
+            "instagram.com",
+            "youtube.com",
+            "www.csis.org/analysis",
+            "www.csis.org/events",
+            "www.csis.org/about",
+            "www.csis.org/people",
+            "www.csis.org/podcasts$",
+            "register here",
+            "watch here",  # Event-Links
+            "csis.org$"  # Nur die Hauptseite
+        ]
+        
+        if any(skip in href.lower() or skip in link_text.lower() for skip in skip_patterns):
+            continue
+        
+        # Suche nach Button-Links (Read Here, Listen Here, Watch Here für Content, nicht Events)
+        content_buttons = ["read here", "listen here"]
+        
+        # Finde Titel in der Nähe des Links
+        title = None
+        
+        # Methode 1: Suche nach vorherigem <strong> oder <b> Text
+        parent = link.find_parent(["td", "tr", "div"])
+        if parent:
+            # Suche alle strong/b Tags im Parent
+            strong_tags = parent.find_all(["strong", "b", "em"])
+            for strong in strong_tags:
+                strong_text = strong.get_text(strip=True)
+                if strong_text and len(strong_text) > 10:
+                    # Überspringe Datum-Strings
+                    if re.match(r'^[A-Z][a-z]+ \d+, \d{4}$', strong_text):
+                        continue
+                    # Überspringe kurze Labels
+                    if strong_text.lower() in ["csis chart", "video explainer", "november 2025"]:
+                        continue
+                    title = strong_text
+                    break
+        
+        # Methode 2: Verwende Link-Text wenn er lang genug ist
+        if not title and link_text and len(link_text) > 15:
+            if not any(btn in link_text.lower() for btn in ["read here", "listen here", "watch here"]):
+                title = link_text
+        
+        if not title:
+            continue
+        
+        # Duplikats-Check
+        if title in seen_titles:
+            continue
+        
+        seen_titles.add(title)
+        
+        # Resolve Tracking URL
+        resolved_url = resolve_tracking_url(href)
+        
+        formatted_article = f"• [{title}]({resolved_url})"
+        articles.append(formatted_article)
+        logger.info(f"Trustee Chair - Artikel: {title[:50]}...")
+    
+    logger.info(f"Trustee Chair Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+def fetch_csis_freeman_emails(mail, email_user, email_password, days=None):
     """
     Holt CSIS Freeman Chair (Pekingology) Artikel aus E-Mails.
     """
+    if days is None:
+        days = GLOBAL_CSIS_DAYS
+    
     try:
         mail.select("inbox")
         all_articles = []
@@ -615,6 +741,61 @@ def fetch_csis_freeman_emails(mail, email_user, email_password, days=120):
         logger.error(f"Fehler in fetch_csis_freeman_emails: {str(e)}")
         return [], 0
 
+def fetch_csis_trustee_emails(mail, email_user, email_password, days=None):
+    """
+    Holt CSIS Trustee Chair Artikel aus E-Mails.
+    """
+    if days is None:
+        days = GLOBAL_CSIS_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "cbe@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Trustee: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Trustee Chair - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_csis_trustee_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS Trustee Chair: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_csis_trustee_emails: {str(e)}")
+        return [], 0
+
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS)")
     substack_mail = os.getenv("SUBSTACK_MAIL")
@@ -646,11 +827,14 @@ def main():
         # MERICS (30 Tage)
         merics_articles, merics_count = fetch_merics_emails(mail, email_user, email_password, days=30)
         
-        # CSIS Geopolitics (120 Tage)
-        csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120)
+        # CSIS Geopolitics (GLOBAL_CSIS_DAYS)
+        csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(mail, email_user, email_password)
         
-        # CSIS Freeman Chair (120 Tage)
-        csis_freeman_articles, csis_freeman_count = fetch_csis_freeman_emails(mail, email_user, email_password, days=120)
+        # CSIS Freeman Chair (GLOBAL_CSIS_DAYS)
+        csis_freeman_articles, csis_freeman_count = fetch_csis_freeman_emails(mail, email_user, email_password)
+        
+        # CSIS Trustee Chair (GLOBAL_CSIS_DAYS)
+        csis_trustee_articles, csis_trustee_count = fetch_csis_trustee_emails(mail, email_user, email_password)
         
     finally:
         mail.logout()
@@ -683,6 +867,14 @@ def main():
     briefing.append("#### Freeman Chair in China Studies")
     if csis_freeman_articles:
         briefing.extend(csis_freeman_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # CSIS Trustee Chair
+    briefing.append("")
+    briefing.append("#### Trustee Chair in Chinese Business & Economics")
+    if csis_trustee_articles:
+        briefing.extend(csis_trustee_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
