@@ -368,14 +368,15 @@ def parse_csis_geopolitics_email(msg):
         href = link.get("href", "")
         link_text = link.get_text(strip=True)
         
-        # CSIS Podcast/Analysis Links
-        if "csis.org" not in href:
+        # Muss ein CSIS/Pardot Link sein
+        if "csis.org" not in href and "pardot.csis.org" not in href:
             continue
         
         # Skip Newsletter-Footer und UI-Links FRÜH
         skip_patterns = [
             "unsubscribe", "preferences", "forward", "view it in your browser",
-            "email not displaying", "www.csis.org/geopolitics", "www.csis.org$"
+            "email not displaying", "www.csis.org/geopolitics", "www.csis.org$",
+            "privacy-policy", "my-mailing-preferences"
         ]
         
         if any(skip in href.lower() for skip in skip_patterns):
@@ -386,9 +387,9 @@ def parse_csis_geopolitics_email(msg):
             logger.debug(f"Überspringe Footer-Text: {link_text[:50]}...")
             continue
         
-        # Nur Links zu /analysis/ oder /podcasts/ oder spezifischen Artikeln
-        if not any(path in href for path in ["/analysis/", "/podcast/", "/event/"]):
-            logger.debug(f"Kein Analyse/Podcast-Link: {href[:50]}...")
+        # Skip Social Media Links (Facebook, Twitter, LinkedIn, etc.)
+        if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
+            logger.debug(f"Überspringe Social Media Link: {href[:50]}...")
             continue
         
         processed_count += 1
