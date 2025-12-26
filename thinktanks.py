@@ -571,7 +571,6 @@ def fetch_csis_geopolitics_emails(email_user, email_password, days=180):
                         all_articles.append(article)
                         seen_urls.add(url)
                         logger.info(f"Artikel hinzugefügt: {article[:100]}...")
-                    else:
         
         mail.logout()
         logger.info(f"CSIS Geopolitics GESAMT: {len(all_articles)} relevante Artikel gefunden")
