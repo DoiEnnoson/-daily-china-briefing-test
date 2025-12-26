@@ -326,12 +326,21 @@ def parse_csis_geopolitics_email(msg):
     # Strategie: Finde alle Links, die zu csis.org führen
     all_links = soup.find_all("a", href=True)
     
+    logger.info(f"Geopolitics Parser - {len(all_links)} Links insgesamt gefunden")
+    
+    links_processed = 0
+    links_skipped_no_csis = 0
+    links_skipped_footer = 0
+    links_skipped_no_title = 0
+    links_skipped_score = 0
+    
     for link in all_links:
         href = link.get("href", "")
         link_text = link.get_text(strip=True)
         
         # Muss ein CSIS/Pardot Link sein
         if "csis.org" not in href and "pardot.csis.org" not in href:
+            links_skipped_no_csis += 1
             continue
         
         # Skip Newsletter-Footer und UI-Links FRÜH
@@ -342,14 +351,20 @@ def parse_csis_geopolitics_email(msg):
         ]
         
         if any(skip in href.lower() for skip in skip_patterns):
+            links_skipped_footer += 1
             continue
         
         if any(skip in link_text.lower() for skip in skip_patterns):
+            links_skipped_footer += 1
             continue
         
         # Skip Social Media Links
         if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
+            links_skipped_footer += 1
             continue
+        
+        links_processed += 1
+        logger.info(f"Geopolitics Parser - Verarbeite Link #{links_processed}: {href[:60]}...")
         
         # Finde den Titel
         title = None
@@ -414,20 +429,41 @@ def parse_csis_geopolitics_email(msg):
                 title = link_text
         
         if not title:
+            links_skipped_no_title += 1
+            logger.info(f"Geopolitics Parser - Kein Titel gefunden für: {href[:60]}")
             continue
+        
+        logger.info(f"Geopolitics Parser - Titel gefunden: {title[:60]}...")
         
         # Score berechnen
         score = score_csis_article(title, description)
+        logger.info(f"Geopolitics Parser - Score: {score}")
         
         if score > 0:
             # Duplikats-Check
             if title in [art.split('](')[0].split('[')[1] for art in articles]:
+                logger.info(f"Geopolitics Parser - Duplikat übersprungen")
                 continue
             
             # URL auflösen
             resolved_url = resolve_tracking_url(href)
             formatted_article = f"• [{title}]({resolved_url})"
             articles.append(formatted_article)
+            logger.info(f"Geopolitics Parser - Artikel hinzugefügt!")
+        else:
+            links_skipped_score += 1
+            logger.info(f"Geopolitics Parser - Score zu niedrig, übersprungen")
+    
+    logger.info(f"Geopolitics Parser - Zusammenfassung:")
+    logger.info(f"  Links insgesamt: {len(all_links)}")
+    logger.info(f"  Nicht CSIS: {links_skipped_no_csis}")
+    logger.info(f"  Footer/UI: {links_skipped_footer}")
+    logger.info(f"  Verarbeitet: {links_processed}")
+    logger.info(f"  Kein Titel: {links_skipped_no_title}")
+    logger.info(f"  Score zu niedrig: {links_skipped_score}")
+    logger.info(f"  Artikel extrahiert: {len(articles)}")
+    
+    return articles
     
     return articles
 
@@ -443,6 +479,8 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         sender_email = "geopolitics@csis.org"
         
+        logger.info(f"Geopolitics - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
@@ -455,6 +493,8 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
             logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
             return [], 0
         
+        logger.info(f"Geopolitics - {len(email_ids)} E-Mails gefunden")
+        
         for email_id in email_ids:
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
@@ -463,7 +503,14 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
             
             msg = email.message_from_bytes(msg_data[0][1])
             
+            # Betreff loggen
+            subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+            if isinstance(subject, bytes):
+                subject = subject.decode()
+            logger.info(f"Geopolitics - Betreff: {subject}")
+            
             articles = parse_csis_geopolitics_email(msg)
+            logger.info(f"Geopolitics - {len(articles)} Artikel aus dieser E-Mail extrahiert")
             
             # Duplikate filtern
             for article in articles:
@@ -473,6 +520,9 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
                     if url not in seen_urls:
                         all_articles.append(article)
                         seen_urls.add(url)
+                        logger.info(f"Geopolitics - Artikel hinzugefügt: {article[:80]}...")
+                    else:
+                        logger.info(f"Geopolitics - Duplikat übersprungen: {url}")
         
         logger.info(f"CSIS Geopolitics: {len(all_articles)} Artikel gefunden")
         return all_articles, len(email_ids)
