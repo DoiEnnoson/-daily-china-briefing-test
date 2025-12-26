@@ -52,15 +52,21 @@ def extract_email_address(sender):
     return match.group(1) if match else sender
 
 def resolve_tracking_url(url):
-    """Löst Tracking-URLs auf (Dynamics, Mailchimp, etc.)."""
+    """Löst Tracking-URLs auf (Dynamics, Mailchimp, Pardot, etc.)."""
     try:
+        # Pardot-URLs (CSIS verwendet pardot.csis.org)
+        if "pardot.csis.org" in url:
+            response = requests.get(url, allow_redirects=True, timeout=5)
+            final_url = response.url
+            logger.debug(f"Pardot-URL aufgelöst: {url} -> {final_url}")
+            return final_url
+        
         # Dynamics-URLs mit msdynmkt_target Parameter
         parsed = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed.query)
         
         if 'msdynmkt_target' in query_params:
             target_json = query_params['msdynmkt_target'][0]
-            import json
             target_data = json.loads(target_json)
             if 'TargetUrl' in target_data:
                 final_url = urllib.parse.unquote(target_data['TargetUrl'])
@@ -79,7 +85,6 @@ def resolve_tracking_url(url):
 
 def clean_merics_title(subject):
     """Bereinigt MERICS E-Mail-Betreff für Titel."""
-    # Entferne Präfixe
     prefixes = [
         "MERICS China Security & Risk Tracker: ",
         "MERICS China Essentials Special Issue: ",
@@ -112,7 +117,6 @@ def parse_merics_email(msg):
         date = email.utils.parsedate_to_datetime(msg.get("Date", ""))
     except:
         date = datetime.now()
-    
     
     # HTML-Inhalt finden
     html_content = None
@@ -199,7 +203,6 @@ def fetch_merics_emails(mail, email_user, email_password, days=7):
         merics = next((tt for tt in thinktanks if tt["abbreviation"] == "MERICS"), None)
         if not merics:
             logger.error("MERICS nicht in thinktanks.json gefunden")
-            send_email("Fehler in fetch_merics_emails", "<p>MERICS nicht in thinktanks.json gefunden</p>", email_user, email_password)
             return [], 0
 
         email_senders = merics["email_senders"]
@@ -246,7 +249,6 @@ def fetch_merics_emails(mail, email_user, email_password, days=7):
         
     except Exception as e:
         logger.error(f"Fehler in fetch_merics_emails: {str(e)}")
-        send_email("Fehler in fetch_merics_emails", f"<p>Fehler beim Abrufen von MERICS-E-Mails: {str(e)}</p>", email_user, email_password)
         return [], 0
 
 def score_csis_article(title, description=""):
@@ -259,7 +261,7 @@ def score_csis_article(title, description=""):
     china_keywords = [
         "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
         "taiwan", "hong kong", "prc", "ccp", "communist party",
-        "sino-", "u.s.-china", "us-china", "asean"  # ASEAN oft China-relevant
+        "sino-", "u.s.-china", "us-china", "asean"
     ]
     
     if not any(kw in content for kw in china_keywords):
@@ -304,7 +306,6 @@ def parse_csis_geopolitics_email(msg):
     if isinstance(subject, bytes):
         subject = subject.decode()
     
-    
     # HTML-Inhalt finden
     html_content = None
     for part in msg.walk():
@@ -317,17 +318,13 @@ def parse_csis_geopolitics_email(msg):
             break
     
     if not html_content:
-        logger.warning("Keine HTML-Inhalte in CSIS E-Mail gefunden")
+        logger.warning("Keine HTML-Inhalte in CSIS Geopolitics E-Mail gefunden")
         return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
     # Strategie: Finde alle Links, die zu csis.org führen
     all_links = soup.find_all("a", href=True)
-    
-    csis_links = [link for link in all_links if "csis.org" in link.get("href", "")]
-    
-    processed_count = 0
     
     for link in all_links:
         href = link.get("href", "")
@@ -350,20 +347,15 @@ def parse_csis_geopolitics_email(msg):
         if any(skip in link_text.lower() for skip in skip_patterns):
             continue
         
-        # Skip Social Media Links (Facebook, Twitter, LinkedIn, etc.)
+        # Skip Social Media Links
         if any(social in href.lower() for social in ["facebook.com", "twitter.com", "linkedin.com", "instagram.com", "youtube.com"]):
             continue
         
-        processed_count += 1
-        
-        # Finde den Titel: CSIS verwendet <td class="em_text4"> für Podcast-Titel
+        # Finde den Titel
         title = None
         description = ""
         
         # Methode 1: Suche RÜCKWÄRTS nach dem VORHERIGEN em_text4 Element
-        # Problem: Links sind oft in verschachtelten Tabellen!
-        # Lösung: Gehe mehrere Tabellen-Ebenen nach oben
-        
         current_element = link
         found_table_with_multiple_trs = None
         
@@ -373,38 +365,27 @@ def parse_csis_geopolitics_email(msg):
             if not current_element:
                 break
             
-            # Zähle wie viele <tr> diese Tabelle hat (inkl. tbody!)
-            all_trs = current_element.find_all("tr")  # OHNE recursive=False!
+            all_trs = current_element.find_all("tr")
             
-            # Wenn die Tabelle mehr als 3 <tr> hat, ist es wahrscheinlich die richtige
             if len(all_trs) > 3:
                 found_table_with_multiple_trs = current_element
                 break
         
         if found_table_with_multiple_trs:
-            # Finde alle <td class="em_text4"> in dieser Tabelle
             all_em_text4 = found_table_with_multiple_trs.find_all("td", class_="em_text4")
-            
-            # Finde das em_text4 Element das VOR dem Link kommt
-            # Durchsuche rückwärts
-            link_position = str(link)  # Position des Links im HTML
             
             for title_cell in reversed(all_em_text4):
                 title_text = title_cell.get_text(strip=True)
                 title_text = " ".join(title_text.split())
                 
-                # Skip wenn es die Überschrift ist
                 if "new episodes:" in title_text.lower():
                     continue
                 
-                # Prüfe ob dieses em_text4 VOR dem Link im HTML steht
-                title_position = str(title_cell)
                 if title_text and len(title_text) > 20:
-                    # Nimm das LETZTE em_text4 das wir finden (= das nächste VOR dem Link)
                     title = title_text
                     break
         
-        # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle (Fallback)
+        # Methode 2: Falls nicht gefunden, suche in übergeordneter Tabelle
         if not title:
             parent_table = link.find_parent("table")
             if parent_table:
@@ -415,23 +396,7 @@ def parse_csis_geopolitics_email(msg):
                     if title_text and len(title_text) > 20 and "new episodes:" not in title_text.lower():
                         title = title_text
         
-        # Methode 2: Falls nicht gefunden, suche weiter oben - gehe zu mehreren parent tables
-        if not title:
-            # Manchmal ist der Titel in einer übergeordneten Tabellen-Struktur
-            current = link
-            for _ in range(5):  # Gehe bis zu 5 Ebenen hoch
-                current = current.find_parent("table")
-                if not current:
-                    break
-                title_cell = current.find("td", class_="em_text4")
-                if title_cell:
-                    title_text = title_cell.get_text(strip=True)
-                    title_text = " ".join(title_text.split())
-                    if title_text and len(title_text) > 20:
-                        title = title_text
-                        break
-        
-        # Methode 3: Suche nach <strong> oder <b> als Fallback
+        # Methode 3: Suche nach <strong> oder <b>
         if not title:
             parent = link.find_parent(["tr", "td"])
             if parent:
@@ -455,19 +420,20 @@ def parse_csis_geopolitics_email(msg):
         score = score_csis_article(title, description)
         
         if score > 0:
-            # Duplikats-Check: Überspringe wenn gleicher Titel bereits gesehen
+            # Duplikats-Check
             if title in [art.split('](')[0].split('[')[1] for art in articles]:
                 continue
             
-            formatted_article = f"• [{title}]({href})"
+            # URL auflösen
+            resolved_url = resolve_tracking_url(href)
+            formatted_article = f"• [{title}]({resolved_url})"
             articles.append(formatted_article)
     
     return articles
 
-def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=180):
+def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120):
     """
     Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
-    Verwendet eine bestehende IMAP-Verbindung.
     """
     try:
         mail.select("inbox")
@@ -480,7 +446,7 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=180):
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
-            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS: {result}")
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Geopolitics: {result}")
             return [], 0
         
         email_ids = data[0].split()
@@ -497,11 +463,6 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=180):
             
             msg = email.message_from_bytes(msg_data[0][1])
             
-            # Betreff loggen
-            subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
-            if isinstance(subject, bytes):
-                subject = subject.decode()
-            
             articles = parse_csis_geopolitics_email(msg)
             
             # Duplikate filtern
@@ -513,15 +474,175 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=180):
                         all_articles.append(article)
                         seen_urls.add(url)
         
-        logger.info(f"CSIS: {len(all_articles)} Artikel gefunden")
+        logger.info(f"CSIS Geopolitics: {len(all_articles)} Artikel gefunden")
         return all_articles, len(email_ids)
         
     except Exception as e:
         logger.error(f"Fehler in fetch_csis_geopolitics_emails: {str(e)}")
         return [], 0
 
+def parse_csis_freeman_email(msg):
+    """
+    Spezialisierter Parser für CSIS Freeman Chair Newsletter (Pekingology Podcast).
+    Format: Podcast-Titel im Betreff, Beschreibung im Body, "Listen on CSIS.org" Link.
+    """
+    articles = []
+    
+    # Betreff extrahieren = Podcast-Titel
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Freeman Chair - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CSIS Freeman E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Suche nach dem "Listen on CSIS.org" Link
+    # Der Link ist typischerweise in einem <td bgcolor="#3DD5FF"> mit Link-Text "Listen on CSIS.org"
+    found_link = None
+    
+    all_links = soup.find_all("a", href=True)
+    
+    for link in all_links:
+        href = link.get("href", "")
+        link_text = link.get_text(strip=True).lower()
+        
+        # Skip unwichtige Links
+        skip_patterns = [
+            "mailto:",
+            "unsubscribe",
+            "privacy",
+            "preferences",
+            "view it in your browser",
+            "facebook.com",
+            "twitter.com",
+            "linkedin.com",
+            "instagram.com",
+            "youtube.com",
+            "apple.com",
+            "spotify.com"
+        ]
+        
+        if any(skip in href.lower() or skip in link_text for skip in skip_patterns):
+            continue
+        
+        # Suche nach "Listen on CSIS.org" oder ähnlichen Texten
+        if "listen on csis" in link_text or "csis.org" in link_text:
+            # Prüfe ob es ein Pardot-Link ist (tracking)
+            if "pardot.csis.org" in href or "csis.org" in href:
+                resolved_url = resolve_tracking_url(href)
+                # Prüfe ob es zu /podcasts/ oder /pekingology/ führt
+                if "/podcasts/" in resolved_url or "/pekingology/" in resolved_url or "csis.org" in resolved_url:
+                    found_link = resolved_url
+                    logger.info(f"Freeman Chair - Link gefunden: {resolved_url}")
+                    break
+    
+    # Fallback: Suche nach jedem csis.org Link der nicht zu Standardseiten führt
+    if not found_link:
+        for link in all_links:
+            href = link.get("href", "")
+            
+            skip_patterns = [
+                "www.csis.org$",
+                "www.csis.org/analysis",
+                "www.csis.org/events",
+                "www.csis.org/people",
+                "www.csis.org/podcasts$",  # Hauptseite, nicht Episode
+                "unsubscribe",
+                "privacy",
+                "preferences"
+            ]
+            
+            if any(skip in href.lower() for skip in skip_patterns):
+                continue
+            
+            if "csis.org" in href or "pardot.csis.org" in href:
+                resolved_url = resolve_tracking_url(href)
+                if "csis.org" in resolved_url:
+                    found_link = resolved_url
+                    logger.info(f"Freeman Chair - Fallback Link: {resolved_url}")
+                    break
+    
+    if found_link:
+        # Titel: "Pekingology: [Betreff]"
+        title = f"Pekingology: {subject}"
+        formatted_article = f"• [{title}]({found_link})"
+        articles.append(formatted_article)
+        logger.info(f"Freeman Chair - Artikel erstellt: {title}")
+    else:
+        logger.warning(f"Freeman Chair - Kein Link gefunden für: {subject}")
+    
+    return articles
+
+def fetch_csis_freeman_emails(mail, email_user, email_password, days=120):
+    """
+    Holt CSIS Freeman Chair (Pekingology) Artikel aus E-Mails.
+    """
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "FreemanChair@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Freeman: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Freeman Chair - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_csis_freeman_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS Freeman Chair: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_csis_freeman_emails: {str(e)}")
+        return [], 0
+
 def main():
-    logger.info("Starte verbessertes Testskript für MERICS-Artikel-Extraktion")
+    logger.info("Starte erweitertes Testskript für Think Tanks (MERICS + CSIS)")
     substack_mail = os.getenv("SUBSTACK_MAIL")
     if not substack_mail:
         logger.error("SUBSTACK_MAIL Umgebungsvariable nicht gefunden")
@@ -541,7 +662,7 @@ def main():
         send_email("Fehler in thinktanks.py", f"<p>Fehler beim Parsen von SUBSTACK_MAIL: {str(e)}</p>", "", "")
         return
 
-    # Einmal IMAP-Verbindung aufbauen
+    # IMAP-Verbindung aufbauen
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_user, email_password)
@@ -551,17 +672,20 @@ def main():
         return
     
     try:
-        # Suche nach E-Mails der letzten 30 Tage für MERICS
+        # MERICS (30 Tage)
         merics_articles, merics_count = fetch_merics_emails(mail, email_user, email_password, days=30)
         
-        # Suche nach CSIS Geopolitics (bis August = ca. 120 Tage)
+        # CSIS Geopolitics (120 Tage)
         csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(mail, email_user, email_password, days=120)
+        
+        # CSIS Freeman Chair (120 Tage)
+        csis_freeman_articles, csis_freeman_count = fetch_csis_freeman_emails(mail, email_user, email_password, days=120)
+        
     finally:
-        # Einmal IMAP-Logout
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
     
-    # Briefing erstellen mit korrekten Abständen
+    # Briefing erstellen
     briefing = []
     briefing.append("## Think Tanks")
     
@@ -572,8 +696,8 @@ def main():
     else:
         briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
     
-    # CSIS Header IMMER anzeigen
-    briefing.append("")  # Leerzeile
+    # CSIS Header
+    briefing.append("")
     briefing.append("### CSIS")
     
     # CSIS Geopolitics
@@ -582,30 +706,39 @@ def main():
         briefing.extend(csis_geo_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
-        logger.warning(f"CSIS Geopolitics: Keine Artikel gefunden (E-Mails durchsucht: {csis_geo_count})")
+    
+    # CSIS Freeman Chair
+    briefing.append("")
+    briefing.append("#### Freeman Chair in China Studies")
+    if csis_freeman_articles:
+        briefing.extend(csis_freeman_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
 
-    # Konvertiere zu HTML für E-Mail
-    # Zuerst Markdown-Links zu HTML konvertieren
+    # Konvertiere zu HTML
     html_lines = []
     for line in briefing:
-        # Konvertiere Markdown-Links zu HTML
         html_line = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', line)
         html_lines.append(html_line)
     
-    # Jetzt mit korrekten Abständen zusammenbauen:
-    # - Nach "## Think Tanks": 1 Absatz
-    # - Nach "### MERICS": KEIN Absatz (direkt die Artikel)
-    # - Zwischen Artikeln: KEIN Absatz
-    html_content = html_lines[0] + "<br><br>\n"  # ## Think Tanks
-    html_content += html_lines[1] + "<br>\n"  # ### MERICS (nur 1x <br>)
-    # Restliche Zeilen (Artikel) mit einfachem <br>
-    for i in range(2, len(html_lines)):
-        html_content += html_lines[i]
-        if i < len(html_lines) - 1:  # Nicht nach dem letzten Artikel
+    # HTML zusammenbauen
+    html_content = ""
+    for i, line in enumerate(html_lines):
+        if line.startswith("##"):
+            html_content += line + "<br><br>\n"
+        elif line.startswith("###") and not line.startswith("####"):
+            html_content += line + "<br>\n"
+        elif line.startswith("####"):
+            html_content += line + "<br>\n"
+        elif line == "":
             html_content += "<br>\n"
+        else:
+            html_content += line
+            if i < len(html_lines) - 1:
+                html_content += "<br>\n"
     
     # E-Mail senden
-    send_email("Think Tanks - MERICS Update", html_content, email_user, email_password)
+    send_email("Think Tanks - MERICS & CSIS Update", html_content, email_user, email_password)
     logger.info("E-Mail erfolgreich versendet")
     
     # Vorschau auf Konsole
