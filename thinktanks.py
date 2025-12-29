@@ -843,12 +843,18 @@ def parse_csis_japan_email(msg):
                     "read more" in link_text or
                     "read here" in link_text
                 ):
-                    next_link = link.get("href")
+                  next_link = link.get("href")
                     logger.debug(f"Japan Chair - CTA Link gefunden: {next_link[:60]}...")
                     break
         
+        if not next_link:
+            logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
+            continue
+        
         # Resolve Tracking URL
         resolved_url = resolve_tracking_url(next_link)
+                  
+
         
         formatted_article = f"• [{title_text}]({resolved_url})"
         articles.append(formatted_article)
