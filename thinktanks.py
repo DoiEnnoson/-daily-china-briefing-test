@@ -822,33 +822,53 @@ def parse_csis_japan_email(msg):
         
         seen_titles.add(title_text)
         
-        # Suche nach "Read More Here" Link NACH diesem Titel
+        # Suche nach Link NACH diesem Titel
         # Finde die nächste Zeile mit einem CTA-Button
         next_link = None
         
-        # Methode 1: Suche in nachfolgenden Elementen
+        # Methode 1: Suche in nachfolgenden Elementen (max 15 Schritte)
         current = title_element
-        for _ in range(10):  # Maximal 10 Elemente weiter suchen
+        for _ in range(15):
             current = current.find_next()
             if not current:
                 break
             
-            # Suche nach Links mit "Read More" Text
+            # Suche nach Links mit relevanten Texten
             if current.name == "a":
                 link_text = current.get_text(strip=True).lower()
-                if "read more" in link_text or "read here" in link_text:
-                    next_link = current.get("href")
+                href = current.get("href")
+                
+                # Erweiterte Link-Keywords
+                link_keywords = [
+                    "read more", "read here", "read on csis", 
+                    "read full", "learn more", "view"
+                ]
+                
+                if href and "csis.org" in href and any(kw in link_text for kw in link_keywords):
+                    next_link = href
                     break
             
             # Suche innerhalb von td-Elementen
             if current.name == "td":
-                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
+                # Versuche jeden Link zu csis.org/analysis zu finden
+                link = current.find("a", href=re.compile(r"csis\.org/analysis"))
                 if link:
                     next_link = link.get("href")
                     break
         
+        # Methode 2: Wenn kein spezifischer Link gefunden, suche nach JEDEM csis.org/analysis Link
         if not next_link:
-            logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
+            # Suche im gesamten E-Mail-Bereich nach dem Titel nach Links
+            all_links = soup.find_all("a", href=re.compile(r"csis\.org/(analysis|commentary)"))
+            for link in all_links:
+                # Prüfe ob der Link nach dem Titel kommt
+                if link.get("href"):
+                    next_link = link.get("href")
+                    logger.info(f"Japan Chair - Fallback-Link gefunden: {next_link[:60]}...")
+                    break
+        
+        if not next_link:
+            logger.warning(f"Japan Chair - Kein Link für Titel gefunden: {title_text[:40]}...")
             continue
         
         # Resolve Tracking URL
