@@ -824,28 +824,31 @@ def parse_csis_japan_email(msg):
         
         # Suche nach "Read More Here" Link NACH diesem Titel
         # Finde die nächste Zeile mit einem CTA-Button
-# Suche nach "Read More Here" Link NACH diesem Titel
+        # Suche nach "Read More Here" Link NACH diesem Titel
         next_link = None
         
-        # Methode 1: Suche nach em_cta1 oder bgcolor="#3DD5FF" Element
-        parent_table = title_element.find_parent("table")
-        if parent_table:
-            # Suche nach CTA-Button in der gleichen Tabelle
-            cta_links = parent_table.find_all("a", href=True)
-            for link in cta_links:
-                link_text = link.get_text(strip=True).lower()
-                parent_td = link.find_parent("td")
-                
-                # Prüfe auf CTA-Merkmale
-                if parent_td and (
-                    "em_cta" in parent_td.get("class", []) or
-                    parent_td.get("bgcolor") == "#3DD5FF" or
-                    "read more" in link_text or
-                    "read here" in link_text
-                ):
-                    next_link = link.get("href")
-                    logger.debug(f"Japan Chair - CTA Link gefunden: {next_link[:60]}...")
+        # Methode 1: Suche in der GESAMTEN E-Mail nach CTA-Buttons mit bgcolor="#3DD5FF"
+        all_cta_buttons = soup.find_all("td", bgcolor="#3DD5FF")
+        for cta_td in all_cta_buttons:
+            link = cta_td.find("a", href=True)
+            if link:
+                href = link.get("href")
+                if href and "csis.org" in href:
+                    next_link = href
+                    logger.debug(f"Japan Chair - CTA Button gefunden: {next_link[:60]}...")
                     break
+        
+        # Methode 2 (Fallback): Suche nach "Read More" Text in Links
+        if not next_link:
+            all_links = soup.find_all("a", href=True)
+            for link in all_links:
+                link_text = link.get_text(strip=True).lower()
+                if "read more" in link_text or "read here" in link_text:
+                    href = link.get("href")
+                    if href and "csis.org" in href:
+                        next_link = href
+                        logger.debug(f"Japan Chair - Read More Link gefunden: {next_link[:60]}...")
+                        break
         
         if not next_link:
             logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
