@@ -765,6 +765,102 @@ def parse_csis_trustee_email(msg):
     logger.info(f"Trustee Chair Parser - {len(articles)} Artikel extrahiert")
     return articles
 
+def parse_csis_japan_email(msg):
+    """
+    Spezialisierter Parser für CSIS Japan Chair Newsletter.
+    Extrahiert Artikel mit em_text4 Titeln und "Read More Here" Links.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Japan Chair - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CSIS Japan Chair E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle em_text4 Titel (große Schrift)
+    title_elements = soup.find_all("td", class_=lambda x: x and "em_text4" in x)
+    
+    logger.info(f"Japan Chair Parser - {len(title_elements)} em_text4 Elemente gefunden")
+    
+    seen_titles = set()
+    
+    for title_element in title_elements:
+        # Extrahiere Titel-Text
+        title_text = title_element.get_text(strip=True)
+        
+        # Bereinige Titel
+        title_text = title_text.replace("​​", "").strip()  # Entferne Zero-Width-Spaces
+        
+        # Überspringe zu kurze Titel
+        if len(title_text) < 30:
+            logger.debug(f"Japan Chair - Titel zu kurz: {title_text}")
+            continue
+        
+        # Duplikats-Check
+        if title_text in seen_titles:
+            logger.debug(f"Japan Chair - Duplikat: {title_text[:40]}...")
+            continue
+        
+        seen_titles.add(title_text)
+        
+        # Suche nach "Read More Here" Link NACH diesem Titel
+        # Finde die nächste Zeile mit einem CTA-Button
+        next_link = None
+        
+        # Methode 1: Suche in nachfolgenden Elementen
+        current = title_element
+        for _ in range(10):  # Maximal 10 Elemente weiter suchen
+            current = current.find_next()
+            if not current:
+                break
+            
+            # Suche nach Links mit "Read More" Text
+            if current.name == "a":
+                link_text = current.get_text(strip=True).lower()
+                if "read more" in link_text or "read here" in link_text:
+                    next_link = current.get("href")
+                    break
+            
+            # Suche innerhalb von td-Elementen
+            if current.name == "td":
+                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
+                if link:
+                    next_link = link.get("href")
+                    break
+        
+        if not next_link:
+            logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
+            continue
+        
+        # Resolve Tracking URL
+        resolved_url = resolve_tracking_url(next_link)
+        
+        formatted_article = f"• [{title_text}]({resolved_url})"
+        articles.append(formatted_article)
+        logger.info(f"Japan Chair - Artikel: {title_text[:50]}...")
+    
+    logger.info(f"Japan Chair Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
 def fetch_csis_freeman_emails(mail, email_user, email_password, days=None):
     """
     Holt CSIS Freeman Chair (Pekingology) Artikel aus E-Mails.
@@ -875,6 +971,61 @@ def fetch_csis_trustee_emails(mail, email_user, email_password, days=None):
         logger.error(f"Fehler in fetch_csis_trustee_emails: {str(e)}")
         return [], 0
 
+def fetch_csis_japan_emails(mail, email_user, email_password, days=None):
+    """
+    Holt CSIS Japan Chair Artikel aus E-Mails.
+    """
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "JapanChair@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Japan Chair: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Japan Chair - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_csis_japan_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS Japan Chair: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_csis_japan_emails: {str(e)}")
+        return [], 0
+
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS)")
     substack_mail = os.getenv("SUBSTACK_MAIL")
@@ -915,6 +1066,9 @@ def main():
         # CSIS Trustee Chair (nutzt GLOBAL_THINKTANK_DAYS)
         csis_trustee_articles, csis_trustee_count = fetch_csis_trustee_emails(mail, email_user, email_password)
         
+        # CSIS Japan Chair (nutzt GLOBAL_THINKTANK_DAYS)
+        csis_japan_articles, csis_japan_count = fetch_csis_japan_emails(mail, email_user, email_password)
+        
     finally:
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
@@ -954,6 +1108,14 @@ def main():
     briefing.append("#### Trustee Chair in Chinese Business & Economics")
     if csis_trustee_articles:
         briefing.extend(csis_trustee_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # CSIS Japan Chair
+    briefing.append("")
+    briefing.append("#### Japan Chair")
+    if csis_japan_articles:
+        briefing.extend(csis_japan_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
