@@ -832,31 +832,20 @@ def parse_csis_japan_email(msg):
             current = current.find_next()
             if not current:
                 break
-# Suche nach "Read More Here" Link NACH diesem Titel
-        next_link = None
-        
-        # Methode 1: Suche in der GESAMTEN E-Mail nach CTA-Buttons mit bgcolor="#3DD5FF"
-        all_cta_buttons = soup.find_all("td", bgcolor="#3DD5FF")
-        for cta_td in all_cta_buttons:
-            link = cta_td.find("a", href=True)
-            if link:
-                href = link.get("href")
-                if href and "csis.org" in href:
-                    next_link = href
-                    logger.debug(f"Japan Chair - CTA Button gefunden: {next_link[:60]}...")
-                    break
-        
-        # Methode 2 (Fallback): Suche nach "Read More" Text in Links
-        if not next_link:
-            all_links = soup.find_all("a", href=True)
-            for link in all_links:
-                link_text = link.get_text(strip=True).lower()
+            
+            # Suche nach Links mit "Read More" Text
+            if current.name == "a":
+                link_text = current.get_text(strip=True).lower()
                 if "read more" in link_text or "read here" in link_text:
-                    href = link.get("href")
-                    if href and "csis.org" in href:
-                        next_link = href
-                        logger.debug(f"Japan Chair - Read More Link gefunden: {next_link[:60]}...")
-                        break
+                    next_link = current.get("href")
+                    break
+            
+            # Suche innerhalb von td-Elementen
+            if current.name == "td":
+                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
+                if link:
+                    next_link = link.get("href")
+                    break
         
         if not next_link:
             logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
@@ -1206,26 +1195,163 @@ def fetch_chinapower_emails(mail, email_user, email_password, days=None):
         logger.error(f"Fehler in fetch_chinapower_emails: {str(e)}")
         return [], 0
 
+def parse_korea_chair_email(msg):
+    """
+    Spezialisierter Parser für CSIS Korea Chair Newsletter.
+    Extrahiert Critical Questions und andere Publikationen.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Korea Chair - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in Korea Chair E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Methode 1: Finde Titel in <td> mit class="em_text4"
+    title_element = soup.find("td", class_="em_text4")
+    
+    if title_element:
+        title = title_element.get_text(strip=True)
+        title = re.sub(r'\s+', ' ', title)  # Mehrfache Leerzeichen entfernen
+        logger.info(f"Korea Chair - Titel gefunden: {title}")
+        
+        # Suche nach "Read on CSIS.org" Link
+        read_link = soup.find("a", string=re.compile(r"Read on CSIS\.org", re.IGNORECASE))
+        
+        if not read_link:
+            # Alternative: Suche nach Link mit href zu csis.org/analysis
+            read_link = soup.find("a", href=re.compile(r"csis\.org/analysis"))
+        
+        if read_link:
+            href = read_link.get("href")
+            
+            if href:
+                # Pardot-URL auflösen
+                final_url = resolve_tracking_url(href)
+                
+                # China-Relevanz prüfen
+                title_lower = title.lower()
+                china_keywords = [
+                    "china", "chinese", "beijing", "xi jinping", "taiwan", "hong kong",
+                    "south china sea", "dprk", "north korea", "asia", "indo-pacific"
+                ]
+                
+                is_china_relevant = any(keyword in title_lower for keyword in china_keywords)
+                
+                if is_china_relevant:
+                    formatted_article = f"• [{title}]({final_url})"
+                    articles.append(formatted_article)
+                    logger.info(f"Korea Chair - Artikel hinzugefügt: {title[:50]}...")
+                else:
+                    logger.info(f"Korea Chair - Nicht China-relevant: {title[:50]}...")
+    else:
+        logger.warning("Korea Chair - Kein Titel-Element gefunden")
+    
+    return articles
+
+def fetch_korea_chair_emails(mail, email_user, email_password, days=None):
+    """
+    Holt CSIS Korea Chair Newsletter aus E-Mails.
+    """
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "koreachair@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Korea Chair: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Korea Chair - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_korea_chair_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS Korea Chair: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_korea_chair_emails: {str(e)}")
+        return [], 0
+
 def deduplicate_csis_articles(*article_lists):
     """
-    Entfernt Duplikate über alle CSIS-Newsletter hinweg.
-    Behält nur das erste Vorkommen jedes Artikels.
+    Entfernt Duplikate aus allen CSIS Newsletter-Listen.
+    Behält die erste Instanz jedes Artikels.
+    
+    Args:
+        *article_lists: Variable Anzahl von Artikel-Listen
+    
+    Returns:
+        Tuple der deduplizierten Listen in der gleichen Reihenfolge
     """
     seen_urls = set()
     deduplicated_lists = []
     
     for article_list in article_lists:
         deduplicated = []
+        
         for article in article_list:
-            # Extrahiere URL aus Markdown-Link
+            # URL aus Markdown-Link extrahieren
             url_match = re.search(r'\((https?://[^\)]+)\)', article)
+            
             if url_match:
                 url = url_match.group(1)
+                
                 if url not in seen_urls:
-                    seen_urls.add(url)
                     deduplicated.append(article)
+                    seen_urls.add(url)
                 else:
-                    logger.info(f"CSIS Deduplizierung - Duplikat entfernt: {article[:60]}...")
+                    logger.info(f"CSIS Duplikat entfernt: {article[:60]}...")
             else:
                 # Kein URL gefunden, behalte Artikel
                 deduplicated.append(article)
@@ -1279,6 +1405,9 @@ def main():
         
         # CSIS China Power (nutzt GLOBAL_THINKTANK_DAYS)
         chinapower_articles, chinapower_count = fetch_chinapower_emails(mail, email_user, email_password)
+        
+        # CSIS Korea Chair (nutzt GLOBAL_THINKTANK_DAYS)
+        korea_chair_articles, korea_chair_count = fetch_korea_chair_emails(mail, email_user, email_password)
         
     finally:
         mail.logout()
@@ -1335,6 +1464,14 @@ def main():
     briefing.append("#### China Power")
     if chinapower_articles:
         briefing.extend(chinapower_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # CSIS Korea Chair
+    briefing.append("")
+    briefing.append("#### Korea Chair")
+    if korea_chair_articles:
+        briefing.extend(korea_chair_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
