@@ -824,7 +824,7 @@ def parse_csis_japan_email(msg):
         
         # Suche nach "Read More Here" Link NACH diesem Titel
         # Finde die nächste Zeile mit einem CTA-Button
-        # Suche nach "Read More Here" Link NACH diesem Titel
+# Suche nach "Read More Here" Link NACH diesem Titel
         next_link = None
         
         # Methode 1: Suche nach em_cta1 oder bgcolor="#3DD5FF" Element
@@ -843,7 +843,7 @@ def parse_csis_japan_email(msg):
                     "read more" in link_text or
                     "read here" in link_text
                 ):
-                  next_link = link.get("href")
+                    next_link = link.get("href")
                     logger.debug(f"Japan Chair - CTA Link gefunden: {next_link[:60]}...")
                     break
         
@@ -853,8 +853,6 @@ def parse_csis_japan_email(msg):
         
         # Resolve Tracking URL
         resolved_url = resolve_tracking_url(next_link)
-                  
-
         
         formatted_article = f"• [{title_text}]({resolved_url})"
         articles.append(formatted_article)
