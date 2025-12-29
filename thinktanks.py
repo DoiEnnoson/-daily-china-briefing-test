@@ -824,31 +824,28 @@ def parse_csis_japan_email(msg):
         
         # Suche nach "Read More Here" Link NACH diesem Titel
         # Finde die nächste Zeile mit einem CTA-Button
-        # Suche nach "Read More Here" Link NACH diesem Titel
         next_link = None
         
-        # Methode 1: Suche in der GESAMTEN E-Mail nach CTA-Buttons mit bgcolor="#3DD5FF"
-        all_cta_buttons = soup.find_all("td", bgcolor="#3DD5FF")
-        for cta_td in all_cta_buttons:
-            link = cta_td.find("a", href=True)
-            if link:
-                href = link.get("href")
-                if href and "csis.org" in href:
-                    next_link = href
-                    logger.debug(f"Japan Chair - CTA Button gefunden: {next_link[:60]}...")
-                    break
-        
-        # Methode 2 (Fallback): Suche nach "Read More" Text in Links
-        if not next_link:
-            all_links = soup.find_all("a", href=True)
-            for link in all_links:
-                link_text = link.get_text(strip=True).lower()
+        # Methode 1: Suche in nachfolgenden Elementen
+        current = title_element
+        for _ in range(10):  # Maximal 10 Elemente weiter suchen
+            current = current.find_next()
+            if not current:
+                break
+            
+            # Suche nach Links mit "Read More" Text
+            if current.name == "a":
+                link_text = current.get_text(strip=True).lower()
                 if "read more" in link_text or "read here" in link_text:
-                    href = link.get("href")
-                    if href and "csis.org" in href:
-                        next_link = href
-                        logger.debug(f"Japan Chair - Read More Link gefunden: {next_link[:60]}...")
-                        break
+                    next_link = current.get("href")
+                    break
+            
+            # Suche innerhalb von td-Elementen
+            if current.name == "td":
+                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
+                if link:
+                    next_link = link.get("href")
+                    break
         
         if not next_link:
             logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
@@ -862,6 +859,120 @@ def parse_csis_japan_email(msg):
         logger.info(f"Japan Chair - Artikel: {title_text[:50]}...")
     
     logger.info(f"Japan Chair Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+def parse_chinapower_email(msg):
+    """
+    Spezialisierter Parser für CSIS China Power Newsletter.
+    Extrahiert Artikel aus Newsletter-Sections (nicht Event-Invites).
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"China Power - Betreff: {subject}")
+    
+    # Skip Event Invites
+    if "event invite" in subject.lower() or "join us" in subject.lower():
+        logger.info("China Power - Event Invite übersprungen")
+        return articles
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in China Power E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle h2 Titel (Artikel-Überschriften)
+    h2_elements = soup.find_all("h2")
+    
+    logger.info(f"China Power Parser - {len(h2_elements)} h2 Elemente gefunden")
+    
+    seen_titles = set()
+    
+    for h2 in h2_elements:
+        title_text = h2.get_text(strip=True)
+        
+        # Skip unwichtige Titel
+        skip_titles = [
+            "china power project",
+            "love the chinapower podcast",
+            "subscribe on itunes"
+        ]
+        
+        if any(skip in title_text.lower() for skip in skip_titles):
+            logger.debug(f"China Power - Header übersprungen: {title_text}")
+            continue
+        
+        # Mindestlänge
+        if len(title_text) < 20:
+            logger.debug(f"China Power - Titel zu kurz: {title_text}")
+            continue
+        
+        # Duplikats-Check
+        if title_text in seen_titles:
+            logger.debug(f"China Power - Duplikat: {title_text[:40]}...")
+            continue
+        
+        seen_titles.add(title_text)
+        
+        # Suche nach "Read here" / "Listen here" / "Watch here" Links
+        # Diese sind normalerweise in der Nähe des h2
+        next_link = None
+        
+        # Suche in nachfolgenden Elementen (max 10 Schritte)
+        current = h2
+        for _ in range(10):
+            current = current.find_next()
+            if not current:
+                break
+            
+            # Suche nach Links mit relevanten Texten
+            if current.name == "a":
+                link_text = current.get_text(strip=True).lower()
+                href = current.get("href")
+                
+                if href and "csis.org" in href and any(keyword in link_text for keyword in ["read here", "listen here", "watch here", "watch the recording"]):
+                    next_link = href
+                    logger.debug(f"China Power - Link gefunden: {href[:60]}...")
+                    break
+            
+            # Suche auch in verschachtelten Elementen
+            if current.name in ["p", "td", "div"]:
+                link = current.find("a", href=True, string=lambda x: x and any(kw in x.lower() for kw in ["read here", "listen here", "watch here", "watch the recording"]))
+                if link:
+                    href = link.get("href")
+                    if href and "csis.org" in href:
+                        next_link = href
+                        logger.debug(f"China Power - Verschachtelter Link gefunden: {href[:60]}...")
+                        break
+        
+        if not next_link:
+            logger.debug(f"China Power - Kein Link für Titel gefunden: {title_text[:40]}...")
+            continue
+        
+        # Resolve Tracking URL
+        resolved_url = resolve_tracking_url(next_link)
+        
+        formatted_article = f"• [{title_text}]({resolved_url})"
+        articles.append(formatted_article)
+        logger.info(f"China Power - Artikel: {title_text[:50]}...")
+    
+    logger.info(f"China Power Parser - {len(articles)} Artikel extrahiert")
     return articles
 
 def fetch_csis_freeman_emails(mail, email_user, email_password, days=None):
@@ -1029,6 +1140,61 @@ def fetch_csis_japan_emails(mail, email_user, email_password, days=None):
         logger.error(f"Fehler in fetch_csis_japan_emails: {str(e)}")
         return [], 0
 
+def fetch_chinapower_emails(mail, email_user, email_password, days=None):
+    """
+    Holt CSIS China Power Newsletter aus E-Mails.
+    """
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "ChinaPower@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS China Power: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"China Power - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_chinapower_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS China Power: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_chinapower_emails: {str(e)}")
+        return [], 0
+
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS)")
     substack_mail = os.getenv("SUBSTACK_MAIL")
@@ -1071,6 +1237,9 @@ def main():
         
         # CSIS Japan Chair (nutzt GLOBAL_THINKTANK_DAYS)
         csis_japan_articles, csis_japan_count = fetch_csis_japan_emails(mail, email_user, email_password)
+        
+        # CSIS China Power (nutzt GLOBAL_THINKTANK_DAYS)
+        chinapower_articles, chinapower_count = fetch_chinapower_emails(mail, email_user, email_password)
         
     finally:
         mail.logout()
@@ -1119,6 +1288,14 @@ def main():
     briefing.append("#### Japan Chair")
     if csis_japan_articles:
         briefing.extend(csis_japan_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # CSIS China Power
+    briefing.append("")
+    briefing.append("#### China Power")
+    if chinapower_articles:
+        briefing.extend(chinapower_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
