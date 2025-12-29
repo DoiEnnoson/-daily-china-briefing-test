@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 # Basisverzeichnis
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Globale Zeitfenster-Einstellung für alle CSIS-Newsletter
-GLOBAL_CSIS_DAYS = 120  # 4 Monate für alle CSIS-Newsletter
+# Globale Zeitfenster-Einstellung für ALLE Think Tanks
+GLOBAL_THINKTANK_DAYS = 120  # 4 Monate für alle Think Tank Newsletter
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
@@ -196,11 +196,14 @@ def parse_merics_email(msg):
     
     return articles
 
-def fetch_merics_emails(mail, email_user, email_password, days=7):
+def fetch_merics_emails(mail, email_user, email_password, days=None):
     """
     Holt MERICS-Artikel aus E-Mails mit verbessertem Parsing.
     Verwendet eine bestehende IMAP-Verbindung.
     """
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
     try:
         thinktanks = load_thinktanks()
         merics = next((tt for tt in thinktanks if tt["abbreviation"] == "MERICS"), None)
@@ -406,7 +409,7 @@ def fetch_csis_geopolitics_emails(mail, email_user, email_password, days=None):
     Holt CSIS Geopolitics & Foreign Policy Artikel aus E-Mails.
     """
     if days is None:
-        days = GLOBAL_CSIS_DAYS
+        days = GLOBAL_THINKTANK_DAYS
     
     try:
         mail.select("inbox")
@@ -767,7 +770,7 @@ def fetch_csis_freeman_emails(mail, email_user, email_password, days=None):
     Holt CSIS Freeman Chair (Pekingology) Artikel aus E-Mails.
     """
     if days is None:
-        days = GLOBAL_CSIS_DAYS
+        days = GLOBAL_THINKTANK_DAYS
     
     try:
         mail.select("inbox")
@@ -822,7 +825,7 @@ def fetch_csis_trustee_emails(mail, email_user, email_password, days=None):
     Holt CSIS Trustee Chair Artikel aus E-Mails.
     """
     if days is None:
-        days = GLOBAL_CSIS_DAYS
+        days = GLOBAL_THINKTANK_DAYS
     
     try:
         mail.select("inbox")
@@ -900,16 +903,16 @@ def main():
         return
     
     try:
-        # MERICS (30 Tage)
-        merics_articles, merics_count = fetch_merics_emails(mail, email_user, email_password, days=30)
+        # MERICS (nutzt GLOBAL_THINKTANK_DAYS)
+        merics_articles, merics_count = fetch_merics_emails(mail, email_user, email_password)
         
-        # CSIS Geopolitics (GLOBAL_CSIS_DAYS)
+        # CSIS Geopolitics (nutzt GLOBAL_THINKTANK_DAYS)
         csis_geo_articles, csis_geo_count = fetch_csis_geopolitics_emails(mail, email_user, email_password)
         
-        # CSIS Freeman Chair (GLOBAL_CSIS_DAYS)
+        # CSIS Freeman Chair (nutzt GLOBAL_THINKTANK_DAYS)
         csis_freeman_articles, csis_freeman_count = fetch_csis_freeman_emails(mail, email_user, email_password)
         
-        # CSIS Trustee Chair (GLOBAL_CSIS_DAYS)
+        # CSIS Trustee Chair (nutzt GLOBAL_THINKTANK_DAYS)
         csis_trustee_articles, csis_trustee_count = fetch_csis_trustee_emails(mail, email_user, email_password)
         
     finally:
