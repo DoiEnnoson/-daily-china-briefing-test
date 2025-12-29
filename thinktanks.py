@@ -832,20 +832,31 @@ def parse_csis_japan_email(msg):
             current = current.find_next()
             if not current:
                 break
-            
-            # Suche nach Links mit "Read More" Text
-            if current.name == "a":
-                link_text = current.get_text(strip=True).lower()
+# Suche nach "Read More Here" Link NACH diesem Titel
+        next_link = None
+        
+        # Methode 1: Suche in der GESAMTEN E-Mail nach CTA-Buttons mit bgcolor="#3DD5FF"
+        all_cta_buttons = soup.find_all("td", bgcolor="#3DD5FF")
+        for cta_td in all_cta_buttons:
+            link = cta_td.find("a", href=True)
+            if link:
+                href = link.get("href")
+                if href and "csis.org" in href:
+                    next_link = href
+                    logger.debug(f"Japan Chair - CTA Button gefunden: {next_link[:60]}...")
+                    break
+        
+        # Methode 2 (Fallback): Suche nach "Read More" Text in Links
+        if not next_link:
+            all_links = soup.find_all("a", href=True)
+            for link in all_links:
+                link_text = link.get_text(strip=True).lower()
                 if "read more" in link_text or "read here" in link_text:
-                    next_link = current.get("href")
-                    break
-            
-            # Suche innerhalb von td-Elementen
-            if current.name == "td":
-                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
-                if link:
-                    next_link = link.get("href")
-                    break
+                    href = link.get("href")
+                    if href and "csis.org" in href:
+                        next_link = href
+                        logger.debug(f"Japan Chair - Read More Link gefunden: {next_link[:60]}...")
+                        break
         
         if not next_link:
             logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
