@@ -1819,6 +1819,20 @@ def main():
         # CSIS Aerospace Security Project (nutzt GLOBAL_THINKTANK_DAYS)
         aerospace_articles, aerospace_count = fetch_aerospace_emails(mail, email_user, email_password)
         
+        # CSIS Deduplizierung über alle Newsletter
+        logger.info("Starte CSIS Deduplizierung...")
+        csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_csis_articles(
+            csis_geo_articles,
+            csis_freeman_articles,
+            csis_trustee_articles,
+            csis_japan_articles,
+            chinapower_articles,
+            korea_chair_articles,
+            ghpc_articles,
+            aerospace_articles
+        )
+        logger.info("CSIS Deduplizierung abgeschlossen")
+        
     finally:
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
