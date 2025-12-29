@@ -824,32 +824,28 @@ def parse_csis_japan_email(msg):
         
         # Suche nach "Read More Here" Link NACH diesem Titel
         # Finde die nächste Zeile mit einem CTA-Button
+        # Suche nach "Read More Here" Link NACH diesem Titel
         next_link = None
         
-        # Methode 1: Suche in nachfolgenden Elementen
-        current = title_element
-        for _ in range(10):  # Maximal 10 Elemente weiter suchen
-            current = current.find_next()
-            if not current:
-                break
-            
-            # Suche nach Links mit "Read More" Text
-            if current.name == "a":
-                link_text = current.get_text(strip=True).lower()
-                if "read more" in link_text or "read here" in link_text:
-                    next_link = current.get("href")
-                    break
-            
-            # Suche innerhalb von td-Elementen
-            if current.name == "td":
-                link = current.find("a", string=lambda x: x and ("read more" in x.lower() or "read here" in x.lower()))
-                if link:
+        # Methode 1: Suche nach em_cta1 oder bgcolor="#3DD5FF" Element
+        parent_table = title_element.find_parent("table")
+        if parent_table:
+            # Suche nach CTA-Button in der gleichen Tabelle
+            cta_links = parent_table.find_all("a", href=True)
+            for link in cta_links:
+                link_text = link.get_text(strip=True).lower()
+                parent_td = link.find_parent("td")
+                
+                # Prüfe auf CTA-Merkmale
+                if parent_td and (
+                    "em_cta" in parent_td.get("class", []) or
+                    parent_td.get("bgcolor") == "#3DD5FF" or
+                    "read more" in link_text or
+                    "read here" in link_text
+                ):
                     next_link = link.get("href")
+                    logger.debug(f"Japan Chair - CTA Link gefunden: {next_link[:60]}...")
                     break
-        
-        if not next_link:
-            logger.warning(f"Japan Chair - Kein 'Read More' Link für Titel gefunden: {title_text[:40]}...")
-            continue
         
         # Resolve Tracking URL
         resolved_url = resolve_tracking_url(next_link)
