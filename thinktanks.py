@@ -1206,6 +1206,34 @@ def fetch_chinapower_emails(mail, email_user, email_password, days=None):
         logger.error(f"Fehler in fetch_chinapower_emails: {str(e)}")
         return [], 0
 
+def deduplicate_csis_articles(*article_lists):
+    """
+    Entfernt Duplikate über alle CSIS-Newsletter hinweg.
+    Behält nur das erste Vorkommen jedes Artikels.
+    """
+    seen_urls = set()
+    deduplicated_lists = []
+    
+    for article_list in article_lists:
+        deduplicated = []
+        for article in article_list:
+            # Extrahiere URL aus Markdown-Link
+            url_match = re.search(r'\((https?://[^\)]+)\)', article)
+            if url_match:
+                url = url_match.group(1)
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    deduplicated.append(article)
+                else:
+                    logger.info(f"CSIS Deduplizierung - Duplikat entfernt: {article[:60]}...")
+            else:
+                # Kein URL gefunden, behalte Artikel
+                deduplicated.append(article)
+        
+        deduplicated_lists.append(deduplicated)
+    
+    return tuple(deduplicated_lists)
+
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS)")
     substack_mail = os.getenv("SUBSTACK_MAIL")
