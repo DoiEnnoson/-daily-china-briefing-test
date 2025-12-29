@@ -1517,6 +1517,179 @@ def fetch_ghpc_emails(mail, email_user, email_password, days=None):
         logger.error(f"Fehler in fetch_ghpc_emails: {str(e)}")
         return [], 0
 
+def parse_aerospace_email(msg):
+    """
+    Spezialisierter Parser für CSIS Aerospace Security Project Newsletter.
+    Extrahiert Artikel, Events und Videos mit China-Bezug.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Aerospace - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in Aerospace E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle großen Titel (em_text4, em_text3, em_text5)
+    title_elements = soup.find_all("td", class_=lambda x: x and any(cls in x for cls in ["em_text4", "em_text3", "em_text5"]))
+    
+    logger.info(f"Aerospace Parser - {len(title_elements)} Titel-Elemente gefunden")
+    
+    seen_titles = set()
+    
+    for title_element in title_elements:
+        title = title_element.get_text(strip=True)
+        title = re.sub(r'\s+', ' ', title)  # Mehrfache Leerzeichen entfernen
+        
+        # Überspringe zu kurze Titel
+        if len(title) < 20:
+            logger.debug(f"Aerospace - Titel zu kurz: {title}")
+            continue
+        
+        # Duplikats-Check
+        if title in seen_titles:
+            logger.debug(f"Aerospace - Duplikat: {title[:40]}...")
+            continue
+        
+        seen_titles.add(title)
+        
+        # China-Relevanz prüfen
+        title_lower = title.lower()
+        china_keywords = [
+            "china", "chinese", "beijing", "xi jinping", "taiwan", "hong kong",
+            "south china sea", "pla", "people's liberation army", "asia", "indo-pacific"
+        ]
+        
+        is_china_relevant = any(keyword in title_lower for keyword in china_keywords)
+        
+        if not is_china_relevant:
+            logger.info(f"Aerospace - Nicht China-relevant: {title[:50]}...")
+            continue
+        
+        # Suche nach Links (flexibel für verschiedene Typen)
+        next_link = None
+        
+        # Methode 1: Suche nach spezifischen Button-Texten
+        current = title_element
+        for _ in range(15):
+            current = current.find_next()
+            if not current:
+                break
+            
+            if current.name == "a":
+                link_text = current.get_text(strip=True).lower()
+                href = current.get("href")
+                
+                # Erweiterte Link-Keywords
+                link_keywords = [
+                    "read", "watch", "view", "listen", "download",
+                    "register", "learn more", "rsvp"
+                ]
+                
+                if href and "csis.org" in href and any(kw in link_text for kw in link_keywords):
+                    next_link = href
+                    break
+            
+            # Suche in td-Elementen
+            if current.name == "td":
+                link = current.find("a", href=re.compile(r"csis\.org/(analysis|commentary|events|videos)"))
+                if link:
+                    next_link = link.get("href")
+                    break
+        
+        # Methode 2: Fallback - suche nach beliebigem CSIS-Link
+        if not next_link:
+            all_links = soup.find_all("a", href=re.compile(r"csis\.org/(analysis|commentary|events|videos)"))
+            if all_links:
+                next_link = all_links[0].get("href")
+                logger.info(f"Aerospace - Fallback-Link gefunden")
+        
+        if next_link:
+            # Pardot-URL auflösen
+            final_url = resolve_tracking_url(next_link)
+            
+            formatted_article = f"• [{title}]({final_url})"
+            articles.append(formatted_article)
+            logger.info(f"Aerospace - Artikel hinzugefügt: {title[:50]}...")
+        else:
+            logger.warning(f"Aerospace - Kein Link für Titel gefunden: {title[:40]}...")
+    
+    logger.info(f"Aerospace Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+def fetch_aerospace_emails(mail, email_user, email_password, days=None):
+    """
+    Holt CSIS Aerospace Security Project Newsletter aus E-Mails.
+    """
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        seen_urls = set()
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "defenseoutreach@csis.org"
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CSIS Aerospace: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Aerospace - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                logger.warning(f"Fehler beim Abrufen der E-Mail {email_id}: {result}")
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            
+            articles = parse_aerospace_email(msg)
+            
+            # Duplikate filtern
+            for article in articles:
+                url_match = re.search(r'\((https?://[^\)]+)\)', article)
+                if url_match:
+                    url = url_match.group(1)
+                    if url not in seen_urls:
+                        all_articles.append(article)
+                        seen_urls.add(url)
+        
+        logger.info(f"CSIS Aerospace Security Project: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_aerospace_emails: {str(e)}")
+        return [], 0
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -1606,6 +1779,9 @@ def main():
         # CSIS Global Health Policy Center (nutzt GLOBAL_THINKTANK_DAYS)
         ghpc_articles, ghpc_count = fetch_ghpc_emails(mail, email_user, email_password)
         
+        # CSIS Aerospace Security Project (nutzt GLOBAL_THINKTANK_DAYS)
+        aerospace_articles, aerospace_count = fetch_aerospace_emails(mail, email_user, email_password)
+        
     finally:
         mail.logout()
         logger.info("IMAP-Logout erfolgreich")
@@ -1677,6 +1853,14 @@ def main():
     briefing.append("#### Global Health Policy Center")
     if ghpc_articles:
         briefing.extend(ghpc_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # CSIS Aerospace Security Project
+    briefing.append("")
+    briefing.append("#### Aerospace Security Project")
+    if aerospace_articles:
+        briefing.extend(aerospace_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
