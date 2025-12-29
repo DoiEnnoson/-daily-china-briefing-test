@@ -317,6 +317,13 @@ def parse_csis_geopolitics_email(msg):
     if isinstance(subject, bytes):
         subject = subject.decode()
     
+    logger.info(f"Geopolitics - Betreff: {subject}")
+    
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Geopolitics - Event Invite übersprungen")
+        return articles
+    
     # HTML-Inhalt finden
     html_content = None
     for part in msg.walk():
@@ -483,6 +490,11 @@ def parse_csis_freeman_email(msg):
     
     logger.info(f"Freeman Chair - Betreff: {subject}")
     
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Freeman Chair - Event Invite übersprungen")
+        return articles
+    
     # HTML-Inhalt finden
     html_content = None
     for part in msg.walk():
@@ -585,6 +597,11 @@ def parse_csis_trustee_email(msg):
         subject = subject.decode()
     
     logger.info(f"Trustee Chair - Betreff: {subject}")
+    
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Trustee Chair - Event Invite übersprungen")
+        return articles
     
     # HTML-Inhalt finden
     html_content = None
@@ -778,6 +795,11 @@ def parse_csis_japan_email(msg):
         subject = subject.decode()
     
     logger.info(f"Japan Chair - Betreff: {subject}")
+    
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Japan Chair - Event Invite übersprungen")
+        return articles
     
     # HTML-Inhalt finden
     html_content = None
@@ -1229,6 +1251,11 @@ def parse_korea_chair_email(msg):
     
     logger.info(f"Korea Chair - Betreff: {subject}")
     
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Korea Chair - Event Invite übersprungen")
+        return articles
+    
     # HTML-Inhalt finden
     html_content = None
     for part in msg.walk():
@@ -1356,6 +1383,11 @@ def parse_ghpc_email(msg):
         subject = subject.decode()
     
     logger.info(f"GHPC - Betreff: {subject}")
+    
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("GHPC - Event Invite übersprungen")
+        return articles
     
     # HTML-Inhalt finden
     html_content = None
@@ -1530,6 +1562,11 @@ def parse_aerospace_email(msg):
         subject = subject.decode()
     
     logger.info(f"Aerospace - Betreff: {subject}")
+    
+    # Event-Invites überspringen
+    if any(keyword in subject.lower() for keyword in ["event invite", "join us", "register here", "rsvp"]):
+        logger.info("Aerospace - Event Invite übersprungen")
+        return articles
     
     # HTML-Inhalt finden
     html_content = None
