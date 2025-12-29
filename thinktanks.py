@@ -1738,10 +1738,25 @@ def deduplicate_csis_articles(*article_lists):
     Returns:
         Tuple der deduplizierten Listen in der gleichen Reihenfolge
     """
+    newsletter_names = [
+        "Geopolitics",
+        "Freeman Chair",
+        "Trustee Chair",
+        "Japan Chair",
+        "China Power",
+        "Korea Chair",
+        "GHPC",
+        "Aerospace"
+    ]
+    
     seen_urls = set()
     deduplicated_lists = []
     
-    for article_list in article_lists:
+    for idx, article_list in enumerate(article_lists):
+        newsletter_name = newsletter_names[idx] if idx < len(newsletter_names) else f"Liste {idx+1}"
+        
+        logger.info(f"CSIS Dedup - {newsletter_name}: {len(article_list)} Artikel VOR Deduplizierung")
+        
         deduplicated = []
         
         for article in article_list:
@@ -1754,13 +1769,20 @@ def deduplicate_csis_articles(*article_lists):
                 if url not in seen_urls:
                     deduplicated.append(article)
                     seen_urls.add(url)
+                    logger.debug(f"CSIS Dedup - {newsletter_name}: Behalte {article[:50]}...")
                 else:
-                    logger.info(f"CSIS Duplikat entfernt: {article[:60]}...")
+                    logger.info(f"CSIS Dedup - {newsletter_name}: ❌ Duplikat entfernt: {article[:60]}...")
             else:
                 # Kein URL gefunden, behalte Artikel
                 deduplicated.append(article)
+                logger.debug(f"CSIS Dedup - {newsletter_name}: Kein URL gefunden, behalte: {article[:50]}...")
         
+        logger.info(f"CSIS Dedup - {newsletter_name}: {len(deduplicated)} Artikel NACH Deduplizierung")
         deduplicated_lists.append(deduplicated)
+    
+    total_before = sum(len(lst) for lst in article_lists)
+    total_after = sum(len(lst) for lst in deduplicated_lists)
+    logger.info(f"CSIS Dedup - GESAMT: {total_before} → {total_after} Artikel ({total_before - total_after} Duplikate entfernt)")
     
     return tuple(deduplicated_lists)
 
