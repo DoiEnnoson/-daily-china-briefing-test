@@ -2087,12 +2087,11 @@ def parse_cfr_daily_brief(msg):
     seen_titles = set()
     
     for section in bordered_sections:
-        # Finde Titel (großer Link oder H2)
-        title_link = None
+        # Finde Titel (großer Link)
         title = ""
         url = ""
         
-        # Suche nach großem Link (~20px)
+        # Suche nach dem ersten großen Link
         links = section.find_all("a", href=True)
         for link in links:
             # Überspringe Bild-Links
@@ -2100,16 +2099,13 @@ def parse_cfr_daily_brief(msg):
                 continue
             
             link_text = link.get_text(strip=True)
+            href = link.get("href", "")
             
             # Prüfe ob Link groß genug ist (vermutlich Titel)
-            if len(link_text) > 15:  # Mindestlänge für Titel
-                # Prüfe ob es ein CFR-Artikel-Link ist
-                href = link.get("href", "")
-                if "cfr.org" in href and ("article" in href or "expert" in href or "backgrounder" in href or "podcast" in href):
-                    title = link_text
-                    url = href
-                    title_link = link
-                    break
+            if len(link_text) > 15:
+                title = link_text
+                url = href
+                break
         
         if not title or not url:
             continue
@@ -2618,9 +2614,11 @@ def main():
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
     
-    # CFR Daily Brief
+    # CFR (Council on Foreign Relations)
     briefing.append("")
-    briefing.append("### CFR Daily Brief")
+    briefing.append("### Council on Foreign Relations (CFR)")
+    briefing.append("")
+    briefing.append("#### Daily Brief")
     if cfr_daily_articles:
         briefing.extend(cfr_daily_articles)
     else:
