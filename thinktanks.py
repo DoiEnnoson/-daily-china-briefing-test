@@ -2101,6 +2101,15 @@ def parse_cfr_daily_brief(msg):
             link_text = link.get_text(strip=True)
             href = link.get("href", "")
             
+            # Überspringe Links ohne URL oder zu kurze Links
+            if not href or len(link_text) < 15:
+                continue
+            
+            # Prüfe ob es ein echter Artikel-Link ist (kein Bildcredit)
+            # Bildcredits haben oft "/" oder "Getty" im Text
+            if "/" in link_text or "getty" in link_text.lower() or "afp" in link_text.lower():
+                continue
+            
             # Prüfe ob Link groß genug ist (vermutlich Titel)
             if len(link_text) > 15:
                 title = link_text
@@ -2110,18 +2119,8 @@ def parse_cfr_daily_brief(msg):
         if not title or not url:
             continue
         
-        # Wenn Titel sehr kurz (z.B. "Council Special Report"), 
-        # suche nach längerem Titel im umgebenden Text
-        if len(title) < 30:
-            # Suche nach Text-Blöcken in der Box
-            for p_tag in section.find_all("p"):
-                text = p_tag.get_text(strip=True)
-                # Wenn wir einen längeren Text finden, der China-relevant sein könnte
-                if len(text) > len(title) and len(text) < 200:
-                    # Prüfe ob es ein besserer Titel ist
-                    if any(kw in text.lower() for kw in ["china", "taiwan", "xi", "beijing", "hong kong"]):
-                        title = text
-                        break
+        # KEINE erweiterte Titel-Suche mehr - nur der Link-Text zählt!
+        # Beschreibungen sind zu lang und nicht hilfreich
         
         # Überspringe YouTube Shorts / Videos
         if "youtube.com" in url or "youtu.be" in url:
@@ -2149,6 +2148,13 @@ def parse_cfr_daily_brief(msg):
         
         # Prüfe NUR den Titel
         is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+        
+        # Spezielle Ausnahme: "Council Special Report" ist manchmal relevant
+        # wenn der E-Mail-Betreff China erwähnt
+        if not is_china_relevant and "council special report" in title.lower():
+            # Prüfe ob Betreff China-relevant ist
+            if any(kw in subject.lower() for kw in ["china", "beijing", "taiwan", "hong kong", "xi"]):
+                is_china_relevant = True
         
         # Spezielle Ausnahmen für zu breite Matches
         # "Asia" alleine ist zu breit, außer es ist explizit "Asia-Pacific" oder mit China-Kontext
