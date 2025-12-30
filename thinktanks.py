@@ -1875,6 +1875,185 @@ def fetch_brookings_emails(mail, email_user, email_password, days=None):
 # ENDE BROOKINGS PARSER
 # ============================================================================
 
+# ============================================================================
+# PIIE (PETERSON INSTITUTE) PARSER
+# ============================================================================
+
+def parse_piie_email(msg):
+    """
+    Spezialisierter Parser für PIIE Insider Newsletter.
+    Extrahiert Artikel mit China-Bezug, filtert Events raus.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"PIIE - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in PIIE E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle H2 Überschriften (Artikel-Titel)
+    h2_elements = soup.find_all("h2")
+    
+    logger.info(f"PIIE Parser - {len(h2_elements)} H2 Elemente gefunden")
+    
+    seen_titles = set()
+    
+    for h2 in h2_elements:
+        # Suche nach Link im H2
+        link = h2.find("a", href=True)
+        if not link:
+            continue
+        
+        title = link.get_text(strip=True)
+        url = link.get("href", "")
+        
+        # Überspringe zu kurze Titel
+        if len(title) < 20:
+            logger.debug(f"PIIE - Titel zu kurz: {title}")
+            continue
+        
+        # Event-Filter (sehr wichtig!)
+        event_keywords = [
+            "event", "watch", "join us", "register", "rsvp",
+            "rebuilding and realignment", "is it time for africa"
+        ]
+        
+        if any(kw in title.lower() for kw in event_keywords):
+            logger.info(f"PIIE - Event gefiltert: {title[:50]}...")
+            continue
+        
+        # Section-Header überspringen
+        section_headers = [
+            "recent publications", "piie charts", "events",
+            "piie in the news", "insider exclusive", "policy for the planet",
+            "piie insider live"
+        ]
+        
+        if any(header in title.lower() for header in section_headers):
+            logger.debug(f"PIIE - Section Header übersprungen: {title}")
+            continue
+        
+        # Footer-Links überspringen
+        skip_patterns = [
+            "unsubscribe", "manage preferences", "update your profile",
+            "view web version", "peterson institute for international economics"
+        ]
+        
+        if any(pattern in title.lower() for pattern in skip_patterns):
+            continue
+        
+        # Duplikats-Check
+        if title in seen_titles:
+            logger.debug(f"PIIE - Duplikat: {title[:40]}...")
+            continue
+        
+        seen_titles.add(title)
+        
+        # China-Relevanz prüfen
+        china_keywords = [
+            "china", "chinese", "xi jinping", "beijing", "taiwan",
+            "hong kong", "us-china", "sino-", "prc", "yuan",
+            "renminbi", "shanghai", "asia", "indo-pacific"
+        ]
+        
+        is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+        
+        # Suche nach Autor im nachfolgenden H6
+        author = ""
+        next_sibling = h2.find_next_sibling()
+        if next_sibling and next_sibling.name == "h6":
+            author = next_sibling.get_text(strip=True)
+            # Prüfe auch Autor auf China-Relevanz
+            if not is_china_relevant and any(keyword in author.lower() for keyword in china_keywords):
+                is_china_relevant = True
+        
+        if not is_china_relevant:
+            logger.info(f"PIIE - Nicht China-relevant: {title[:50]}...")
+            continue
+        
+        # Resolve Tracking URL
+        final_url = resolve_tracking_url(url)
+        
+        # Formatiere Artikel (mit Autor falls vorhanden)
+        if author:
+            formatted_article = f"• [{title}]({final_url}) — {author}"
+        else:
+            formatted_article = f"• [{title}]({final_url})"
+        
+        articles.append(formatted_article)
+        logger.info(f"PIIE - Artikel hinzugefügt: {title[:50]}...")
+    
+    logger.info(f"PIIE Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_piie_emails(mail, email_user, email_password, days=None):
+    """Holt PIIE Insider Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "insider@piie.com"
+        
+        logger.info(f"PIIE - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für PIIE: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"PIIE - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_piie_email(msg)
+            all_articles.extend(articles)
+        
+        logger.info(f"PIIE: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_piie_emails: {str(e)}")
+        return [], 0
+
+# ============================================================================
+# ENDE PIIE PARSER
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -1950,18 +2129,19 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
         brookings_articles: Brookings Artikel-Liste
+        piie_articles: PIIE Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -2016,6 +2196,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articl
     
     logger.info(f"Brookings: {len(brookings_articles)} → {len(brookings_dedup)} ({len(brookings_articles)-len(brookings_dedup)} Duplikate)")
     
+    # PIIE deduplizieren
+    piie_dedup = []
+    for article in piie_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                piie_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - PIIE: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            piie_dedup.append(article)
+    
+    logger.info(f"PIIE: {len(piie_articles)} → {len(piie_dedup)} ({len(piie_articles)-len(piie_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -2046,7 +2249,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articl
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -2106,11 +2309,15 @@ def main():
         # Brookings China Center (nutzt GLOBAL_THINKTANK_DAYS)
         brookings_articles, brookings_count = fetch_brookings_emails(mail, email_user, email_password)
         
+        # PIIE (Peterson Institute) (nutzt GLOBAL_THINKTANK_DAYS)
+        piie_articles, piie_count = fetch_piie_emails(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
+            piie_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -2211,6 +2418,14 @@ def main():
         briefing.extend(brookings_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # PIIE (Peterson Institute)
+    briefing.append("")
+    briefing.append("### PIIE (Peterson Institute)")
+    if piie_articles:
+        briefing.extend(piie_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
 
     # Konvertiere zu HTML
     html_lines = []
@@ -2235,7 +2450,7 @@ def main():
                 html_content += "<br>\n"
     
     # E-Mail senden
-    send_email("Think Tanks - MERICS, CSIS & Brookings Update", html_content, email_user, email_password)
+    send_email("Think Tanks - MERICS, CSIS, Brookings & PIIE Update", html_content, email_user, email_password)
     logger.info("E-Mail erfolgreich versendet")
     
     # Vorschau auf Konsole
