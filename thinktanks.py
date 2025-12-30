@@ -1977,15 +1977,6 @@ def parse_piie_email(msg):
         
         is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
         
-        # Suche nach Autor im nachfolgenden H6
-        author = ""
-        next_sibling = h2.find_next_sibling()
-        if next_sibling and next_sibling.name == "h6":
-            author = next_sibling.get_text(strip=True)
-            # Prüfe auch Autor auf China-Relevanz
-            if not is_china_relevant and any(keyword in author.lower() for keyword in china_keywords):
-                is_china_relevant = True
-        
         if not is_china_relevant:
             logger.info(f"PIIE - Nicht China-relevant: {title[:50]}...")
             continue
@@ -1993,11 +1984,8 @@ def parse_piie_email(msg):
         # Resolve Tracking URL
         final_url = resolve_tracking_url(url)
         
-        # Formatiere Artikel (mit Autor falls vorhanden)
-        if author:
-            formatted_article = f"• [{title}]({final_url}) — {author}"
-        else:
-            formatted_article = f"• [{title}]({final_url})"
+        # Formatiere Artikel (ohne Autor)
+        formatted_article = f"• [{title}]({final_url})"
         
         articles.append(formatted_article)
         logger.info(f"PIIE - Artikel hinzugefügt: {title[:50]}...")
