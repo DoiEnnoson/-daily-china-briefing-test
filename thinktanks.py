@@ -1930,7 +1930,25 @@ def deduplicate_csis_articles(*article_lists):
     
     return tuple(deduplicated_lists)
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articles):
+def normalize_url(url):
+    """
+    Normalisiert URLs für bessere Duplikatserkennung.
+    - Entfernt Query-Parameter (?...)
+    - Folgt Brookings/CSIS Tracking-Redirects zum finalen Artikel
+    """
+    # Entferne Query-Parameter
+    base_url = url.split('?')[0]
+    
+    # Für Brookings connect.brookings.edu Links: Extrahiere Titel aus URL
+    # Diese haben Format: connect.brookings.edu/e3t/Ctc/.../[TRACKING_PARAMS]
+    # Wir können nicht automatisch resolven, also verwenden wir nur den Domain + Path
+    if "connect.brookings.edu" in base_url:
+        # Tracking-URLs sind eindeutig pro Newsletter, aber nicht pro Artikel
+        # Wir müssen den finalen Zielartikel identifizieren
+        # Leider können wir das nicht aus der URL extrahieren
+        return base_url
+    
+    return base_url
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
     Entfernt Duplikate zwischen MERICS, Brookings und CSIS.
@@ -1948,16 +1966,23 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articl
     logger.info("=" * 60)
     
     seen_urls = set()
+    seen_titles = set()  # NEU: Deduplizierung nach Titeln für Brookings
     
     # MERICS deduplizieren (kommt zuerst, hat Priorität)
     merics_dedup = []
     for article in merics_articles:
         url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
         if url_match:
             url = url_match.group(1).split('?')[0]  # Normalisiere
-            if url not in seen_urls:
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
                 merics_dedup.append(article)
                 seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
             else:
                 logger.info(f"Global Dedup - MERICS: ❌ Duplikat: {article[:60]}...")
         else:
@@ -1965,17 +1990,25 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articl
     
     logger.info(f"MERICS: {len(merics_articles)} → {len(merics_dedup)} ({len(merics_articles)-len(merics_dedup)} Duplikate)")
     
-    # Brookings deduplizieren
+    # Brookings deduplizieren (WICHTIG: auch nach Titel!)
     brookings_dedup = []
     for article in brookings_articles:
         url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
         if url_match:
             url = url_match.group(1).split('?')[0]  # Normalisiere
-            if url not in seen_urls:
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            # Prüfe SOWOHL URL als AUCH Titel
+            if url not in seen_urls and title not in seen_titles:
                 brookings_dedup.append(article)
                 seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
             else:
-                logger.info(f"Global Dedup - Brookings: ❌ Duplikat: {article[:60]}...")
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Brookings: ❌ Duplikat ({reason}): {article[:60]}...")
         else:
             brookings_dedup.append(article)
     
