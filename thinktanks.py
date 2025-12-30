@@ -2078,25 +2078,6 @@ def parse_cfr_daily_brief(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # DEBUG: Suche nach Brad Setser / Follow the Money
-    brad_setser_count = 0
-    follow_money_count = 0
-    
-    if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
-        for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
-            context = str(element).strip()[:200]
-            brad_setser_count += 1
-            logger.info(f"🔍 CFR Daily Brief - Brad Setser #{brad_setser_count}: {context}")
-    
-    if "follow the money" in html_content.lower():
-        for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
-            context = str(element).strip()[:200]
-            follow_money_count += 1
-            logger.info(f"🔍 CFR Daily Brief - Follow the Money #{follow_money_count}: {context}")
-    
-    # Summary ausgeben
-    logger.info(f"🔍 CFR Daily Brief DEBUG-Summary: Nach 'Brad Setser' gesucht → {brad_setser_count} gefunden, nach 'Follow the Money' gesucht → {follow_money_count} gefunden")
-    
     # Finde graue Boxen (border: 1px solid #969da7)
     # Diese Boxen enthalten die Artikel-Links
     bordered_sections = soup.find_all("td", style=lambda x: x and "border" in x and "#969da7" in x)
@@ -2294,98 +2275,71 @@ def parse_cfr_eyes_on_asia(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # DEBUG: Suche nach Brad Setser / Follow the Money
-    brad_setser_count = 0
-    follow_money_count = 0
-    
-    # Suche im gesamten HTML nach Brad Setser
-    if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
-        # Finde alle Textblöcke mit Brad Setser
-        for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
-            context = str(element).strip()[:200]
-            brad_setser_count += 1
-            logger.info(f"🔍 CFR Eyes on Asia - Brad Setser #{brad_setser_count}: {context}")
-    
-    # Suche nach Follow the Money
-    if "follow the money" in html_content.lower():
-        for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
-            context = str(element).strip()[:200]
-            follow_money_count += 1
-            logger.info(f"🔍 CFR Eyes on Asia - Follow the Money #{follow_money_count}: {context}")
-    
-    # Summary ausgeben
-    logger.info(f"🔍 CFR Eyes on Asia DEBUG-Summary: Nach 'Brad Setser' gesucht → {brad_setser_count} gefunden, nach 'Follow the Money' gesucht → {follow_money_count} gefunden")
-    
-    # Finde alle großen Artikel-Links
-    # Stoppe bei "Asia Fellows in the News" oder "About the Asia Program"
+    # Finde Stop-Point: "Asia Fellows in the News" oder "About the Asia Program"
     stop_phrases = ["asia fellows in the news", "about the asia program"]
+    stop_found = False
+    stop_element = None
     
+    for phrase in stop_phrases:
+        for element in soup.find_all(text=lambda x: x and phrase in x.lower()):
+            stop_element = element
+            stop_found = True
+            logger.info(f"CFR Eyes on Asia - Stop-Punkt gefunden: {phrase}")
+            break
+        if stop_found:
+            break
+    
+    # Finde alle Content-Links VOR dem Stop-Punkt
+    # Strategie: Alle <a> Tags mit CFR-URLs durchgehen
     seen_titles = set()
-    stopped = False
-    
-    # Strategie: Finde alle Links, die wahrscheinlich Artikel-Titel sind
-    # 1. Große Font-Size (22px)
-    # 2. Lange Titel (>30 Zeichen) in bestimmten Sections
-    # 3. Links in <p> Tags mit großem Text
     
     all_links = soup.find_all("a", href=True)
     
     for link in all_links:
-        # Check ob wir stoppen sollen
-        link_text = link.get_text(strip=True).lower()
-        if any(phrase in link_text for phrase in stop_phrases):
-            logger.info(f"CFR Eyes on Asia - Stoppe bei: {link_text[:50]}")
-            stopped = True
+        # Wenn wir den Stop-Punkt erreicht haben, stoppe
+        if stop_element and stop_element in link.parents:
+            logger.info("CFR Eyes on Asia - Erreiche Stop-Punkt, stoppe Parsing")
             break
+        
+        # Checke ob Link NACH Stop-Element kommt (im DOM)
+        if stop_found:
+            # Vergleiche Position im HTML
+            try:
+                link_pos = str(soup).find(str(link))
+                stop_pos = str(soup).find(str(stop_element.parent))
+                if link_pos > stop_pos:
+                    continue
+            except:
+                pass
         
         title = link.get_text(strip=True)
         url = link.get("href", "")
         
-        # Überspringe zu kurze Titel
+        # Filter 1: Überspringe Navigation/Footer
+        if any(x in title.lower() for x in [
+            "unsubscribe", "manage", "preferences", "view in browser", 
+            "email preferences", "facebook", "twitter", "instagram", "linkedin",
+            "youtube", "council on foreign relations"
+        ]):
+            continue
+        
+        # Filter 2: Nur CFR Content-Links
+        if "cfr.org" not in url:
+            continue
+        
+        # Filter 3: Nur Content-Pfade (nicht Homepage, nicht Team-Profile)
+        content_paths = ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", 
+                        "/podcast/", "/opinion/", "/interactive/", "/report/"]
+        
+        if not any(path in url for path in content_paths):
+            continue
+        
+        # Filter 4: Titel-Länge (Artikel haben lange Titel)
         if len(title) < 20:
             continue
         
-        # Überspringe Social Media Links
-        if any(x in url for x in ["twitter.com", "facebook.com", "linkedin.com", "instagram.com"]):
-            continue
-        
-        # Überspringe interne CFR Navigation
-        if any(x in title.lower() for x in ["unsubscribe", "manage preferences", "view in browser", "email preferences"]):
-            continue
-        
-        # Prüfe ob es ein Artikel-Link ist
-        is_article = False
-        
-        # 1. Hat Style mit großer Font-Size?
-        style = link.get("style", "")
-        if link.parent:
-            parent_style = link.parent.get("style", "")
-        else:
-            parent_style = ""
-        
-        if "font-size: 22px" in style or "font-size: 22px" in parent_style:
-            is_article = True
-        elif "font-size:22px" in style or "font-size:22px" in parent_style:
-            is_article = True
-        
-        # 2. Ist es ein CFR-Content-Link mit langem Titel?
-        if not is_article:
-            if "cfr.org" in url and len(title) > 30:
-                # Prüfe ob es ein Content-Link ist
-                if any(x in url for x in ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", "/podcast/", "/opinion/"]):
-                    is_article = True
-        
-        # 3. Ist der Link in einem <p> Tag mit color: #412c26 (Artikel-Titel-Style)?
-        if not is_article:
-            parent = link.parent
-            if parent and parent.name == "p":
-                parent_style = parent.get("style", "")
-                if "#412c26" in parent_style or "#412C26" in parent_style:
-                    # Prüfe ob Titel lang genug ist
-                    if len(title) > 30 and "cfr.org" in url:
-                        is_article = True
-        
-        if not is_article:
+        # Filter 5: Keine Image-Credits
+        if any(x in title for x in ["/", "Getty", "AFP", "Reuters"]) and len(title) < 100:
             continue
         
         # Duplikats-Check
@@ -2398,7 +2352,8 @@ def parse_cfr_eyes_on_asia(msg):
         china_keywords = [
             "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
             "hong kong", "hongkong", "us-china", "sino-", "prc", "yuan",
-            "renminbi", "shanghai", "ccp", "communist party", "cpc"
+            "renminbi", "shanghai", "ccp", "communist party", "cpc", "asia-pacific",
+            "apec", "asean"
         ]
         
         is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
