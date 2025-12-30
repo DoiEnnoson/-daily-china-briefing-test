@@ -1862,14 +1862,7 @@ def fetch_brookings_emails(mail, email_user, email_password, days=None):
             
             msg = email.message_from_bytes(msg_data[0][1])
             articles = parse_brookings_email(msg)
-            
-            for article in articles:
-                url_match = re.search(r'\((https?://[^\)]+)\)', article)
-                if url_match:
-                    url = url_match.group(1)
-                    if url not in seen_urls:
-                        all_articles.append(article)
-                        seen_urls.add(url)
+            all_articles.extend(articles)
         
         logger.info(f"Brookings China Center: {len(all_articles)} Artikel gefunden")
         return all_articles, len(email_ids)
@@ -1914,10 +1907,12 @@ def deduplicate_csis_articles(*article_lists):
             
             if url_match:
                 url = url_match.group(1)
+                # Normalisiere URL (entferne Query-Parameter)
+                normalized_url = url.split('?')[0]
                 
-                if url not in seen_urls:
+                if normalized_url not in seen_urls:
                     deduplicated.append(article)
-                    seen_urls.add(url)
+                    seen_urls.add(normalized_url)
                     logger.debug(f"CSIS Dedup - {newsletter_name}: Behalte {article[:50]}...")
                 else:
                     logger.info(f"CSIS Dedup - {newsletter_name}: ❌ Duplikat entfernt: {article[:60]}...")
@@ -1934,6 +1929,89 @@ def deduplicate_csis_articles(*article_lists):
     logger.info(f"CSIS Dedup - GESAMT: {total_before} → {total_after} Artikel ({total_before - total_after} Duplikate entfernt)")
     
     return tuple(deduplicated_lists)
+
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articles):
+    """
+    Globale Deduplizierung über ALLE Think Tanks hinweg.
+    Entfernt Duplikate zwischen MERICS, Brookings und CSIS.
+    
+    Args:
+        merics_articles: MERICS Artikel-Liste
+        brookings_articles: Brookings Artikel-Liste
+        *csis_articles: Variable Anzahl CSIS Newsletter-Listen
+    
+    Returns:
+        Tuple: (merics_dedup, brookings_dedup, *csis_dedup)
+    """
+    logger.info("=" * 60)
+    logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
+    logger.info("=" * 60)
+    
+    seen_urls = set()
+    
+    # MERICS deduplizieren (kommt zuerst, hat Priorität)
+    merics_dedup = []
+    for article in merics_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        if url_match:
+            url = url_match.group(1).split('?')[0]  # Normalisiere
+            if url not in seen_urls:
+                merics_dedup.append(article)
+                seen_urls.add(url)
+            else:
+                logger.info(f"Global Dedup - MERICS: ❌ Duplikat: {article[:60]}...")
+        else:
+            merics_dedup.append(article)
+    
+    logger.info(f"MERICS: {len(merics_articles)} → {len(merics_dedup)} ({len(merics_articles)-len(merics_dedup)} Duplikate)")
+    
+    # Brookings deduplizieren
+    brookings_dedup = []
+    for article in brookings_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        if url_match:
+            url = url_match.group(1).split('?')[0]  # Normalisiere
+            if url not in seen_urls:
+                brookings_dedup.append(article)
+                seen_urls.add(url)
+            else:
+                logger.info(f"Global Dedup - Brookings: ❌ Duplikat: {article[:60]}...")
+        else:
+            brookings_dedup.append(article)
+    
+    logger.info(f"Brookings: {len(brookings_articles)} → {len(brookings_dedup)} ({len(brookings_articles)-len(brookings_dedup)} Duplikate)")
+    
+    # CSIS deduplizieren (alle Newsletter)
+    csis_names = [
+        "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
+        "CSIS China Power", "CSIS Korea", "CSIS GHPC", "CSIS Aerospace"
+    ]
+    
+    csis_dedup_lists = []
+    for idx, csis_list in enumerate(csis_articles):
+        name = csis_names[idx] if idx < len(csis_names) else f"CSIS {idx+1}"
+        dedup = []
+        
+        for article in csis_list:
+            url_match = re.search(r'\((https?://[^\)]+)\)', article)
+            if url_match:
+                url = url_match.group(1).split('?')[0]  # Normalisiere
+                if url not in seen_urls:
+                    dedup.append(article)
+                    seen_urls.add(url)
+                else:
+                    logger.info(f"Global Dedup - {name}: ❌ Duplikat: {article[:60]}...")
+            else:
+                dedup.append(article)
+        
+        logger.info(f"{name}: {len(csis_list)} → {len(dedup)} ({len(csis_list)-len(dedup)} Duplikate)")
+        csis_dedup_lists.append(dedup)
+    
+    logger.info("=" * 60)
+    logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
+    logger.info("=" * 60)
+    
+    return (merics_dedup, brookings_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -1993,9 +2071,11 @@ def main():
         # Brookings China Center (nutzt GLOBAL_THINKTANK_DAYS)
         brookings_articles, brookings_count = fetch_brookings_emails(mail, email_user, email_password)
         
-        # CSIS Deduplizierung über alle Newsletter
-        logger.info("Starte CSIS Deduplizierung...")
-        csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_csis_articles(
+        # GLOBALE Deduplizierung über ALLE Think Tanks
+        logger.info("Starte GLOBALE Think Tank Deduplizierung...")
+        merics_articles, brookings_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+            merics_articles,
+            brookings_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -2005,7 +2085,7 @@ def main():
             ghpc_articles,
             aerospace_articles
         )
-        logger.info("CSIS Deduplizierung abgeschlossen")
+        logger.info("Globale Deduplizierung abgeschlossen")
         
     finally:
         mail.logout()
