@@ -1791,7 +1791,7 @@ def parse_brookings_email(msg):
             "view in browser", "unsubscribe", "manage newsletter",
             "x/twitter", "facebook", "instagram", "linkedin",
             "read his introductory", "watch the recording",
-            "brookings institution"
+            "brookings institution", "john l. thornton china center"
         ]
         
         if any(pattern in title.lower() for pattern in skip_patterns):
