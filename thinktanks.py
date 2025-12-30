@@ -1949,6 +1949,8 @@ def normalize_url(url):
         return base_url
     
     return base_url
+
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
     Entfernt Duplikate zwischen MERICS, Brookings und CSIS.
