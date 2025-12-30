@@ -2295,36 +2295,39 @@ def parse_cfr_eyes_on_asia(msg):
     cfr_links = [link for link in all_links if "cfr.org" in link.get("href", "")]
     logger.info(f"CFR Eyes on Asia - {len(cfr_links)} CFR-Links gefunden")
     
-    # Debug: Zähle Content-Links
+    # Debug: Zähle Content-Links (inkl. Tracking-Links!)
     content_paths = ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", 
                     "/podcast/", "/opinion/", "/interactive/", "/report/"]
-    content_links = [link for link in cfr_links if any(path in link.get("href", "") for path in content_paths)]
-    logger.info(f"CFR Eyes on Asia - {len(content_links)} Content-Links gefunden")
+    
+    # Tracking-Links: link.cfr.org/click/...
+    content_links = []
+    for link in cfr_links:
+        href = link.get("href", "")
+        # Entweder direkter Content-Link ODER Tracking-Link
+        if any(path in href for path in content_paths) or "link.cfr.org/click" in href:
+            content_links.append(link)
+    
+    logger.info(f"CFR Eyes on Asia - {len(content_links)} Content-Links gefunden (inkl. Tracking-Links)")
     
     for link in all_links:
         title = link.get_text(strip=True)
         url = link.get("href", "")
         
+        # Nur CFR-Links
+        if "cfr.org" not in url:
+            continue
+        
         # Check ob dieser Link NACH dem Stop-Punkt kommt
         # NEUE METHODE: Suche nach href im Original-HTML
-        if url and "cfr.org" in url:
-            # Suche nach der URL im HTML
-            url_pos = html_content.find(url)
-            if url_pos == -1:
-                # URL nicht gefunden? Versuche mit tracking link
-                if "link.cfr.org" in url:
-                    url_pos = html_content.find(url)
-            
-            if url_pos != -1 and url_pos >= stop_position:
-                # Link ist nach Stop-Punkt, überspringe
-                logger.debug(f"CFR Eyes on Asia - Link nach Stop-Punkt: {title[:30]}...")
-                continue
-            elif url_pos == -1:
-                # URL nicht im HTML gefunden? Das ist verdächtig, aber nehmen wir ihn trotzdem
-                logger.debug(f"CFR Eyes on Asia - URL nicht gefunden im HTML, nehme trotzdem: {title[:30]}...")
-        else:
-            # Kein CFR-Link, überspringe sowieso
+        url_pos = html_content.find(url)
+        
+        if url_pos != -1 and url_pos >= stop_position:
+            # Link ist nach Stop-Punkt, überspringe
+            logger.debug(f"CFR Eyes on Asia - Link nach Stop-Punkt: {title[:30]}...")
             continue
+        elif url_pos == -1:
+            # URL nicht im HTML gefunden? Das ist verdächtig, aber nehmen wir ihn trotzdem
+            logger.debug(f"CFR Eyes on Asia - URL nicht gefunden im HTML, nehme trotzdem: {title[:30]}...")
         
         # Filter 1: Überspringe Navigation/Footer
         if any(x in title.lower() for x in [
@@ -2334,15 +2337,14 @@ def parse_cfr_eyes_on_asia(msg):
         ]):
             continue
         
-        # Filter 2: Nur CFR Content-Links
-        if "cfr.org" not in url:
-            continue
+        # Filter 2: Nur Content-Links (entweder Tracking oder direkte Content-Pfade)
+        is_content_link = False
+        if "link.cfr.org/click" in url:
+            is_content_link = True
+        elif any(path in url for path in content_paths):
+            is_content_link = True
         
-        # Filter 3: Nur Content-Pfade (nicht Homepage, nicht Team-Profile)
-        content_paths = ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", 
-                        "/podcast/", "/opinion/", "/interactive/", "/report/"]
-        
-        if not any(path in url for path in content_paths):
+        if not is_content_link:
             continue
         
         # Filter 4: Titel-Länge (Artikel haben lange Titel)
