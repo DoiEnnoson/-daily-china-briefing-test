@@ -2275,45 +2275,31 @@ def parse_cfr_eyes_on_asia(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Finde Stop-Point: "Asia Fellows in the News" oder "About the Asia Program"
+    # Finde Stop-Punkt Position im HTML (als String-Position)
     stop_phrases = ["asia fellows in the news", "about the asia program"]
-    stop_found = False
-    stop_element = None
+    stop_position = len(html_content)  # Default: Ende des Dokuments
     
     for phrase in stop_phrases:
-        for element in soup.find_all(text=lambda x: x and phrase in x.lower()):
-            stop_element = element
-            stop_found = True
-            logger.info(f"CFR Eyes on Asia - Stop-Punkt gefunden: {phrase}")
-            break
-        if stop_found:
-            break
+        pos = html_content.lower().find(phrase)
+        if pos != -1 and pos < stop_position:
+            stop_position = pos
+            logger.info(f"CFR Eyes on Asia - Stop-Punkt '{phrase}' gefunden bei Position {pos}")
     
-    # Finde alle Content-Links VOR dem Stop-Punkt
-    # Strategie: Alle <a> Tags mit CFR-URLs durchgehen
+    # Finde alle Content-Links
     seen_titles = set()
-    
     all_links = soup.find_all("a", href=True)
     
     for link in all_links:
-        # Wenn wir den Stop-Punkt erreicht haben, stoppe
-        if stop_element and stop_element in link.parents:
-            logger.info("CFR Eyes on Asia - Erreiche Stop-Punkt, stoppe Parsing")
-            break
-        
-        # Checke ob Link NACH Stop-Element kommt (im DOM)
-        if stop_found:
-            # Vergleiche Position im HTML
-            try:
-                link_pos = str(soup).find(str(link))
-                stop_pos = str(soup).find(str(stop_element.parent))
-                if link_pos > stop_pos:
-                    continue
-            except:
-                pass
-        
         title = link.get_text(strip=True)
         url = link.get("href", "")
+        
+        # Check ob dieser Link NACH dem Stop-Punkt kommt
+        link_html = str(link)
+        link_pos = html_content.find(link_html)
+        
+        if link_pos >= stop_position:
+            # Link ist nach Stop-Punkt, überspringe
+            continue
         
         # Filter 1: Überspringe Navigation/Footer
         if any(x in title.lower() for x in [
