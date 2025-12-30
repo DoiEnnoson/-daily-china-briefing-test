@@ -2078,6 +2078,17 @@ def parse_cfr_daily_brief(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
+    # DEBUG: Suche nach Brad Setser / Follow the Money
+    if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
+        for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
+            context = str(element)[:200]
+            logger.info(f"🔍 CFR Daily Brief - Brad Setser gefunden: {context}")
+    
+    if "follow the money" in html_content.lower():
+        for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
+            context = str(element)[:200]
+            logger.info(f"🔍 CFR Daily Brief - Follow the Money gefunden: {context}")
+    
     # Finde graue Boxen (border: 1px solid #969da7)
     # Diese Boxen enthalten die Artikel-Links
     bordered_sections = soup.find_all("td", style=lambda x: x and "border" in x and "#969da7" in x)
@@ -2239,6 +2250,199 @@ def fetch_cfr_daily_brief(mail, email_user, email_password, days=None):
 # ENDE CFR DAILY BRIEF PARSER
 # ============================================================================
 
+# ============================================================================
+# CFR EYES ON ASIA (ASIA STUDIES PROGRAM) PARSER
+# ============================================================================
+
+def parse_cfr_eyes_on_asia(msg):
+    """
+    Parser für CFR Eyes on Asia Newsletter (Asia Studies Program).
+    Extrahiert NUR China-relevante Artikel aus dem Hauptbereich.
+    Stoppt bei: "Asia Fellows in the News" oder "About the Asia Program"
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"CFR Eyes on Asia - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CFR Eyes on Asia gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # DEBUG: Suche nach Brad Setser / Follow the Money
+    brad_setser_mentions = []
+    follow_money_mentions = []
+    
+    # Suche im gesamten HTML nach Brad Setser
+    if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
+        # Finde alle Textblöcke mit Brad Setser
+        for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
+            context = str(element)[:200]
+            brad_setser_mentions.append(context)
+            logger.info(f"🔍 CFR Eyes on Asia - Brad Setser gefunden: {context}")
+    
+    # Suche nach Follow the Money
+    if "follow the money" in html_content.lower():
+        for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
+            context = str(element)[:200]
+            follow_money_mentions.append(context)
+            logger.info(f"🔍 CFR Eyes on Asia - Follow the Money gefunden: {context}")
+    
+    # Finde alle großen Artikel-Links (22px font-size, meist in <a> tags)
+    # Stoppe bei "Asia Fellows in the News" oder "About the Asia Program"
+    stop_phrases = ["asia fellows in the news", "about the asia program"]
+    
+    seen_titles = set()
+    stopped = False
+    
+    # Finde alle Links mit großem Text (Artikel-Titel)
+    all_links = soup.find_all("a", href=True)
+    
+    for link in all_links:
+        # Check ob wir stoppen sollen
+        link_text = link.get_text(strip=True).lower()
+        if any(phrase in link_text for phrase in stop_phrases):
+            logger.info(f"CFR Eyes on Asia - Stoppe bei: {link_text[:50]}")
+            stopped = True
+            break
+        
+        # Suche nach großen Artikel-Titeln (font-size ~22px oder Style-Attribute)
+        style = link.get("style", "")
+        parent_style = ""
+        if link.parent:
+            parent_style = link.parent.get("style", "")
+        
+        # Prüfe ob es ein großer Titel ist (22px oder größer)
+        is_large = False
+        if "font-size: 22px" in style or "font-size: 22px" in parent_style:
+            is_large = True
+        elif "font-size:22px" in style or "font-size:22px" in parent_style:
+            is_large = True
+        
+        # Oder prüfe ob Link-Text lang genug ist (Artikel-Titel)
+        if not is_large and len(link.get_text(strip=True)) > 30:
+            # Zusätzliche Heuristik: Ist es ein CFR-Link?
+            href = link.get("href", "")
+            if "cfr.org" in href and any(x in href for x in ["/article/", "/blog/", "/expert-brief/", "/backgrounder/"]):
+                is_large = True
+        
+        if not is_large:
+            continue
+        
+        title = link.get_text(strip=True)
+        url = link.get("href", "")
+        
+        # Überspringe zu kurze Titel
+        if len(title) < 20:
+            continue
+        
+        # Überspringe Social Media Links
+        if "twitter.com" in url or "facebook.com" in url or "linkedin.com" in url:
+            continue
+        
+        # Duplikats-Check
+        if title in seen_titles:
+            continue
+        
+        seen_titles.add(title)
+        
+        # China-Relevanz prüfen
+        china_keywords = [
+            "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+            "hong kong", "hongkong", "us-china", "sino-", "prc", "yuan",
+            "renminbi", "shanghai", "ccp", "communist party", "cpc"
+        ]
+        
+        is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+        
+        if not is_china_relevant:
+            logger.info(f"CFR Eyes on Asia - Nicht China-relevant: {title[:50]}...")
+            continue
+        
+        # Resolve Tracking URL
+        final_url = resolve_tracking_url(url)
+        
+        # Formatiere Artikel
+        formatted_article = f"• [{title}]({final_url})"
+        
+        articles.append(formatted_article)
+        logger.info(f"CFR Eyes on Asia - Artikel hinzugefügt: {title[:50]}...")
+    
+    # Debug-Summary loggen
+    if brad_setser_mentions:
+        logger.info(f"🔍 CFR Eyes on Asia DEBUG - Brad Setser: {len(brad_setser_mentions)} Erwähnungen gefunden")
+    if follow_money_mentions:
+        logger.info(f"🔍 CFR Eyes on Asia DEBUG - Follow the Money: {len(follow_money_mentions)} Erwähnungen gefunden")
+    
+    logger.info(f"CFR Eyes on Asia Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_cfr_eyes_on_asia(mail, email_user, email_password, days=None):
+    """Holt CFR Eyes on Asia Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "jkurlantzick@cfr.org"
+        
+        logger.info(f"CFR Eyes on Asia - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CFR Eyes on Asia: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"CFR Eyes on Asia - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_cfr_eyes_on_asia(msg)
+            all_articles.extend(articles)
+        
+        logger.info(f"CFR Eyes on Asia: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_cfr_eyes_on_asia: {str(e)}")
+        return [], 0
+
+# ============================================================================
+# ENDE CFR EYES ON ASIA PARSER
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -2314,20 +2518,21 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia) und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
         brookings_articles: Brookings Artikel-Liste
         piie_articles: PIIE Artikel-Liste
         cfr_daily_articles: CFR Daily Brief Artikel-Liste
+        cfr_asia_articles: CFR Eyes on Asia Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -2428,6 +2633,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"CFR Daily: {len(cfr_daily_articles)} → {len(cfr_daily_dedup)} ({len(cfr_daily_articles)-len(cfr_daily_dedup)} Duplikate)")
     
+    # CFR Eyes on Asia deduplizieren
+    cfr_asia_dedup = []
+    for article in cfr_asia_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                cfr_asia_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - CFR Eyes on Asia: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            cfr_asia_dedup.append(article)
+    
+    logger.info(f"CFR Eyes on Asia: {len(cfr_asia_articles)} → {len(cfr_asia_dedup)} ({len(cfr_asia_articles)-len(cfr_asia_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -2458,7 +2686,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -2524,13 +2752,17 @@ def main():
         # CFR Daily Brief (nutzt GLOBAL_THINKTANK_DAYS)
         cfr_daily_articles, cfr_daily_count = fetch_cfr_daily_brief(mail, email_user, email_password)
         
+        # CFR Eyes on Asia (nutzt GLOBAL_THINKTANK_DAYS)
+        cfr_asia_articles, cfr_asia_count = fetch_cfr_eyes_on_asia(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
             cfr_daily_articles,
+            cfr_asia_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -2647,6 +2879,13 @@ def main():
     briefing.append("#### Daily Brief")
     if cfr_daily_articles:
         briefing.extend(cfr_daily_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    briefing.append("")
+    briefing.append("#### Eyes on Asia (Asia Studies Program)")
+    if cfr_asia_articles:
+        briefing.extend(cfr_asia_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
