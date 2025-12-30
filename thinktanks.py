@@ -2289,16 +2289,41 @@ def parse_cfr_eyes_on_asia(msg):
     seen_titles = set()
     all_links = soup.find_all("a", href=True)
     
+    logger.info(f"CFR Eyes on Asia - {len(all_links)} Links insgesamt gefunden")
+    
+    # Debug: Zähle CFR-Links
+    cfr_links = [link for link in all_links if "cfr.org" in link.get("href", "")]
+    logger.info(f"CFR Eyes on Asia - {len(cfr_links)} CFR-Links gefunden")
+    
+    # Debug: Zähle Content-Links
+    content_paths = ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", 
+                    "/podcast/", "/opinion/", "/interactive/", "/report/"]
+    content_links = [link for link in cfr_links if any(path in link.get("href", "") for path in content_paths)]
+    logger.info(f"CFR Eyes on Asia - {len(content_links)} Content-Links gefunden")
+    
     for link in all_links:
         title = link.get_text(strip=True)
         url = link.get("href", "")
         
         # Check ob dieser Link NACH dem Stop-Punkt kommt
-        link_html = str(link)
-        link_pos = html_content.find(link_html)
-        
-        if link_pos >= stop_position:
-            # Link ist nach Stop-Punkt, überspringe
+        # NEUE METHODE: Suche nach href im Original-HTML
+        if url and "cfr.org" in url:
+            # Suche nach der URL im HTML
+            url_pos = html_content.find(url)
+            if url_pos == -1:
+                # URL nicht gefunden? Versuche mit tracking link
+                if "link.cfr.org" in url:
+                    url_pos = html_content.find(url)
+            
+            if url_pos != -1 and url_pos >= stop_position:
+                # Link ist nach Stop-Punkt, überspringe
+                logger.debug(f"CFR Eyes on Asia - Link nach Stop-Punkt: {title[:30]}...")
+                continue
+            elif url_pos == -1:
+                # URL nicht im HTML gefunden? Das ist verdächtig, aber nehmen wir ihn trotzdem
+                logger.debug(f"CFR Eyes on Asia - URL nicht gefunden im HTML, nehme trotzdem: {title[:30]}...")
+        else:
+            # Kein CFR-Link, überspringe sowieso
             continue
         
         # Filter 1: Überspringe Navigation/Footer
