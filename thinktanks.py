@@ -2110,6 +2110,19 @@ def parse_cfr_daily_brief(msg):
         if not title or not url:
             continue
         
+        # Wenn Titel sehr kurz (z.B. "Council Special Report"), 
+        # suche nach längerem Titel im umgebenden Text
+        if len(title) < 30:
+            # Suche nach Text-Blöcken in der Box
+            for p_tag in section.find_all("p"):
+                text = p_tag.get_text(strip=True)
+                # Wenn wir einen längeren Text finden, der China-relevant sein könnte
+                if len(text) > len(title) and len(text) < 200:
+                    # Prüfe ob es ein besserer Titel ist
+                    if any(kw in text.lower() for kw in ["china", "taiwan", "xi", "beijing", "hong kong"]):
+                        title = text
+                        break
+        
         # Überspringe YouTube Shorts / Videos
         if "youtube.com" in url or "youtu.be" in url:
             logger.debug(f"CFR Daily Brief - YouTube Link übersprungen: {title[:40]}...")
@@ -2127,26 +2140,33 @@ def parse_cfr_daily_brief(msg):
         
         seen_titles.add(title)
         
-        # China-Relevanz prüfen
+        # China-Relevanz prüfen - NUR im Titel, NICHT in Beschreibung
         china_keywords = [
-            "china", "chinese", "xi jinping", "beijing", "taiwan",
-            "hong kong", "us-china", "sino-", "prc", "yuan",
-            "renminbi", "shanghai", "ccp", "communist party",
-            "cpc", "asia-pacific", "asia pacific"
+            "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+            "hong kong", "hongkong", "us-china", "sino-", "prc", "yuan",
+            "renminbi", "shanghai", "ccp", "communist party", "cpc"
         ]
         
-        # Prüfe Titel
+        # Prüfe NUR den Titel
         is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
         
-        # Wenn Titel nicht relevant, prüfe auch Beschreibung
-        if not is_china_relevant:
-            # Suche nach Beschreibungstext in der Box
-            text_blocks = section.find_all("p")
-            for text_block in text_blocks:
-                text = text_block.get_text(strip=True).lower()
-                if any(keyword in text for keyword in china_keywords):
-                    is_china_relevant = True
-                    break
+        # Spezielle Ausnahmen für zu breite Matches
+        # "Asia" alleine ist zu breit, außer es ist explizit "Asia-Pacific" oder mit China-Kontext
+        if not is_china_relevant and "asia" in title.lower():
+            # Nur relevant wenn es auch China/Taiwan/Hong Kong im Titel erwähnt
+            if any(kw in title.lower() for kw in ["china", "chinese", "taiwan", "hong kong", "beijing", "shanghai"]):
+                is_china_relevant = True
+        
+        # Filtere zu breite Artikel raus
+        too_broad = [
+            "all about the united nations",
+            "what to know about the united nations",
+            "what to know about palestinian",
+            "major moments in un history"
+        ]
+        
+        if any(broad in title.lower() for broad in too_broad):
+            is_china_relevant = False
         
         if not is_china_relevant:
             logger.info(f"CFR Daily Brief - Nicht China-relevant: {title[:50]}...")
