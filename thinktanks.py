@@ -2079,15 +2079,23 @@ def parse_cfr_daily_brief(msg):
     soup = BeautifulSoup(html_content, "lxml")
     
     # DEBUG: Suche nach Brad Setser / Follow the Money
+    brad_setser_count = 0
+    follow_money_count = 0
+    
     if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
         for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
-            context = str(element)[:200]
-            logger.info(f"🔍 CFR Daily Brief - Brad Setser gefunden: {context}")
+            context = str(element).strip()[:200]
+            brad_setser_count += 1
+            logger.info(f"🔍 CFR Daily Brief - Brad Setser #{brad_setser_count}: {context}")
     
     if "follow the money" in html_content.lower():
         for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
-            context = str(element)[:200]
-            logger.info(f"🔍 CFR Daily Brief - Follow the Money gefunden: {context}")
+            context = str(element).strip()[:200]
+            follow_money_count += 1
+            logger.info(f"🔍 CFR Daily Brief - Follow the Money #{follow_money_count}: {context}")
+    
+    # Summary ausgeben
+    logger.info(f"🔍 CFR Daily Brief DEBUG-Summary: Nach 'Brad Setser' gesucht → {brad_setser_count} gefunden, nach 'Follow the Money' gesucht → {follow_money_count} gefunden")
     
     # Finde graue Boxen (border: 1px solid #969da7)
     # Diese Boxen enthalten die Artikel-Links
@@ -2287,32 +2295,39 @@ def parse_cfr_eyes_on_asia(msg):
     soup = BeautifulSoup(html_content, "lxml")
     
     # DEBUG: Suche nach Brad Setser / Follow the Money
-    brad_setser_mentions = []
-    follow_money_mentions = []
+    brad_setser_count = 0
+    follow_money_count = 0
     
     # Suche im gesamten HTML nach Brad Setser
     if "brad setser" in html_content.lower() or "brad_setser" in html_content.lower():
         # Finde alle Textblöcke mit Brad Setser
         for element in soup.find_all(text=lambda x: x and ("brad setser" in x.lower() or "brad_setser" in x.lower())):
-            context = str(element)[:200]
-            brad_setser_mentions.append(context)
-            logger.info(f"🔍 CFR Eyes on Asia - Brad Setser gefunden: {context}")
+            context = str(element).strip()[:200]
+            brad_setser_count += 1
+            logger.info(f"🔍 CFR Eyes on Asia - Brad Setser #{brad_setser_count}: {context}")
     
     # Suche nach Follow the Money
     if "follow the money" in html_content.lower():
         for element in soup.find_all(text=lambda x: x and "follow the money" in x.lower()):
-            context = str(element)[:200]
-            follow_money_mentions.append(context)
-            logger.info(f"🔍 CFR Eyes on Asia - Follow the Money gefunden: {context}")
+            context = str(element).strip()[:200]
+            follow_money_count += 1
+            logger.info(f"🔍 CFR Eyes on Asia - Follow the Money #{follow_money_count}: {context}")
     
-    # Finde alle großen Artikel-Links (22px font-size, meist in <a> tags)
+    # Summary ausgeben
+    logger.info(f"🔍 CFR Eyes on Asia DEBUG-Summary: Nach 'Brad Setser' gesucht → {brad_setser_count} gefunden, nach 'Follow the Money' gesucht → {follow_money_count} gefunden")
+    
+    # Finde alle großen Artikel-Links
     # Stoppe bei "Asia Fellows in the News" oder "About the Asia Program"
     stop_phrases = ["asia fellows in the news", "about the asia program"]
     
     seen_titles = set()
     stopped = False
     
-    # Finde alle Links mit großem Text (Artikel-Titel)
+    # Strategie: Finde alle Links, die wahrscheinlich Artikel-Titel sind
+    # 1. Große Font-Size (22px)
+    # 2. Lange Titel (>30 Zeichen) in bestimmten Sections
+    # 3. Links in <p> Tags mit großem Text
+    
     all_links = soup.find_all("a", href=True)
     
     for link in all_links:
@@ -2323,29 +2338,6 @@ def parse_cfr_eyes_on_asia(msg):
             stopped = True
             break
         
-        # Suche nach großen Artikel-Titeln (font-size ~22px oder Style-Attribute)
-        style = link.get("style", "")
-        parent_style = ""
-        if link.parent:
-            parent_style = link.parent.get("style", "")
-        
-        # Prüfe ob es ein großer Titel ist (22px oder größer)
-        is_large = False
-        if "font-size: 22px" in style or "font-size: 22px" in parent_style:
-            is_large = True
-        elif "font-size:22px" in style or "font-size:22px" in parent_style:
-            is_large = True
-        
-        # Oder prüfe ob Link-Text lang genug ist (Artikel-Titel)
-        if not is_large and len(link.get_text(strip=True)) > 30:
-            # Zusätzliche Heuristik: Ist es ein CFR-Link?
-            href = link.get("href", "")
-            if "cfr.org" in href and any(x in href for x in ["/article/", "/blog/", "/expert-brief/", "/backgrounder/"]):
-                is_large = True
-        
-        if not is_large:
-            continue
-        
         title = link.get_text(strip=True)
         url = link.get("href", "")
         
@@ -2354,7 +2346,46 @@ def parse_cfr_eyes_on_asia(msg):
             continue
         
         # Überspringe Social Media Links
-        if "twitter.com" in url or "facebook.com" in url or "linkedin.com" in url:
+        if any(x in url for x in ["twitter.com", "facebook.com", "linkedin.com", "instagram.com"]):
+            continue
+        
+        # Überspringe interne CFR Navigation
+        if any(x in title.lower() for x in ["unsubscribe", "manage preferences", "view in browser", "email preferences"]):
+            continue
+        
+        # Prüfe ob es ein Artikel-Link ist
+        is_article = False
+        
+        # 1. Hat Style mit großer Font-Size?
+        style = link.get("style", "")
+        if link.parent:
+            parent_style = link.parent.get("style", "")
+        else:
+            parent_style = ""
+        
+        if "font-size: 22px" in style or "font-size: 22px" in parent_style:
+            is_article = True
+        elif "font-size:22px" in style or "font-size:22px" in parent_style:
+            is_article = True
+        
+        # 2. Ist es ein CFR-Content-Link mit langem Titel?
+        if not is_article:
+            if "cfr.org" in url and len(title) > 30:
+                # Prüfe ob es ein Content-Link ist
+                if any(x in url for x in ["/article/", "/blog/", "/expert-brief/", "/backgrounder/", "/podcast/", "/opinion/"]):
+                    is_article = True
+        
+        # 3. Ist der Link in einem <p> Tag mit color: #412c26 (Artikel-Titel-Style)?
+        if not is_article:
+            parent = link.parent
+            if parent and parent.name == "p":
+                parent_style = parent.get("style", "")
+                if "#412c26" in parent_style or "#412C26" in parent_style:
+                    # Prüfe ob Titel lang genug ist
+                    if len(title) > 30 and "cfr.org" in url:
+                        is_article = True
+        
+        if not is_article:
             continue
         
         # Duplikats-Check
@@ -2384,12 +2415,6 @@ def parse_cfr_eyes_on_asia(msg):
         
         articles.append(formatted_article)
         logger.info(f"CFR Eyes on Asia - Artikel hinzugefügt: {title[:50]}...")
-    
-    # Debug-Summary loggen
-    if brad_setser_mentions:
-        logger.info(f"🔍 CFR Eyes on Asia DEBUG - Brad Setser: {len(brad_setser_mentions)} Erwähnungen gefunden")
-    if follow_money_mentions:
-        logger.info(f"🔍 CFR Eyes on Asia DEBUG - Follow the Money: {len(follow_money_mentions)} Erwähnungen gefunden")
     
     logger.info(f"CFR Eyes on Asia Parser - {len(articles)} Artikel extrahiert")
     return articles
