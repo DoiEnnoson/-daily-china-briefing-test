@@ -751,11 +751,25 @@ def parse_csis_trustee_email(msg):
         articles.append(formatted_article)
         logger.info(f"Trustee Chair - ✅ ARTIKEL HINZUGEFÜGT: {title[:50]}... | URL: {resolved_url[:60]}")
     
-    logger.info(f"Trustee Chair Parser - {len(articles)} Artikel extrahiert")
+    # Sortiere: Videos/Podcasts ans Ende (Gmail rendert YouTube-Thumbnails automatisch)
+    video_articles = []
+    text_articles = []
+    
+    for article in articles:
+        # Erkenne Video/Podcast-Links
+        if any(domain in article.lower() for domain in ["youtube.com", "youtu.be", "podcasts.apple.com", "spotify.com"]):
+            video_articles.append(article)
+        else:
+            text_articles.append(article)
+    
+    # Kombiniere: Text zuerst, dann Videos/Podcasts
+    sorted_articles = text_articles + video_articles
+    
+    logger.info(f"Trustee Chair Parser - {len(sorted_articles)} Artikel extrahiert ({len(text_articles)} Text, {len(video_articles)} Video/Podcast)")
     logger.info(f"Trustee Chair - FINALE ARTIKEL-LISTE:")
-    for idx, article in enumerate(articles, 1):
+    for idx, article in enumerate(sorted_articles, 1):
         logger.info(f"  {idx}. {article[:80]}...")
-    return articles
+    return sorted_articles
 
 def parse_csis_japan_email(msg):
     """
