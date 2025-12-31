@@ -2880,23 +2880,35 @@ def fetch_lowy_interpreter(mail, email_user, email_password, days=None):
 # ============================================================================
 
 # ============================================================================
-# CARNEGIE ENDOWMENT - CARNEGIE CHINA PARSER (DEBUG)
+# CARNEGIE ENDOWMENT PARSER (China, India, Main)
 # ============================================================================
 
-def parse_carnegie_china_debug(msg):
+def parse_carnegie_newsletter(msg, newsletter_type="unknown"):
     """
-    DEBUG Parser für Carnegie China Newsletter.
-    Extrahiert ALLE Inhalte zur Analyse.
+    Parser für Carnegie Endowment Newsletter.
+    Unterscheidet zwischen Articles/Papers (WANT) und Events (SKIP).
+    
+    Args:
+        msg: E-Mail Message Objekt
+        newsletter_type: "china", "india", oder "main"
+    
+    Returns:
+        List of article strings
     """
-    results = []
+    articles = []
     
     # Betreff extrahieren
     subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
     if isinstance(subject, bytes):
         subject = subject.decode()
     
-    logger.info(f"Carnegie China DEBUG - Betreff: {subject}")
-    results.append(f"SUBJECT: {subject}")
+    logger.info(f"Carnegie {newsletter_type.upper()} - Betreff: {subject}")
+    
+    # Skip Event-E-Mails komplett
+    event_indicators = ["event |", "join us |", "happening now |", "webinar |", "live online"]
+    if any(indicator in subject.lower() for indicator in event_indicators):
+        logger.info(f"Carnegie {newsletter_type.upper()} - Event-Mail übersprungen: {subject}")
+        return articles
     
     # HTML-Inhalt finden
     html_content = None
@@ -2910,92 +2922,215 @@ def parse_carnegie_china_debug(msg):
             break
     
     if not html_content:
-        logger.warning("Carnegie China DEBUG - Keine HTML-Inhalte gefunden")
-        results.append("ERROR: Kein HTML-Inhalt")
-        return results
+        logger.warning(f"Carnegie {newsletter_type.upper()} - Keine HTML-Inhalte gefunden")
+        return articles
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Finde alle Links
-    all_links = soup.find_all("a", href=True)
-    logger.info(f"Carnegie China DEBUG - {len(all_links)} Links gefunden")
-    results.append(f"\nTOTAL LINKS: {len(all_links)}")
+    # China-Relevanz Keywords
+    china_keywords = [
+        "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+        "hong kong", "hongkong", "shanghai", "prc", "ccp",
+        "south china sea", "asia-pacific", "indo-pacific", "renminbi", "yuan"
+    ]
     
-    # Extrahiere alle Links mit Titel
-    for idx, link in enumerate(all_links, 1):
-        href = link.get("href", "")
-        title = link.get_text(strip=True)
-        
-        if not href or not title:
-            continue
-        
-        # Skip offensichtliche Footer/Header
-        if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "mailto:"]):
-            continue
-        
-        results.append(f"\n--- LINK {idx} ---")
-        results.append(f"Title: {title[:100]}")
-        results.append(f"URL: {href[:100]}")
-        
-        logger.info(f"Carnegie China DEBUG [{idx}] - {title[:50]}...")
+    # Finde Titel (großer Text, 32px)
+    title_div = soup.find("div", style=lambda x: x and "font-size:32px" in x)
     
-    logger.info(f"Carnegie China DEBUG - {len(results)} Einträge extrahiert")
-    return results
+    if not title_div:
+        logger.warning(f"Carnegie {newsletter_type.upper()} - Kein Titel gefunden")
+        return articles
+    
+    # Extrahiere Titel und Link
+    title_link = title_div.find("a", href=True)
+    if not title_link:
+        logger.warning(f"Carnegie {newsletter_type.upper()} - Kein Titel-Link gefunden")
+        return articles
+    
+    title = title_link.get_text(strip=True)
+    url = title_link.get("href", "")
+    
+    # Finde Author (uppercase text, Roboto Mono)
+    author = "Unknown Author"
+    author_div = soup.find("div", style=lambda x: x and "Roboto Mono" in x and "text-transform:uppercase" in x)
+    if author_div:
+        author_text = author_div.get_text(strip=True)
+        if author_text and not any(skip in author_text.lower() for skip in ["paper", "article", "commentary"]):
+            author = author_text.replace("By ", "").replace("BY ", "")
+    
+    # Finde CTA Button
+    cta_link = soup.find("a", string=lambda x: x and any(cta in x.lower() for cta in ["read more", "read the paper", "read the full"]))
+    
+    # Skip wenn Event-CTA
+    if cta_link:
+        cta_text = cta_link.get_text(strip=True).lower()
+        event_ctas = ["learn more", "watch now", "register", "join us", "rsvp"]
+        if any(event_cta in cta_text for event_cta in event_ctas):
+            logger.info(f"Carnegie {newsletter_type.upper()} - Event-CTA übersprungen: {cta_text}")
+            return articles
+    
+    # China-Filter (für ALLE Newsletter!)
+    is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+    
+    if not is_china_relevant:
+        # Prüfe auch Description
+        desc_div = soup.find("div", style=lambda x: x and "font-size:17px" in x and "Georgia" in x)
+        if desc_div:
+            desc_text = desc_div.get_text(strip=True).lower()
+            is_china_relevant = any(keyword in desc_text for keyword in china_keywords)
+    
+    if not is_china_relevant:
+        logger.info(f"Carnegie {newsletter_type.upper()} - Nicht China-relevant: {title[:50]}...")
+        return articles
+    
+    # Resolve Tracking URL
+    final_url = resolve_tracking_url(url) if url else "#"
+    
+    # Formatiere Artikel
+    formatted_article = f"• [{title}]({final_url}) - {author}"
+    
+    articles.append(formatted_article)
+    logger.info(f"Carnegie {newsletter_type.upper()} - Artikel hinzugefügt: {title[:50]}... - {author}")
+    
+    return articles
 
 
-def fetch_carnegie_china_debug(mail, email_user, email_password, days=None):
-    """Holt Carnegie China E-Mails und gibt DEBUG-Info aus."""
+def fetch_carnegie_china(mail, email_user, email_password, days=None):
+    """Holt Carnegie China Newsletter."""
     if days is None:
         days = GLOBAL_THINKTANK_DAYS
-        
+    
     try:
         mail.select("inbox")
+        all_articles = []
         
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
         sender_email = "carnegiechina@ceip.org"
         
-        logger.info(f"Carnegie China DEBUG - Suche nach E-Mails von {sender_email} seit {since_date}")
+        logger.info(f"Carnegie China - Suche nach E-Mails von {sender_email} seit {since_date}")
         
         result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
         
         if result != "OK":
-            logger.warning(f"Carnegie China DEBUG - IMAP-Suche fehlgeschlagen: {result}")
+            logger.warning(f"Carnegie China - IMAP-Suche fehlgeschlagen: {result}")
             return [], 0
         
         email_ids = data[0].split()
         
         if not email_ids:
-            logger.warning(f"Carnegie China DEBUG - Keine E-Mails gefunden")
+            logger.warning(f"Carnegie China - Keine E-Mails gefunden")
             return [], 0
         
-        logger.info(f"Carnegie China DEBUG - {len(email_ids)} E-Mails gefunden")
+        logger.info(f"Carnegie China - {len(email_ids)} E-Mails gefunden")
         
-        all_results = []
-        
-        for idx, email_id in enumerate(email_ids, 1):
-            logger.info(f"Carnegie China DEBUG - Verarbeite E-Mail {idx}/{len(email_ids)}")
-            
+        for email_id in email_ids:
             result, msg_data = mail.fetch(email_id, "(RFC822)")
             if result != "OK":
                 continue
             
             msg = email.message_from_bytes(msg_data[0][1])
-            results = parse_carnegie_china_debug(msg)
-            
-            all_results.append(f"\n{'='*60}")
-            all_results.append(f"E-MAIL {idx}/{len(email_ids)}")
-            all_results.append(f"{'='*60}")
-            all_results.extend(results)
+            articles = parse_carnegie_newsletter(msg, newsletter_type="china")
+            all_articles.extend(articles)
         
-        logger.info(f"Carnegie China DEBUG - Verarbeitung abgeschlossen")
-        return all_results, len(email_ids)
+        logger.info(f"Carnegie China: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
         
     except Exception as e:
-        logger.error(f"Carnegie China DEBUG - Fehler: {str(e)}")
-        return [f"ERROR: {str(e)}"], 0
+        logger.error(f"Carnegie China - Fehler: {str(e)}")
+        return [], 0
+
+
+def fetch_carnegie_india(mail, email_user, email_password, days=None):
+    """Holt Carnegie India Newsletter."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "carnegieindia@ceip.org"
+        
+        logger.info(f"Carnegie India - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"Carnegie India - IMAP-Suche fehlgeschlagen: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Carnegie India - Keine E-Mails gefunden")
+            return [], 0
+        
+        logger.info(f"Carnegie India - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_carnegie_newsletter(msg, newsletter_type="india")
+            all_articles.extend(articles)
+        
+        logger.info(f"Carnegie India: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Carnegie India - Fehler: {str(e)}")
+        return [], 0
+
+
+def fetch_carnegie_main(mail, email_user, email_password, days=None):
+    """Holt Carnegie Endowment Main Newsletter (nur China-relevante Artikel)."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+    
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "info@carnegieendowment.org"
+        
+        logger.info(f"Carnegie MAIN - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"Carnegie MAIN - IMAP-Suche fehlgeschlagen: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Carnegie MAIN - Keine E-Mails gefunden")
+            return [], 0
+        
+        logger.info(f"Carnegie MAIN - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_carnegie_newsletter(msg, newsletter_type="main")
+            all_articles.extend(articles)
+        
+        logger.info(f"Carnegie MAIN: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Carnegie MAIN - Fehler: {str(e)}")
+        return [], 0
 
 # ============================================================================
-# ENDE CARNEGIE CHINA PARSER (DEBUG)
+# ENDE CARNEGIE ENDOWMENT PARSER
 # ============================================================================
 
 def deduplicate_csis_articles(*article_lists):
@@ -3073,10 +3208,10 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, carnegie_china_articles, carnegie_india_articles, carnegie_main_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute, Carnegie Endowment (China, India, Main) und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -3087,10 +3222,13 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         aspi_china5_articles: ASPI China 5 Artikel-Liste
         chatham_articles: Chatham House Artikel-Liste
         lowy_articles: Lowy Institute Artikel-Liste
+        carnegie_china_articles: Carnegie China Artikel-Liste
+        carnegie_india_articles: Carnegie India Artikel-Liste
+        carnegie_main_articles: Carnegie Main Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, carnegie_china_dedup, carnegie_india_dedup, carnegie_main_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -3283,6 +3421,75 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"Lowy Institute: {len(lowy_articles)} → {len(lowy_dedup)} ({len(lowy_articles)-len(lowy_dedup)} Duplikate)")
     
+    # Carnegie China deduplizieren
+    carnegie_china_dedup = []
+    for article in carnegie_china_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                carnegie_china_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Carnegie China: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            carnegie_china_dedup.append(article)
+    
+    logger.info(f"Carnegie China: {len(carnegie_china_articles)} → {len(carnegie_china_dedup)} ({len(carnegie_china_articles)-len(carnegie_china_dedup)} Duplikate)")
+    
+    # Carnegie India deduplizieren
+    carnegie_india_dedup = []
+    for article in carnegie_india_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                carnegie_india_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Carnegie India: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            carnegie_india_dedup.append(article)
+    
+    logger.info(f"Carnegie India: {len(carnegie_india_articles)} → {len(carnegie_india_dedup)} ({len(carnegie_india_articles)-len(carnegie_india_dedup)} Duplikate)")
+    
+    # Carnegie Main deduplizieren
+    carnegie_main_dedup = []
+    for article in carnegie_main_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                carnegie_main_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Carnegie MAIN: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            carnegie_main_dedup.append(article)
+    
+    logger.info(f"Carnegie MAIN: {len(carnegie_main_articles)} → {len(carnegie_main_dedup)} ({len(carnegie_main_articles)-len(carnegie_main_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -3313,7 +3520,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, carnegie_china_dedup, carnegie_india_dedup, carnegie_main_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -3391,22 +3598,14 @@ def main():
         # Lowy Institute (nutzt GLOBAL_THINKTANK_DAYS)
         lowy_articles, lowy_count = fetch_lowy_interpreter(mail, email_user, email_password)
         
-        # === CARNEGIE CHINA DEBUG TEST ===
-        logger.info("="*60)
-        logger.info("CARNEGIE CHINA DEBUG TEST STARTET")
-        logger.info("="*60)
-        carnegie_debug, carnegie_count = fetch_carnegie_china_debug(mail, email_user, email_password)
-        
-        # Debug-Output in Briefing schreiben
-        logger.info("Carnegie China DEBUG - Schreibe Output...")
-        debug_output = "\n".join(carnegie_debug)
-        logger.info(f"Carnegie China DEBUG Output:\n{debug_output}")
-        
-        # === ENDE DEBUG TEST ===
+        # Carnegie Endowment (3 Newsletter)
+        carnegie_china_articles, carnegie_china_count = fetch_carnegie_china(mail, email_user, email_password)
+        carnegie_india_articles, carnegie_india_count = fetch_carnegie_india(mail, email_user, email_password)
+        carnegie_main_articles, carnegie_main_count = fetch_carnegie_main(mail, email_user, email_password)
         
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, carnegie_china_articles, carnegie_india_articles, carnegie_main_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
@@ -3415,6 +3614,9 @@ def main():
             aspi_china5_articles,
             chatham_articles,
             lowy_articles,
+            carnegie_china_articles,
+            carnegie_india_articles,
+            carnegie_main_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3562,6 +3764,33 @@ def main():
     briefing.append("### Lowy Institute (The Interpreter)")
     if lowy_articles:
         briefing.extend(lowy_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    briefing.append("")
+    briefing.append("### Carnegie Endowment")
+    
+    # Carnegie China
+    briefing.append("")
+    briefing.append("#### Carnegie China")
+    if carnegie_china_articles:
+        briefing.extend(carnegie_china_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # Carnegie India
+    briefing.append("")
+    briefing.append("#### Carnegie India")
+    if carnegie_india_articles:
+        briefing.extend(carnegie_india_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # Carnegie Main
+    briefing.append("")
+    briefing.append("#### Carnegie (General - China-relevant)")
+    if carnegie_main_articles:
+        briefing.extend(carnegie_main_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
