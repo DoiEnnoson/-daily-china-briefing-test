@@ -2879,6 +2879,125 @@ def fetch_lowy_interpreter(mail, email_user, email_password, days=None):
 # ENDE LOWY INSTITUTE PARSER
 # ============================================================================
 
+# ============================================================================
+# CARNEGIE ENDOWMENT - CARNEGIE CHINA PARSER (DEBUG)
+# ============================================================================
+
+def parse_carnegie_china_debug(msg):
+    """
+    DEBUG Parser für Carnegie China Newsletter.
+    Extrahiert ALLE Inhalte zur Analyse.
+    """
+    results = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Carnegie China DEBUG - Betreff: {subject}")
+    results.append(f"SUBJECT: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Carnegie China DEBUG - Keine HTML-Inhalte gefunden")
+        results.append("ERROR: Kein HTML-Inhalt")
+        return results
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle Links
+    all_links = soup.find_all("a", href=True)
+    logger.info(f"Carnegie China DEBUG - {len(all_links)} Links gefunden")
+    results.append(f"\nTOTAL LINKS: {len(all_links)}")
+    
+    # Extrahiere alle Links mit Titel
+    for idx, link in enumerate(all_links, 1):
+        href = link.get("href", "")
+        title = link.get_text(strip=True)
+        
+        if not href or not title:
+            continue
+        
+        # Skip offensichtliche Footer/Header
+        if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "mailto:"]):
+            continue
+        
+        results.append(f"\n--- LINK {idx} ---")
+        results.append(f"Title: {title[:100]}")
+        results.append(f"URL: {href[:100]}")
+        
+        logger.info(f"Carnegie China DEBUG [{idx}] - {title[:50]}...")
+    
+    logger.info(f"Carnegie China DEBUG - {len(results)} Einträge extrahiert")
+    return results
+
+
+def fetch_carnegie_china_debug(mail, email_user, email_password, days=None):
+    """Holt Carnegie China E-Mails und gibt DEBUG-Info aus."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "carnegiechina@ceip.org"
+        
+        logger.info(f"Carnegie China DEBUG - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"Carnegie China DEBUG - IMAP-Suche fehlgeschlagen: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Carnegie China DEBUG - Keine E-Mails gefunden")
+            return [], 0
+        
+        logger.info(f"Carnegie China DEBUG - {len(email_ids)} E-Mails gefunden")
+        
+        all_results = []
+        
+        for idx, email_id in enumerate(email_ids, 1):
+            logger.info(f"Carnegie China DEBUG - Verarbeite E-Mail {idx}/{len(email_ids)}")
+            
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            results = parse_carnegie_china_debug(msg)
+            
+            all_results.append(f"\n{'='*60}")
+            all_results.append(f"E-MAIL {idx}/{len(email_ids)}")
+            all_results.append(f"{'='*60}")
+            all_results.extend(results)
+        
+        logger.info(f"Carnegie China DEBUG - Verarbeitung abgeschlossen")
+        return all_results, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Carnegie China DEBUG - Fehler: {str(e)}")
+        return [f"ERROR: {str(e)}"], 0
+
+# ============================================================================
+# ENDE CARNEGIE CHINA PARSER (DEBUG)
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -3271,6 +3390,19 @@ def main():
         
         # Lowy Institute (nutzt GLOBAL_THINKTANK_DAYS)
         lowy_articles, lowy_count = fetch_lowy_interpreter(mail, email_user, email_password)
+        
+        # === CARNEGIE CHINA DEBUG TEST ===
+        logger.info("="*60)
+        logger.info("CARNEGIE CHINA DEBUG TEST STARTET")
+        logger.info("="*60)
+        carnegie_debug, carnegie_count = fetch_carnegie_china_debug(mail, email_user, email_password)
+        
+        # Debug-Output in Briefing schreiben
+        logger.info("Carnegie China DEBUG - Schreibe Output...")
+        debug_output = "\n".join(carnegie_debug)
+        logger.info(f"Carnegie China DEBUG Output:\n{debug_output}")
+        
+        # === ENDE DEBUG TEST ===
         
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
