@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Globale Zeitfenster-Einstellung für ALLE Think Tanks
-GLOBAL_THINKTANK_DAYS = 120  # 4 Monate für alle Think Tank Newsletter
+GLOBAL_THINKTANK_DAYS = 1  # Test: 1 Tag für schnelle Iteration
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
@@ -3009,7 +3009,6 @@ def build_dynamic_briefing(think_tank_data_dict):
         # Spezialbehandlung für CSIS (hat Subsektionen)
         if abbrev == "CSIS":
             briefing.append(f"### {name}")
-            briefing.append("")
             
             # CSIS Subsektionen
             csis_sections = [
@@ -3036,7 +3035,6 @@ def build_dynamic_briefing(think_tank_data_dict):
         # Spezialbehandlung für CFR (hat 2 Newsletter)
         if abbrev == "CFR":
             briefing.append(f"### {name}")
-            briefing.append("")
             
             # CFR Daily Brief
             briefing.append("#### Daily News Brief")
@@ -3059,7 +3057,10 @@ def build_dynamic_briefing(think_tank_data_dict):
             continue
         
         # Standard Think Tanks
+        # Versuche erst abbreviation, dann think_tank name
         articles = think_tank_data_dict.get(abbrev, [])
+        if not articles and abbrev != name:
+            articles = think_tank_data_dict.get(name, [])
         
         briefing.append(f"### {name}")
         if articles:
