@@ -2703,7 +2703,7 @@ def fetch_chatham_house(mail, email_user, email_password, days=None):
         logger.info(f"Chatham House - {len(email_ids)} E-Mails gefunden")
         
         # Deduplizierung innerhalb Chatham House (da gleiche Artikel in mehreren Newslettern)
-        seen_chatham = set()
+        seen_chatham_titles = set()
         
         for email_id in email_ids:
             result, msg_data = mail.fetch(email_id, "(RFC822)")
@@ -2713,14 +2713,14 @@ def fetch_chatham_house(mail, email_user, email_password, days=None):
             msg = email.message_from_bytes(msg_data[0][1])
             articles = parse_chatham_house(msg)
             
-            # Dedupliziere innerhalb Chatham House
+            # Dedupliziere nach TITEL (Tracking-URLs sind unterschiedlich)
             for article in articles:
-                url_match = re.search(r'\((https?://[^\)]+)\)', article)
-                if url_match:
-                    url = url_match.group(1).split('?')[0]
-                    if url not in seen_chatham:
+                title_match = re.search(r'\[([^\]]+)\]', article)
+                if title_match:
+                    title = title_match.group(1).lower().strip()
+                    if title not in seen_chatham_titles:
                         all_articles.append(article)
-                        seen_chatham.add(url)
+                        seen_chatham_titles.add(title)
                 else:
                     all_articles.append(article)
         
