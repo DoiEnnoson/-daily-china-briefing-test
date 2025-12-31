@@ -664,9 +664,13 @@ def parse_csis_trustee_email(msg):
         href = link.get("href", "")
         link_text = link.get_text(strip=True)
         
+        # DEBUG: Zeige ALLE Links
+        has_img = link.find("img") is not None
+        logger.debug(f"Trustee Chair - Link gefunden: href={href[:60]}, text='{link_text[:50]}', has_img={has_img}")
+        
         # Skip Links die nur Bilder enthalten (keine Text-Links)
         if link.find("img") and not link_text:
-            logger.debug(f"Trustee Chair - Bild-Link übersprungen: {href[:60]}")
+            logger.info(f"Trustee Chair - 🖼️ BILD-LINK GESKIPPT: {href[:60]}")
             continue
         
         # Skip Button-Links sofort
@@ -745,9 +749,12 @@ def parse_csis_trustee_email(msg):
         
         formatted_article = f"• [{title}]({resolved_url})"
         articles.append(formatted_article)
-        logger.info(f"Trustee Chair - Artikel: {title[:50]}...")
+        logger.info(f"Trustee Chair - ✅ ARTIKEL HINZUGEFÜGT: {title[:50]}... | URL: {resolved_url[:60]}")
     
     logger.info(f"Trustee Chair Parser - {len(articles)} Artikel extrahiert")
+    logger.info(f"Trustee Chair - FINALE ARTIKEL-LISTE:")
+    for idx, article in enumerate(articles, 1):
+        logger.info(f"  {idx}. {article[:80]}...")
     return articles
 
 def parse_csis_japan_email(msg):
