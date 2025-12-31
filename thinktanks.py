@@ -2957,6 +2957,119 @@ def normalize_url(url):
     
     return base_url
 
+# ============================================================================
+# DYNAMIC BRIEFING GENERATION (JSON-gesteuert)
+# ============================================================================
+
+def load_thinktank_order():
+    """
+    Lädt thinktanks.json und gibt sortierte Liste zurück.
+    Returns: List of dicts mit {order, think_tank, abbreviation}
+    """
+    try:
+        json_path = os.path.join(BASE_DIR, "thinktanks.json")
+        with open(json_path, "r", encoding="utf-8") as f:
+            thinktanks = json.load(f)
+        # Sortiere nach order
+        thinktanks_sorted = sorted(thinktanks, key=lambda x: x.get("order", 999))
+        logger.info(f"thinktanks.json geladen: {len(thinktanks_sorted)} Think Tanks")
+        return thinktanks_sorted
+    except Exception as e:
+        logger.error(f"Fehler beim Laden von thinktanks.json: {str(e)}")
+        return []
+
+
+def build_dynamic_briefing(think_tank_data_dict):
+    """
+    Baut Briefing dynamisch basierend auf thinktanks.json Order.
+    
+    Args:
+        think_tank_data_dict: Dict mit Think Tank Namen → Artikel-Listen
+        Format: {
+            "MERICS": merics_articles,
+            "PIIE": piie_articles,
+            "Brookings": brookings_articles,
+            ...
+        }
+    
+    Returns:
+        List of briefing lines
+    """
+    briefing = []
+    briefing.append("## Think Tanks Briefing")
+    briefing.append("")
+    
+    # Lade Reihenfolge aus JSON
+    thinktanks_order = load_thinktank_order()
+    
+    for tt in thinktanks_order:
+        name = tt.get("think_tank")
+        abbrev = tt.get("abbreviation")
+        
+        # Spezialbehandlung für CSIS (hat Subsektionen)
+        if abbrev == "CSIS":
+            briefing.append(f"### {name}")
+            briefing.append("")
+            
+            # CSIS Subsektionen
+            csis_sections = [
+                ("Geopolitics & Foreign Policy", think_tank_data_dict.get("CSIS_Geopolitics", [])),
+                ("Freeman Chair in China Studies", think_tank_data_dict.get("CSIS_Freeman", [])),
+                ("Trustee Chair in Chinese Business & Economics", think_tank_data_dict.get("CSIS_Trustee", [])),
+                ("Japan Chair", think_tank_data_dict.get("CSIS_Japan", [])),
+                ("China Power", think_tank_data_dict.get("CSIS_ChinaPower", [])),
+                ("Korea Chair", think_tank_data_dict.get("CSIS_Korea", [])),
+                ("GHPC", think_tank_data_dict.get("CSIS_GHPC", [])),
+                ("Aerospace Security", think_tank_data_dict.get("CSIS_Aerospace", []))
+            ]
+            
+            for section_name, articles in csis_sections:
+                briefing.append(f"#### {section_name}")
+                if articles:
+                    briefing.extend(articles)
+                else:
+                    briefing.append("• Keine relevanten Artikel gefunden.")
+                briefing.append("")
+            
+            continue
+        
+        # Spezialbehandlung für CFR (hat 2 Newsletter)
+        if abbrev == "CFR":
+            briefing.append(f"### {name}")
+            briefing.append("")
+            
+            # CFR Daily Brief
+            briefing.append("#### Daily News Brief")
+            cfr_daily = think_tank_data_dict.get("CFR_Daily", [])
+            if cfr_daily:
+                briefing.extend(cfr_daily)
+            else:
+                briefing.append("• Keine relevanten Artikel gefunden.")
+            briefing.append("")
+            
+            # CFR Eyes on Asia
+            briefing.append("#### Eyes on Asia")
+            cfr_asia = think_tank_data_dict.get("CFR_Asia", [])
+            if cfr_asia:
+                briefing.extend(cfr_asia)
+            else:
+                briefing.append("• Keine relevanten Artikel gefunden.")
+            briefing.append("")
+            
+            continue
+        
+        # Standard Think Tanks
+        articles = think_tank_data_dict.get(abbrev, [])
+        
+        briefing.append(f"### {name}")
+        if articles:
+            briefing.extend(articles)
+        else:
+            briefing.append("• Keine relevanten Artikel gefunden.")
+        briefing.append("")
+    
+    return briefing
+
 def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
@@ -3303,138 +3416,32 @@ def main():
     
     # Briefing erstellen
     briefing = []
-    briefing.append("## Think Tanks Briefing")
+    # Build Think Tank Data Dict für Dynamic Briefing
+    think_tank_data = {
+        "CREA": [],  # Noch keine Daten
+        "PIIE": piie_articles,
+        "MERICS": merics_articles,
+        "Brookings": brookings_articles,
+        "Hinrich": [],  # Noch kein Parser
+        "ASPI Policy": [],  # Noch kein Parser
+        "Lowy": lowy_articles,
+        "Chatham House": chatham_articles,
+        "CFR_Daily": cfr_daily_articles,
+        "CFR_Asia": cfr_asia_articles,
+        "CSIS_Geopolitics": csis_geo_articles,
+        "CSIS_Freeman": csis_freeman_articles,
+        "CSIS_Trustee": csis_trustee_articles,
+        "CSIS_Japan": csis_japan_articles,
+        "CSIS_ChinaPower": chinapower_articles,
+        "CSIS_Korea": korea_chair_articles,
+        "CSIS_GHPC": ghpc_articles,
+        "CSIS_Aerospace": aerospace_articles,
+        "ASPI": aspi_china5_articles,
+        "Atlantic Council": []  # Noch keine Daten
+    }
     
-    # MERICS
-    briefing.append("### MERICS")
-    if merics_articles:
-        briefing.extend(merics_articles)
-    else:
-        briefing.append("• Keine relevanten MERICS-Artikel gefunden.")
-    
-    # CSIS Header
-    briefing.append("")
-    briefing.append("### CSIS")
-    
-    # CSIS Geopolitics
-    briefing.append("#### Geopolitics & Foreign Policy")
-    if csis_geo_articles:
-        briefing.extend(csis_geo_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Freeman Chair
-    briefing.append("")
-    briefing.append("#### Freeman Chair in China Studies")
-    if csis_freeman_articles:
-        briefing.extend(csis_freeman_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Trustee Chair
-    briefing.append("")
-    briefing.append("#### Trustee Chair in Chinese Business & Economics")
-    if csis_trustee_articles:
-        briefing.extend(csis_trustee_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Japan Chair
-    briefing.append("")
-    briefing.append("#### Japan Chair")
-    if csis_japan_articles:
-        briefing.extend(csis_japan_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS China Power
-    briefing.append("")
-    briefing.append("#### China Power")
-    if chinapower_articles:
-        briefing.extend(chinapower_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Korea Chair
-    briefing.append("")
-    briefing.append("#### Korea Chair")
-    if korea_chair_articles:
-        briefing.extend(korea_chair_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Global Health Policy Center
-    briefing.append("")
-    briefing.append("#### Global Health Policy Center")
-    if ghpc_articles:
-        briefing.extend(ghpc_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CSIS Aerospace Security Project
-    briefing.append("")
-    briefing.append("#### Aerospace Security Project")
-    if aerospace_articles:
-        briefing.extend(aerospace_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # Brookings China Center
-    briefing.append("")
-    briefing.append("### Brookings China Center")
-    if brookings_articles:
-        briefing.extend(brookings_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # PIIE (Peterson Institute)
-    briefing.append("")
-    briefing.append("### PIIE (Peterson Institute)")
-    if piie_articles:
-        briefing.extend(piie_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # CFR (Council on Foreign Relations)
-    briefing.append("")
-    briefing.append("### Council on Foreign Relations (CFR)")
-    briefing.append("")
-    briefing.append("#### Daily Brief")
-    if cfr_daily_articles:
-        briefing.extend(cfr_daily_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    briefing.append("")
-    briefing.append("#### Eyes on Asia (Asia Studies Program)")
-    if cfr_asia_articles:
-        briefing.extend(cfr_asia_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    # ASPI
-    briefing.append("")
-    briefing.append("### Asia Society Policy Institute (ASPI)")
-    briefing.append("")
-    briefing.append("#### China 5")
-    if aspi_china5_articles:
-        briefing.extend(aspi_china5_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    briefing.append("")
-    briefing.append("### Chatham House")
-    if chatham_articles:
-        briefing.extend(chatham_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    briefing.append("")
-    briefing.append("### Lowy Institute (The Interpreter)")
-    if lowy_articles:
-        briefing.extend(lowy_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
+    # Generiere dynamisches Briefing basierend auf thinktanks.json
+    briefing = build_dynamic_briefing(think_tank_data)
 
     # Konvertiere zu HTML
     html_lines = []
