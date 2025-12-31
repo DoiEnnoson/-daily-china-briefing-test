@@ -3167,7 +3167,7 @@ def debug_carnegie_rss_feed():
         ]
         
         # 3 Monate zurück
-        cutoff_date = datetime.now() - timedelta(days=90)
+        cutoff_date_naive = datetime.now() - timedelta(days=90)
         
         results = []
         china_articles = []
@@ -3187,9 +3187,16 @@ def debug_carnegie_rss_feed():
                 except:
                     pass
             
-            # Nur letzte 3 Monate
-            if pub_date and pub_date < cutoff_date:
-                continue
+            # Nur letzte 3 Monate (Skip wenn zu alt)
+            if pub_date:
+                # Mache beide naive für Vergleich
+                if pub_date.tzinfo is not None:
+                    pub_date_naive = pub_date.replace(tzinfo=None)
+                else:
+                    pub_date_naive = pub_date
+                
+                if pub_date_naive < cutoff_date_naive:
+                    continue
             
             all_recent.append({
                 "title": title,
