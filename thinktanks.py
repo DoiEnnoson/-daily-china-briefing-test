@@ -2582,6 +2582,145 @@ def fetch_aspi_china5(mail, email_user, email_password, days=None):
 # ENDE ASPI CHINA 5 PARSER
 # ============================================================================
 
+# ============================================================================
+# CHATHAM HOUSE PARSER
+# ============================================================================
+
+def parse_chatham_house(msg):
+    """
+    Parser für Chatham House Newsletter.
+    Extrahiert H1-basierte Artikel mit China-Relevanz.
+    Format: H1 Titel + "Read the expert comment/research paper" Link.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Chatham House - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in Chatham House gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle H1 Tags
+    all_h1 = soup.find_all("h1")
+    
+    for h1 in all_h1:
+        title_text = h1.get_text(strip=True)
+        
+        if not title_text or len(title_text) < 10:
+            continue
+        
+        # China-Relevanz prüfen
+        china_keywords = [
+            "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+            "hong kong", "hongkong", "renminbi", "yuan", "shanghai", 
+            "ccp", "communist party", "cpc", "prc", "south china sea"
+        ]
+        
+        is_china_relevant = any(keyword in title_text.lower() for keyword in china_keywords)
+        
+        if not is_china_relevant:
+            logger.info(f"Chatham House - Nicht China-relevant: {title_text[:50]}...")
+            continue
+        
+        # Finde den zugehörigen Link
+        # Suche nach "Read the expert comment" / "Read the research paper"
+        parent = h1.find_parent()
+        if not parent:
+            continue
+        
+        next_link = None
+        
+        # Suche in den nächsten Siblings nach Link mit "Read"
+        for sibling in parent.find_all_next(limit=20):
+            link_tag = sibling.find("a", href=True)
+            if link_tag:
+                link_text = link_tag.get_text(strip=True).lower()
+                if "read" in link_text and ("comment" in link_text or "paper" in link_text or "release" in link_text):
+                    next_link = link_tag.get("href", "")
+                    break
+        
+        if not next_link:
+            next_link = "#"
+        
+        # Resolve Tracking URL
+        final_url = resolve_tracking_url(next_link)
+        
+        # Formatiere Artikel
+        formatted_article = f"• [{title_text}]({final_url})"
+        
+        articles.append(formatted_article)
+        logger.info(f"Chatham House - Artikel hinzugefügt: {title_text[:50]}...")
+    
+    logger.info(f"Chatham House Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_chatham_house(mail, email_user, email_password, days=None):
+    """Holt Chatham House Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "ch@email-chathamhouse.org"
+        
+        logger.info(f"Chatham House - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für Chatham House: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine Chatham House E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Chatham House - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_chatham_house(msg)
+            all_articles.extend(articles)
+        
+        logger.info(f"Chatham House: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_chatham_house: {str(e)}")
+        return [], 0
+
+# ============================================================================
+# ENDE CHATHAM HOUSE PARSER
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -2657,10 +2796,10 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5) und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -2669,10 +2808,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         cfr_daily_articles: CFR Daily Brief Artikel-Liste
         cfr_asia_articles: CFR Eyes on Asia Artikel-Liste
         aspi_china5_articles: ASPI China 5 Artikel-Liste
+        chatham_articles: Chatham House Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -2819,6 +2959,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"ASPI China 5: {len(aspi_china5_articles)} → {len(aspi_china5_dedup)} ({len(aspi_china5_articles)-len(aspi_china5_dedup)} Duplikate)")
     
+    # Chatham House deduplizieren
+    chatham_dedup = []
+    for article in chatham_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                chatham_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Chatham House: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            chatham_dedup.append(article)
+    
+    logger.info(f"Chatham House: {len(chatham_articles)} → {len(chatham_dedup)} ({len(chatham_articles)-len(chatham_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -2849,7 +3012,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -2921,15 +3084,19 @@ def main():
         # ASPI China 5 (nutzt GLOBAL_THINKTANK_DAYS)
         aspi_china5_articles, aspi_china5_count = fetch_aspi_china5(mail, email_user, email_password)
         
+        # Chatham House (nutzt GLOBAL_THINKTANK_DAYS)
+        chatham_articles, chatham_count = fetch_chatham_house(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
             cfr_daily_articles,
             cfr_asia_articles,
             aspi_china5_articles,
+            chatham_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3063,6 +3230,13 @@ def main():
     briefing.append("#### China 5")
     if aspi_china5_articles:
         briefing.extend(aspi_china5_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    briefing.append("")
+    briefing.append("### Chatham House")
+    if chatham_articles:
+        briefing.extend(chatham_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
