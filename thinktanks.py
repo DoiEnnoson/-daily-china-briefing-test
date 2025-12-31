@@ -2786,31 +2786,27 @@ def parse_lowy_interpreter(msg):
         title = link.get_text(strip=True)
         
         # Skip Header/Footer/Social Links
-        if not href or "lowyinstitute.org" not in href:
+        if not href:
             continue
-        if "/interpreter/" not in href:
+        # Skip unsubscribe/preferences/social
+        if any(skip in href.lower() for skip in ["unsubscribe", "preferences", "linkedin", "twitter", "facebook", "bluesky", "youtube", "rss"]):
             continue
-        if any(skip in href for skip in ["unsubscribe", "preferences", "linkedin", "twitter", "facebook", "bluesky"]):
+        # Skip short/empty titles
+        if not title or len(title) < 15:
             continue
-        if not title or len(title) < 10:
+        # Skip author names (usually short, no punctuation)
+        if len(title) < 40 and ":" not in title and "?" not in title:
             continue
         
         # China-Relevanz prüfen
         is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
         
         if not is_china_relevant:
-            # Prüfe auch Text nach dem Link (Teaser/Description)
-            parent = link.find_parent()
-            if parent:
-                parent_text = parent.get_text(strip=True).lower()
-                is_china_relevant = any(keyword in parent_text for keyword in china_keywords)
-        
-        if not is_china_relevant:
             logger.info(f"Lowy - Nicht China-relevant: {title[:50]}...")
             continue
         
-        # Resolve Tracking URL
-        final_url = resolve_tracking_url(href)
+        # HubSpot/Tracking URLs direkt verwenden (redirecten automatisch)
+        final_url = href
         
         # Formatiere Artikel
         formatted_article = f"• [{title}]({final_url})"
