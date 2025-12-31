@@ -2618,8 +2618,9 @@ def parse_chatham_house(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Finde alle H1 Tags
+    # Finde alle H1-ähnlichen Tags (echte H1 + P mit class="h1")
     all_h1 = soup.find_all("h1")
+    all_h1 += soup.find_all("p", class_="h1")  # Chatham House nutzt <p class="h1">
     
     for h1 in all_h1:
         title_text = h1.get_text(strip=True)
