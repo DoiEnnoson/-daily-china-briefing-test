@@ -2436,6 +2436,152 @@ def fetch_cfr_eyes_on_asia(mail, email_user, email_password, days=None):
 # ENDE CFR EYES ON ASIA PARSER
 # ============================================================================
 
+# ============================================================================
+# ASPI (ASIA SOCIETY POLICY INSTITUTE) - CHINA 5 PARSER
+# ============================================================================
+
+def parse_aspi_china5(msg):
+    """
+    Parser für ASPI China 5 Newsletter.
+    Extrahiert die 5 wöchentlichen China-Stories.
+    Format: Numbered sections (1-5) mit Titeln.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"ASPI China 5 - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in ASPI China 5 gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Finde alle H2 Tags (die Titel der 5 Stories)
+    # Pattern: "1. [Title]", "2. [Title]", etc.
+    all_h2 = soup.find_all("h2")
+    
+    for h2 in all_h2:
+        title_text = h2.get_text(strip=True)
+        
+        # Prüfe ob es eine numbered section ist (z.B. "1. Bondholders Reject...")
+        if not title_text:
+            continue
+        
+        # Extrahiere Nummer und Titel
+        # Pattern: "1. Title" oder "1.Title" oder "1. Title"
+        import re
+        match = re.match(r'^(\d+)\.\s*(.+)$', title_text)
+        
+        if not match:
+            continue
+        
+        section_num = match.group(1)
+        title = match.group(2).strip()
+        
+        # Überspringe wenn Titel zu kurz
+        if len(title) < 10:
+            continue
+        
+        # Finde den Link im H2 oder im nächsten <a> Tag
+        link_tag = h2.find("a", href=True)
+        
+        # Wenn kein Link im H2, suche im Text danach
+        if not link_tag:
+            # Suche "For More" Link in der Section
+            next_sibling = h2.find_next_sibling()
+            counter = 0
+            final_url = "#"
+            
+            # Durchsuche die nächsten Siblings für "For More" Link
+            while next_sibling and counter < 10:
+                if next_sibling.name and "for more" in next_sibling.get_text().lower():
+                    for_more_link = next_sibling.find("a", href=True)
+                    if for_more_link:
+                        final_url = for_more_link.get("href", "#")
+                        break
+                next_sibling = next_sibling.find_next_sibling()
+                counter += 1
+        else:
+            final_url = link_tag.get("href", "#")
+        
+        # Resolve Tracking URL
+        final_url = resolve_tracking_url(final_url)
+        
+        # Formatiere Artikel
+        formatted_article = f"• [{title}]({final_url})"
+        
+        articles.append(formatted_article)
+        logger.info(f"ASPI China 5 - Section {section_num} hinzugefügt: {title[:50]}...")
+    
+    logger.info(f"ASPI China 5 Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_aspi_china5(mail, email_user, email_password, days=None):
+    """Holt ASPI China 5 Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "policyinstitute@asiasociety.org"
+        
+        logger.info(f"ASPI China 5 - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        # Suche nach "China 5" im Betreff
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date} SUBJECT "China 5"')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für ASPI China 5: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine 'China 5' E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"ASPI China 5 - {len(email_ids)} E-Mails gefunden")
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_aspi_china5(msg)
+            all_articles.extend(articles)
+        
+        logger.info(f"ASPI China 5: {len(all_articles)} Artikel gefunden")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_aspi_china5: {str(e)}")
+        return [], 0
+
+# ============================================================================
+# ENDE ASPI CHINA 5 PARSER
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -2511,10 +2657,10 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia) und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -2522,10 +2668,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         piie_articles: PIIE Artikel-Liste
         cfr_daily_articles: CFR Daily Brief Artikel-Liste
         cfr_asia_articles: CFR Eyes on Asia Artikel-Liste
+        aspi_china5_articles: ASPI China 5 Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -2649,6 +2796,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"CFR Eyes on Asia: {len(cfr_asia_articles)} → {len(cfr_asia_dedup)} ({len(cfr_asia_articles)-len(cfr_asia_dedup)} Duplikate)")
     
+    # ASPI China 5 deduplizieren
+    aspi_china5_dedup = []
+    for article in aspi_china5_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                aspi_china5_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - ASPI China 5: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            aspi_china5_dedup.append(article)
+    
+    logger.info(f"ASPI China 5: {len(aspi_china5_articles)} → {len(aspi_china5_dedup)} ({len(aspi_china5_articles)-len(aspi_china5_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -2679,7 +2849,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -2748,14 +2918,18 @@ def main():
         # CFR Eyes on Asia (nutzt GLOBAL_THINKTANK_DAYS)
         cfr_asia_articles, cfr_asia_count = fetch_cfr_eyes_on_asia(mail, email_user, email_password)
         
+        # ASPI China 5 (nutzt GLOBAL_THINKTANK_DAYS)
+        aspi_china5_articles, aspi_china5_count = fetch_aspi_china5(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
             cfr_daily_articles,
             cfr_asia_articles,
+            aspi_china5_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -2879,6 +3053,16 @@ def main():
     briefing.append("#### Eyes on Asia (Asia Studies Program)")
     if cfr_asia_articles:
         briefing.extend(cfr_asia_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    # ASPI
+    briefing.append("")
+    briefing.append("### Asia Society Policy Institute (ASPI)")
+    briefing.append("")
+    briefing.append("#### China 5")
+    if aspi_china5_articles:
+        briefing.extend(aspi_china5_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
