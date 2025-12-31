@@ -1,35 +1,9 @@
 [
   {
-    "order": 0,
-    "think_tank": "MERICS",
-    "abbreviation": "MERICS",
-    "email_senders": [
-      "MERICS <publications@merics.de>"
-    ],
-    "newsletters": [
-      {
-        "name": "MERICS Publications",
-        "parser": "parse_merics_email",
-        "integrated": true,
-        "notes": "Extrahiert Reports und Artikel aus E-Mail-Links"
-      }
-    ]
-  },
-  {
     "order": 1,
-    "think_tank": "Brookings Institution",
-    "abbreviation": "Brookings",
-    "email_senders": [
-      "Brookings John L. Thornton China Center <chinacenter@brookings.edu>"
-    ],
-    "newsletters": [
-      {
-        "name": "China Center Newsletter",
-        "parser": "parse_brookings_china_center",
-        "integrated": true,
-        "notes": "Extrahiert Artikel aus China Center Newsletter"
-      }
-    ]
+    "think_tank": "CREA (Energy & Clean Air)",
+    "abbreviation": "CREA",
+    "email_senders": []
   },
   {
     "order": 2,
@@ -37,169 +11,137 @@
     "abbreviation": "PIIE",
     "email_senders": [
       "PIIE Insider <insider@piie.com>"
-    ],
-    "newsletters": [
-      {
-        "name": "PIIE Insider",
-        "parser": "parse_piie_insider",
-        "integrated": true,
-        "notes": "Extrahiert China-relevante Artikel aus wöchentlichem Newsletter"
-      }
     ]
   },
   {
     "order": 3,
-    "think_tank": "Council on Foreign Relations",
-    "abbreviation": "CFR",
+    "think_tank": "MERICS",
+    "abbreviation": "MERICS",
     "email_senders": [
-      "CFR Daily Brief <dailybrief@cfr.org>",
-      "CFR Asia Studies Program <jkurlantzick@cfr.org>"
-    ],
-    "newsletters": [
-      {
-        "name": "CFR Daily Brief",
-        "sender": "dailybrief@cfr.org",
-        "parser": "parse_cfr_daily_brief",
-        "integrated": true,
-        "notes": "Extrahiert China-relevante Artikel aus grauen Boxen, täglich"
-      },
-      {
-        "name": "Eyes on Asia (Asia Studies Program)",
-        "sender": "jkurlantzick@cfr.org",
-        "parser": "parse_cfr_eyes_on_asia",
-        "integrated": true,
-        "notes": "Monatlicher Newsletter, extrahiert China-Artikel vor 'Asia Fellows in the News', inkl. Tracking-Links"
-      }
+      "MERICS <publications@merics.de>"
     ]
   },
   {
     "order": 4,
-    "think_tank": "CSIS",
-    "abbreviation": "CSIS",
+    "think_tank": "Brookings Institution",
+    "abbreviation": "Brookings",
     "email_senders": [
-      "CSIS Geopolitics and Foreign Policy <geopolitics@csis.org>",
-      "CSIS Trustee Chair in Chinese Business and Economics <cbe@csis.org>",
-      "CSIS FreemanChair in China Studies <csisfreemanchair@csis.org>",
-      "CSIS Japan Chair <JapanChair@csis.org>",
-      "CSIS China Power <ChinaPower@csis.org>",
-      "CSIS Korea Chair <koreachair@csis.org>",
-      "CSIS Global Health Policy Center <GHPC@csis.org>",
-      "CSIS Aerospace Security Project <defenseoutreach@csis.org>",
-      "CSIS Executive Education <aila@csis.org>"
-    ],
-    "newsletters": [
-      {
-        "name": "Geopolitics and Foreign Policy",
-        "sender": "geopolitics@csis.org",
-        "parser": "parse_csis_geopolitics",
-        "integrated": true,
-        "notes": "Wöchentlicher Newsletter"
-      },
-      {
-        "name": "Freeman Chair in China Studies",
-        "sender": "csisfreemanchair@csis.org",
-        "parser": "parse_csis_freeman",
-        "integrated": true,
-        "notes": "Monatlicher Newsletter"
-      },
-      {
-        "name": "Trustee Chair in Chinese Business and Economics",
-        "sender": "cbe@csis.org",
-        "parser": "parse_csis_trustee",
-        "integrated": true,
-        "notes": "Monatlicher Newsletter"
-      },
-      {
-        "name": "Japan Chair",
-        "sender": "JapanChair@csis.org",
-        "parser": "parse_csis_japan",
-        "integrated": true,
-        "notes": "China-Japan Beziehungen"
-      },
-      {
-        "name": "China Power",
-        "sender": "ChinaPower@csis.org",
-        "parser": "parse_csis_chinapower",
-        "integrated": true,
-        "notes": "China Power Project Updates"
-      },
-      {
-        "name": "Korea Chair",
-        "sender": "koreachair@csis.org",
-        "parser": "parse_csis_korea",
-        "integrated": true,
-        "notes": "China-Korea Beziehungen"
-      },
-      {
-        "name": "Global Health Policy Center",
-        "sender": "GHPC@csis.org",
-        "parser": "parse_csis_ghpc",
-        "integrated": true,
-        "notes": "China-relevante Gesundheitspolitik"
-      },
-      {
-        "name": "Aerospace Security Project",
-        "sender": "defenseoutreach@csis.org",
-        "parser": "parse_csis_aerospace",
-        "integrated": true,
-        "notes": "China-relevante Luft- und Raumfahrt"
-      }
+      "Brookings John L. Thornton China Center <chinacenter@brookings.edu>"
     ]
   },
   {
     "order": 5,
-    "think_tank": "CREA (Centre for Research on Energy and Clean Air)",
-    "abbreviation": "CREA",
-    "email_senders": [],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+    "think_tank": "Hinrich Foundation",
+    "abbreviation": "Hinrich",
+    "email_senders": [
+      "The Hinrich Foundation <hinrich.thought.leadership@hinrichfoundation.com>"
+    ]
   },
   {
     "order": 6,
-    "think_tank": "Chatham House",
-    "abbreviation": "Chatham House",
+    "think_tank": "Asia Society Policy Institute",
+    "abbreviation": "ASPI Policy",
     "email_senders": [
-      "Chatham House <ch@email-chathamhouse.org>"
-    ],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+      "Asia Society Policy Institute <policyinstitute@asiasociety.org>"
+    ]
   },
   {
     "order": 7,
     "think_tank": "Lowy Institute",
     "abbreviation": "Lowy",
     "email_senders": [
-      "Lowy Institute <lowyinstitute@lowyinstitute.org>"
-    ],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+      "Lowy Institute <interpreter@lowyinstitute.org>"
+    ]
   },
   {
     "order": 8,
-    "think_tank": "Carnegie Endowment for International Peace",
-    "abbreviation": "Carnegie Endowment",
+    "think_tank": "Chatham House",
+    "abbreviation": "Chatham House",
     "email_senders": [
-      "Carnegie Endowment for International Peace <info@carnegieendowment.org>"
-    ],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+      "Chatham House <ch@email-chathamhouse.org>"
+    ]
   },
   {
     "order": 9,
-    "think_tank": "Atlantic Council",
-    "abbreviation": "Atlantic Council",
-    "email_senders": [],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+    "think_tank": "Council on Foreign Relations",
+    "abbreviation": "CFR",
+    "newsletters": [
+      {
+        "name": "Daily News Brief",
+        "email": "communications@cfr.org",
+        "subject_filter": "Daily News Brief"
+      },
+      {
+        "name": "Eyes on Asia",
+        "email": "communications@cfr.org",
+        "subject_filter": "Eyes on Asia"
+      }
+    ],
+    "email_senders": [
+      "Council on Foreign Relations <communications@cfr.org>"
+    ]
   },
   {
     "order": 10,
-    "think_tank": "Asia Society Policy Institute",
+    "think_tank": "CSIS",
+    "abbreviation": "CSIS",
+    "newsletters": [
+      {
+        "name": "Geopolitics",
+        "email": "geopolitics@csis.org"
+      },
+      {
+        "name": "Freeman Chair",
+        "email": "csisfreemanchair@csis.org"
+      },
+      {
+        "name": "Trustee Chair",
+        "email": "cbe@csis.org"
+      },
+      {
+        "name": "Japan Chair",
+        "email": "japanchair@csis.org"
+      },
+      {
+        "name": "China Power",
+        "email": "chinapower@csis.org"
+      },
+      {
+        "name": "Korea Chair",
+        "email": "koreachair@csis.org"
+      },
+      {
+        "name": "GHPC",
+        "email": "ghpc@csis.org"
+      },
+      {
+        "name": "Aerospace",
+        "email": "aerospace@csis.org"
+      }
+    ],
+    "email_senders": [
+      "CSIS Geopolitics and Foreign Policy <geopolitics@csis.org>",
+      "CSIS FreemanChair in China Studies <csisfreemanchair@csis.org>",
+      "CSIS Trustee Chair in Chinese Business and Economics <cbe@csis.org>",
+      "CSIS Japan Chair <japanchair@csis.org>",
+      "CSIS China Power <chinapower@csis.org>",
+      "CSIS Korea Chair <koreachair@csis.org>",
+      "CSIS Global Health Policy Center <ghpc@csis.org>",
+      "CSIS Aerospace Security <aerospace@csis.org>"
+    ]
+  },
+  {
+    "order": 11,
+    "think_tank": "ASPI (Australian Strategic Policy Institute)",
     "abbreviation": "ASPI",
     "email_senders": [
-      "Asia Society Policy Institute <policyinstitute@asiasociety.org>"
-    ],
-    "newsletters": [],
-    "notes": "Noch nicht integriert"
+      "ASPI China 5 <china5@aspi.org.au>"
+    ]
+  },
+  {
+    "order": 12,
+    "think_tank": "Atlantic Council",
+    "abbreviation": "Atlantic Council",
+    "email_senders": []
   }
 ]
