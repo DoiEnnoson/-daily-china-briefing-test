@@ -664,6 +664,11 @@ def parse_csis_trustee_email(msg):
         href = link.get("href", "")
         link_text = link.get_text(strip=True)
         
+        # Skip Links die nur Bilder enthalten (keine Text-Links)
+        if link.find("img") and not link_text:
+            logger.debug(f"Trustee Chair - Bild-Link übersprungen: {href[:60]}")
+            continue
+        
         # Skip Button-Links sofort
         if any(btn in link_text.lower() for btn in button_texts):
             logger.debug(f"Trustee Chair - Button übersprungen: {link_text}")
