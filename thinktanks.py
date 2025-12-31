@@ -1,6 +1,7 @@
 import imaplib
 import email
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta
 import os
 import requests
@@ -11,6 +12,7 @@ import urllib.parse
 import re
 import logging
 import json
+import feedparser  # Für RSS Feeds
 
 # Logging-Konfiguration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
@@ -3141,9 +3143,6 @@ def debug_carnegie_rss_feed():
     """
     DEBUG: Testet Carnegie RSS Feed und zeigt China-relevante Artikel der letzten 3 Monate.
     """
-    import feedparser
-    from datetime import datetime, timedelta
-    
     rss_url = "https://feeds.feedburner.com/carnegiecouncil/newsFeed"
     
     logger.info("="*60)
@@ -3184,7 +3183,6 @@ def debug_carnegie_rss_feed():
             pub_date = None
             if published:
                 try:
-                    from email.utils import parsedate_to_datetime
                     pub_date = parsedate_to_datetime(published)
                 except:
                     pass
