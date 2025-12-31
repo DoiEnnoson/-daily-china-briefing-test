@@ -3128,7 +3128,7 @@ def main():
     
     # Briefing erstellen
     briefing = []
-    briefing.append("## Think Tanks")
+    briefing.append("## Think Tanks Briefing")
     
     # MERICS
     briefing.append("### MERICS")
