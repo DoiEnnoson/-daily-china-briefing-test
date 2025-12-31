@@ -583,6 +583,7 @@ def parse_csis_trustee_email(msg):
     """
     Spezialisierter Parser für CSIS Trustee Chair Newsletter.
     Extrahiert Reports, Charts, Videos und Podcast-Episoden (keine Events).
+    Nutzt TITEL-LINKS statt Button-Links.
     """
     articles = []
     
@@ -646,8 +647,12 @@ def parse_csis_trustee_email(msg):
         "copyright",
         "panelists",
         "moderator",
-        "speaker"
+        "speaker",
+        "subscribe"  # Podcast subscribe button
     ]
+    
+    # Button-Texte (diese Links ignorieren)
+    button_texts = ["read here", "listen here", "watch here", "subscribe", "visit our microsite"]
     
     # Finde alle Links
     all_links = soup.find_all("a", href=True)
@@ -659,11 +664,16 @@ def parse_csis_trustee_email(msg):
         href = link.get("href", "")
         link_text = link.get_text(strip=True)
         
+        # Skip Button-Links sofort
+        if any(btn in link_text.lower() for btn in button_texts):
+            logger.debug(f"Trustee Chair - Button übersprungen: {link_text}")
+            continue
+        
         # Muss ein CSIS/Pardot Link sein
         if "csis.org" not in href and "pardot.csis.org" not in href:
             continue
         
-        # Skip unwichtige Links (strenger)
+        # Skip unwichtige Links
         skip_patterns = [
             "mailto:",
             "unsubscribe",
@@ -688,49 +698,12 @@ def parse_csis_trustee_email(msg):
         if any(skip in href.lower() for skip in skip_patterns):
             continue
         
-        # Suche nach Titel in der Nähe des Links
-        title = None
+        # TITEL DIREKT AUS LINK-TEXT
+        title = link_text
         
-        # Methode 1: Suche RÜCKWÄRTS nach Content vor "Read/Listen/Watch Here" Buttons
-        # Diese Buttons sind in Tabellen mit rotem Hintergrund (#e31836)
-        button_texts = ["read here", "listen here", "watch here", "subscribe"]
-        
-        if any(btn in link_text.lower() for btn in button_texts):
-            # Button gefunden! Suche nach Titel VOR diesem Button
-            parent_table = link.find_parent("table")
-            if parent_table:
-                # Gehe durch vorherige Geschwister-Tabellen
-                prev_tables = parent_table.find_all_previous("table", limit=3)
-                for prev_table in prev_tables:
-                    # Suche nach Text in <a>, <strong>, <b>, <em> Tags
-                    content_tags = prev_table.find_all(["a", "strong", "b", "em"])
-                    for tag in content_tags:
-                        text = tag.get_text(strip=True)
-                        if text and len(text) > 30:  # Mindestens 30 Zeichen
-                            title = text
-                            break
-                    if title:
-                        break
-        
-        # Methode 2: Link-Text selbst (wenn lang genug und kein Button)
-        if not title and link_text and len(link_text) > 30:
-            if not any(btn in link_text.lower() for btn in button_texts):
-                title = link_text
-        
-        # Methode 3: Suche nach vorherigem <a> oder <strong> im selben Parent
-        if not title:
-            parent = link.find_parent(["td", "tr", "div"])
-            if parent:
-                # Suche alle Links/Bold-Text im Parent
-                content_elements = parent.find_all(["a", "strong", "b"])
-                for elem in content_elements:
-                    elem_text = elem.get_text(strip=True)
-                    if elem_text and len(elem_text) > 30 and elem != link:
-                        title = elem_text
-                        break
-        
-        if not title:
-            logger.debug(f"Trustee Chair - Kein Titel für Link: {href[:60]}...")
+        # Titel muss mindestens 30 Zeichen haben
+        if len(title) < 30:
+            logger.debug(f"Trustee Chair - Zu kurz: {title}")
             continue
         
         # STRENGE FILTER
@@ -752,19 +725,14 @@ def parse_csis_trustee_email(msg):
             logger.debug(f"Trustee Chair - Nur Name: {title}")
             continue
         
-        # 3. Titel muss mindestens 30 Zeichen haben
-        if len(title) < 30:
-            logger.debug(f"Trustee Chair - Zu kurz: {title}")
-            continue
-        
-        # 4. Duplikats-Check
+        # 3. Duplikats-Check
         if title in seen_titles:
             logger.debug(f"Trustee Chair - Duplikat: {title[:40]}...")
             continue
         
         seen_titles.add(title)
         
-        # 5. Bereinige Titel von Datumsangaben am Ende
+        # 4. Bereinige Titel von Datumsangaben am Ende
         title = re.sub(r',?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+,?\s+\d{4}$', '', title)
         
         # Resolve Tracking URL
