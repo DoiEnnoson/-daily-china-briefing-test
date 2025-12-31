@@ -2735,6 +2735,154 @@ def fetch_chatham_house(mail, email_user, email_password, days=None):
 # ENDE CHATHAM HOUSE PARSER
 # ============================================================================
 
+# ============================================================================
+# LOWY INSTITUTE (THE INTERPRETER) PARSER
+# ============================================================================
+
+def parse_lowy_interpreter(msg):
+    """
+    Parser für Lowy Institute "The Interpreter" Newsletter.
+    Extrahiert Artikel mit China-Relevanz.
+    Format: Featured + Recent articles gruppiert nach Tagen.
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Lowy Institute - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in Lowy Institute gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # China-Relevanz Keywords
+    china_keywords = [
+        "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+        "hong kong", "hongkong", "shanghai", "prc", "south china sea",
+        "indo-pacific", "asia-pacific"
+    ]
+    
+    # Finde alle Links in der E-Mail
+    all_links = soup.find_all("a", href=True)
+    
+    for link in all_links:
+        href = link.get("href", "")
+        title = link.get_text(strip=True)
+        
+        # Skip Header/Footer/Social Links
+        if not href or "lowyinstitute.org" not in href:
+            continue
+        if "/interpreter/" not in href:
+            continue
+        if any(skip in href for skip in ["unsubscribe", "preferences", "linkedin", "twitter", "facebook", "bluesky"]):
+            continue
+        if not title or len(title) < 10:
+            continue
+        
+        # China-Relevanz prüfen
+        is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+        
+        if not is_china_relevant:
+            # Prüfe auch Text nach dem Link (Teaser/Description)
+            parent = link.find_parent()
+            if parent:
+                parent_text = parent.get_text(strip=True).lower()
+                is_china_relevant = any(keyword in parent_text for keyword in china_keywords)
+        
+        if not is_china_relevant:
+            logger.info(f"Lowy - Nicht China-relevant: {title[:50]}...")
+            continue
+        
+        # Resolve Tracking URL
+        final_url = resolve_tracking_url(href)
+        
+        # Formatiere Artikel
+        formatted_article = f"• [{title}]({final_url})"
+        
+        articles.append(formatted_article)
+        logger.info(f"Lowy - Artikel hinzugefügt: {title[:50]}...")
+    
+    logger.info(f"Lowy Institute Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_lowy_interpreter(mail, email_user, email_password, days=None):
+    """Holt Lowy Institute Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "interpreter@lowyinstitute.org"
+        
+        logger.info(f"Lowy Institute - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für Lowy Institute: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine Lowy Institute E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Lowy Institute - {len(email_ids)} E-Mails gefunden")
+        
+        # Deduplizierung nach TITEL (Tracking-URLs sind unterschiedlich)
+        seen_lowy_titles = set()
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            articles = parse_lowy_interpreter(msg)
+            
+            # Dedupliziere nach Titel
+            for article in articles:
+                title_match = re.search(r'\[([^\]]+)\]', article)
+                if title_match:
+                    title = title_match.group(1).lower().strip()
+                    if title not in seen_lowy_titles:
+                        all_articles.append(article)
+                        seen_lowy_titles.add(title)
+                else:
+                    all_articles.append(article)
+        
+        logger.info(f"Lowy Institute: {len(all_articles)} Artikel gefunden (nach interner Deduplizierung)")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_lowy_interpreter: {str(e)}")
+        return [], 0
+
+# ============================================================================
+# ENDE LOWY INSTITUTE PARSER
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -2810,10 +2958,10 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -2823,10 +2971,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         cfr_asia_articles: CFR Eyes on Asia Artikel-Liste
         aspi_china5_articles: ASPI China 5 Artikel-Liste
         chatham_articles: Chatham House Artikel-Liste
+        lowy_articles: Lowy Institute Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -2996,6 +3145,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"Chatham House: {len(chatham_articles)} → {len(chatham_dedup)} ({len(chatham_articles)-len(chatham_dedup)} Duplikate)")
     
+    # Lowy Institute deduplizieren
+    lowy_dedup = []
+    for article in lowy_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                lowy_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Lowy Institute: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            lowy_dedup.append(article)
+    
+    logger.info(f"Lowy Institute: {len(lowy_articles)} → {len(lowy_dedup)} ({len(lowy_articles)-len(lowy_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -3026,7 +3198,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -3101,9 +3273,12 @@ def main():
         # Chatham House (nutzt GLOBAL_THINKTANK_DAYS)
         chatham_articles, chatham_count = fetch_chatham_house(mail, email_user, email_password)
         
+        # Lowy Institute (nutzt GLOBAL_THINKTANK_DAYS)
+        lowy_articles, lowy_count = fetch_lowy_interpreter(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
@@ -3111,6 +3286,7 @@ def main():
             cfr_asia_articles,
             aspi_china5_articles,
             chatham_articles,
+            lowy_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3253,6 +3429,13 @@ def main():
         briefing.extend(chatham_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
+    
+    briefing.append("")
+    briefing.append("### Lowy Institute (The Interpreter)")
+    if lowy_articles:
+        briefing.extend(lowy_articles)
+    else:
+        briefing.append("• Keine relevanten Artikel gefunden.")
 
     # Konvertiere zu HTML
     html_lines = []
@@ -3277,7 +3460,7 @@ def main():
                 html_content += "<br>\n"
     
     # E-Mail senden
-    send_email("Think Tanks - MERICS, CSIS, Brookings, PIIE & CFR Update", html_content, email_user, email_password)
+    send_email("Think Tanks Briefing", html_content, email_user, email_password)
     logger.info("E-Mail erfolgreich versendet")
     
     # Vorschau auf Konsole
