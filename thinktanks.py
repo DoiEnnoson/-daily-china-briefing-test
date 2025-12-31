@@ -2582,218 +2582,6 @@ def fetch_aspi_china5(mail, email_user, email_password, days=None):
 # ENDE ASPI CHINA 5 PARSER
 # ============================================================================
 
-# ============================================================================
-# ASPI (ASIA SOCIETY POLICY INSTITUTE) - THIS WEEK AT ASPI PARSER
-# ============================================================================
-
-def parse_aspi_this_week(msg):
-    """
-    Parser für ASPI 'This Week at ASPI' Newsletter.
-    Extrahiert wöchentliche Highlights (Papers, Reports, Podcasts).
-    Format: H1 Tags mit Titeln + "Read More" / "Listen Now" Links.
-    """
-    articles = []
-    
-    # Betreff extrahieren
-    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
-    if isinstance(subject, bytes):
-        subject = subject.decode()
-    
-    logger.info(f"ASPI This Week - Betreff: {subject}")
-    
-    # HTML-Inhalt finden
-    html_content = None
-    for part in msg.walk():
-        if part.get_content_type() == "text/html":
-            charset = part.get_content_charset() or "utf-8"
-            try:
-                html_content = part.get_payload(decode=True).decode(charset)
-            except UnicodeDecodeError:
-                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
-            break
-    
-    if not html_content:
-        logger.warning("Keine HTML-Inhalte in ASPI This Week gefunden")
-        return articles
-    
-    soup = BeautifulSoup(html_content, "lxml")
-    
-    # Finde alle H1 Tags (die Hauptthemen)
-    all_h1 = soup.find_all("h1")
-    
-    for h1 in all_h1:
-        title_text = h1.get_text(strip=True)
-        
-        if not title_text or len(title_text) < 10:
-            continue
-        
-        # China-Relevanz prüfen
-        china_keywords = [
-            "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
-            "hong kong", "hongkong", "us-china", "sino-", "prc", "yuan",
-            "renminbi", "shanghai", "ccp", "communist party", "cpc", "asia",
-            "apec", "asean", "indo-pacific", "asia-pacific"
-        ]
-        
-        is_china_relevant = any(keyword in title_text.lower() for keyword in china_keywords)
-        
-        if not is_china_relevant:
-            logger.info(f"ASPI This Week - Nicht China-relevant: {title_text[:50]}...")
-            continue
-        
-        # Finde den zugehörigen "Read More" / "Listen Now" Button
-        # Suche im nächsten <td> mit Button-Link
-        parent = h1.find_parent("td")
-        if not parent:
-            continue
-        
-        # Suche nach dem nächsten Link-Button
-        next_link = None
-        format_label = ""
-        
-        # Durchsuche die nächsten Siblings
-        current = parent.find_next_sibling()
-        counter = 0
-        
-        while current and counter < 5:
-            # Suche nach "Read More" oder "Listen Now" Link
-            button_link = current.find("a", class_="buttonstyles")
-            
-            if button_link:
-                next_link = button_link.get("href", "")
-                button_text = button_link.get_text(strip=True).lower()
-                
-                # Bestimme Format-Label
-                if "listen" in button_text or "podcast" in title_text.lower():
-                    format_label = " (Podcast)"
-                elif "watch" in button_text or "video" in title_text.lower():
-                    format_label = " (Video)"
-                elif "read" in button_text:
-                    # Prüfe ob "paper" oder "report" im Titel
-                    if "paper" in title_text.lower():
-                        format_label = " (Paper)"
-                    elif "report" in title_text.lower():
-                        format_label = " (Report)"
-                    else:
-                        format_label = ""
-                
-                break
-            
-            current = current.find_next_sibling()
-            counter += 1
-        
-        # Fallback: Suche im gesamten Parent-Bereich
-        if not next_link:
-            # Suche nach <a> Tags mit href im Parent-Bereich
-            all_links = parent.find_all_next("a", href=True, limit=10)
-            
-            for link in all_links:
-                href = link.get("href", "")
-                link_text = link.get_text(strip=True).lower()
-                
-                # Überspringe Social Media / Navigation
-                if any(x in href for x in ["facebook", "twitter", "linkedin", "instagram", "youtube", "unsubscribe"]):
-                    continue
-                
-                # Überspringe sehr kurze Links
-                if len(link_text) < 3:
-                    continue
-                
-                # Wenn Link "asiasociety.org" enthält und nicht Social Media ist
-                if "asiasociety.org" in href or "aspi" in href.lower():
-                    next_link = href
-                    
-                    # Bestimme Format
-                    if "listen" in link_text or "podcast" in title_text.lower():
-                        format_label = " (Podcast)"
-                    elif "watch" in link_text or "video" in title_text.lower():
-                        format_label = " (Video)"
-                    elif "paper" in title_text.lower():
-                        format_label = " (Paper)"
-                    elif "report" in title_text.lower():
-                        format_label = " (Report)"
-                    
-                    break
-        
-        if not next_link:
-            next_link = "#"
-        
-        # Resolve Tracking URL
-        final_url = resolve_tracking_url(next_link)
-        
-        # Formatiere Artikel mit Format-Label
-        formatted_article = f"• [{title_text}{format_label}]({final_url})"
-        
-        articles.append(formatted_article)
-        logger.info(f"ASPI This Week - Artikel hinzugefügt: {title_text[:50]}{format_label}...")
-    
-    logger.info(f"ASPI This Week Parser - {len(articles)} Artikel extrahiert")
-    return articles
-
-
-def fetch_aspi_this_week(mail, email_user, email_password, days=None):
-    """Holt ASPI 'This Week at ASPI' Newsletter aus E-Mails."""
-    if days is None:
-        days = GLOBAL_THINKTANK_DAYS
-        
-    try:
-        mail.select("inbox")
-        all_articles = []
-        
-        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        sender_email = "policyinstitute@asiasociety.org"
-        
-        logger.info(f"ASPI This Week - Suche nach E-Mails von {sender_email} seit {since_date}")
-        
-        # Suche nach "This Week" im Betreff (aber NICHT "China 5")
-        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date} SUBJECT "This Week"')
-        
-        if result != "OK":
-            logger.warning(f"IMAP-Suche fehlgeschlagen für ASPI This Week: {result}")
-            return [], 0
-        
-        email_ids = data[0].split()
-        
-        # Filter: Keine "China 5" E-Mails
-        filtered_ids = []
-        for email_id in email_ids:
-            result, msg_data = mail.fetch(email_id, "(RFC822)")
-            if result != "OK":
-                continue
-            
-            msg = email.message_from_bytes(msg_data[0][1])
-            subject = decode_header(msg.get("Subject", ""))[0][0]
-            if isinstance(subject, bytes):
-                subject = subject.decode()
-            
-            # Überspringe "China 5" E-Mails
-            if "china 5" in subject.lower():
-                logger.info(f"ASPI This Week - Überspringe China 5 E-Mail: {subject}")
-                continue
-            
-            filtered_ids.append((email_id, msg))
-        
-        if not filtered_ids:
-            logger.warning(f"Keine 'This Week at ASPI' E-Mails (ohne China 5) von {sender_email} in den letzten {days} Tagen gefunden")
-            return [], 0
-        
-        logger.info(f"ASPI This Week - {len(filtered_ids)} E-Mails gefunden (nach Filter)")
-        
-        for email_id, msg in filtered_ids:
-            articles = parse_aspi_this_week(msg)
-            all_articles.extend(articles)
-        
-        logger.info(f"ASPI This Week: {len(all_articles)} Artikel gefunden")
-        return all_articles, len(filtered_ids)
-        
-    except Exception as e:
-        logger.error(f"Fehler in fetch_aspi_this_week: {str(e)}")
-        return [], 0
-
-# ============================================================================
-# ENDE ASPI THIS WEEK AT ASPI PARSER
-# ============================================================================
-
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -2869,10 +2657,10 @@ def normalize_url(url):
     
     return base_url
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, aspi_thisweek_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5 + This Week) und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5) und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -2881,11 +2669,10 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         cfr_daily_articles: CFR Daily Brief Artikel-Liste
         cfr_asia_articles: CFR Eyes on Asia Artikel-Liste
         aspi_china5_articles: ASPI China 5 Artikel-Liste
-        aspi_thisweek_articles: ASPI This Week at ASPI Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, aspi_thisweek_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -3032,32 +2819,6 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"ASPI China 5: {len(aspi_china5_articles)} → {len(aspi_china5_dedup)} ({len(aspi_china5_articles)-len(aspi_china5_dedup)} Duplikate)")
     
-    # ASPI This Week deduplizieren
-    aspi_thisweek_dedup = []
-    for article in aspi_thisweek_articles:
-        url_match = re.search(r'\((https?://[^\)]+)\)', article)
-        title_match = re.search(r'\[([^\]]+)\]', article)
-        
-        if url_match:
-            url = url_match.group(1).split('?')[0]
-            title = title_match.group(1).lower().strip() if title_match else ""
-            
-            # Entferne Format-Labels für Titel-Vergleich
-            title_clean = title.replace(" (podcast)", "").replace(" (video)", "").replace(" (paper)", "").replace(" (report)", "").strip()
-            
-            if url not in seen_urls and title_clean not in seen_titles:
-                aspi_thisweek_dedup.append(article)
-                seen_urls.add(url)
-                if title_clean:
-                    seen_titles.add(title_clean)
-            else:
-                reason = "URL" if url in seen_urls else "Titel"
-                logger.info(f"Global Dedup - ASPI This Week: ❌ Duplikat ({reason}): {article[:60]}...")
-        else:
-            aspi_thisweek_dedup.append(article)
-    
-    logger.info(f"ASPI This Week: {len(aspi_thisweek_articles)} → {len(aspi_thisweek_dedup)} ({len(aspi_thisweek_articles)-len(aspi_thisweek_dedup)} Duplikate)")
-    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -3088,7 +2849,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, aspi_thisweek_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -3160,19 +2921,15 @@ def main():
         # ASPI China 5 (nutzt GLOBAL_THINKTANK_DAYS)
         aspi_china5_articles, aspi_china5_count = fetch_aspi_china5(mail, email_user, email_password)
         
-        # ASPI This Week at ASPI (nutzt GLOBAL_THINKTANK_DAYS)
-        aspi_thisweek_articles, aspi_thisweek_count = fetch_aspi_this_week(mail, email_user, email_password)
-        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, aspi_thisweek_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
             cfr_daily_articles,
             cfr_asia_articles,
             aspi_china5_articles,
-            aspi_thisweek_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3306,13 +3063,6 @@ def main():
     briefing.append("#### China 5")
     if aspi_china5_articles:
         briefing.extend(aspi_china5_articles)
-    else:
-        briefing.append("• Keine relevanten Artikel gefunden.")
-    
-    briefing.append("")
-    briefing.append("#### This Week at ASPI")
-    if aspi_thisweek_articles:
-        briefing.extend(aspi_thisweek_articles)
     else:
         briefing.append("• Keine relevanten Artikel gefunden.")
 
