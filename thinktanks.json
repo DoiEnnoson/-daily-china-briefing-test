@@ -1,6 +1,6 @@
 [
   {
-    "order": 10,
+    "order": 1,
     "think_tank": "CREA (Energy & Clean Air)",
     "abbreviation": "CREA",
     "email_senders": []
@@ -82,7 +82,7 @@
     ]
   },
   {
-    "order": 1,
+    "order": 10,
     "think_tank": "CSIS",
     "abbreviation": "CSIS",
     "newsletters": [
