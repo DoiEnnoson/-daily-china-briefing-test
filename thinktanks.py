@@ -3133,6 +3133,123 @@ def fetch_carnegie_main(mail, email_user, email_password, days=None):
 # ENDE CARNEGIE ENDOWMENT PARSER
 # ============================================================================
 
+# ============================================================================
+# CARNEGIE RSS FEED DEBUG
+# ============================================================================
+
+def debug_carnegie_rss_feed():
+    """
+    DEBUG: Testet Carnegie RSS Feed und zeigt China-relevante Artikel der letzten 3 Monate.
+    """
+    import feedparser
+    from datetime import datetime, timedelta
+    
+    rss_url = "https://feeds.feedburner.com/carnegiecouncil/newsFeed"
+    
+    logger.info("="*60)
+    logger.info("CARNEGIE RSS FEED DEBUG")
+    logger.info("="*60)
+    logger.info(f"RSS URL: {rss_url}")
+    
+    try:
+        feed = feedparser.parse(rss_url)
+        
+        if not feed.entries:
+            logger.error("Keine Einträge im RSS-Feed gefunden!")
+            return []
+        
+        logger.info(f"Gesamt-Einträge im Feed: {len(feed.entries)}")
+        
+        # China-Keywords
+        china_keywords = [
+            "china", "chinese", "xi jinping", "xi ", "beijing", "taiwan",
+            "hong kong", "hongkong", "shanghai", "prc", "ccp",
+            "south china sea", "asia-pacific", "indo-pacific", "renminbi", "yuan"
+        ]
+        
+        # 3 Monate zurück
+        cutoff_date = datetime.now() - timedelta(days=90)
+        
+        results = []
+        china_articles = []
+        all_recent = []
+        
+        for entry in feed.entries:
+            title = entry.get("title", "Kein Titel")
+            link = entry.get("link", "#")
+            summary = entry.get("summary", "")
+            published = entry.get("published", "")
+            
+            # Parse Datum
+            pub_date = None
+            if published:
+                try:
+                    from email.utils import parsedate_to_datetime
+                    pub_date = parsedate_to_datetime(published)
+                except:
+                    pass
+            
+            # Nur letzte 3 Monate
+            if pub_date and pub_date < cutoff_date:
+                continue
+            
+            all_recent.append({
+                "title": title,
+                "link": link,
+                "date": pub_date.strftime("%d.%m.%Y") if pub_date else "Unbekannt",
+                "summary": summary[:200]
+            })
+            
+            # China-Relevanz prüfen
+            is_china_relevant = any(keyword in title.lower() for keyword in china_keywords)
+            if not is_china_relevant and summary:
+                is_china_relevant = any(keyword in summary.lower() for keyword in china_keywords)
+            
+            if is_china_relevant:
+                china_articles.append({
+                    "title": title,
+                    "link": link,
+                    "date": pub_date.strftime("%d.%m.%Y") if pub_date else "Unbekannt",
+                    "summary": summary[:200]
+                })
+        
+        logger.info(f"Artikel der letzten 3 Monate: {len(all_recent)}")
+        logger.info(f"China-relevante Artikel: {len(china_articles)}")
+        
+        results.append("="*60)
+        results.append(f"CARNEGIE RSS FEED - Letzte 3 Monate")
+        results.append("="*60)
+        results.append(f"Total: {len(all_recent)} Artikel")
+        results.append(f"China-relevant: {len(china_articles)} Artikel")
+        results.append("")
+        
+        if china_articles:
+            results.append("--- CHINA-RELEVANTE ARTIKEL ---")
+            for idx, article in enumerate(china_articles, 1):
+                results.append(f"\n{idx}. {article['title']}")
+                results.append(f"   Datum: {article['date']}")
+                results.append(f"   Link: {article['link']}")
+                if article['summary']:
+                    results.append(f"   Summary: {article['summary']}...")
+        else:
+            results.append("❌ Keine China-relevanten Artikel gefunden!")
+        
+        results.append("")
+        results.append("--- ALLE ARTIKEL (letzte 10) ---")
+        for idx, article in enumerate(all_recent[:10], 1):
+            results.append(f"\n{idx}. {article['title']}")
+            results.append(f"   Datum: {article['date']}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Fehler beim RSS-Feed-Parsing: {str(e)}")
+        return [f"ERROR: {str(e)}"]
+
+# ============================================================================
+# ENDE CARNEGIE RSS DEBUG
+# ============================================================================
+
 def deduplicate_csis_articles(*article_lists):
     """
     Entfernt Duplikate aus allen CSIS Newsletter-Listen.
@@ -3602,6 +3719,13 @@ def main():
         carnegie_china_articles, carnegie_china_count = fetch_carnegie_china(mail, email_user, email_password)
         carnegie_india_articles, carnegie_india_count = fetch_carnegie_india(mail, email_user, email_password)
         carnegie_main_articles, carnegie_main_count = fetch_carnegie_main(mail, email_user, email_password)
+        
+        # === CARNEGIE RSS FEED DEBUG TEST ===
+        logger.info("Teste Carnegie RSS Feed...")
+        rss_debug = debug_carnegie_rss_feed()
+        for line in rss_debug:
+            logger.info(line)
+        # === ENDE RSS DEBUG ===
         
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
