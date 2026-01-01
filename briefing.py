@@ -1,204 +1,207 @@
 #!/usr/bin/env python3
 """
-TEST FÜR GITHUB ACTIONS - Google News URL Auflösung
-====================================================
-Dieses Script testet die URL-Auflösung in DEINER GitHub Actions Umgebung.
+OPTION E: Google News HTML Scraping
+====================================
+Versucht Original-URLs direkt aus dem Google News HTML zu extrahieren.
 """
 
 import requests
-import feedparser
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from bs4 import BeautifulSoup
+import json
+import re
 
 print("="*80)
-print("TESTE GOOGLE NEWS URL-AUFLÖSUNG IN GITHUB ACTIONS")
+print("TESTE: HTML SCRAPING VON GOOGLE NEWS")
 print("="*80)
 
 # ============================================================================
-# SCHRITT 1: Teste ob Google News erreichbar ist
+# METHODE 1: Google News Webseite scrapen
 # ============================================================================
-print("\n[1] Teste Verbindung zu news.google.com...")
-try:
-    response = requests.get("https://news.google.com", timeout=5)
-    print(f"✅ Verbindung erfolgreich! Status: {response.status_code}")
-except Exception as e:
-    print(f"❌ Verbindung fehlgeschlagen: {str(e)}")
-    print("⚠️ Ohne Netzwerkzugriff kann URL-Auflösung nicht funktionieren!")
-    exit(1)
+print("\n[METHODE 1] Google News Webseite scrapen...")
 
-# ============================================================================
-# SCHRITT 2: Hole echte Google News Links aus deinem Feed
-# ============================================================================
-print("\n[2] Hole Google News Feed...")
-feed_url = "https://news.google.com/rss/search?q=china+when:1d&hl=de&gl=DE&ceid=DE:de"
+url = "https://news.google.com/search?q=china&hl=en-US&gl=US&ceid=US:en"
 
 try:
-    feed = feedparser.parse(feed_url)
-    print(f"✅ Feed erfolgreich geladen: {len(feed.entries)} Einträge")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+    }
     
-    # Nimm die ersten 3 Links
-    test_links = []
-    for entry in feed.entries[:3]:
-        link = entry.get("link", "")
-        title = entry.get("title", "")
-        if "news.google.com" in link:
-            test_links.append((title, link))
-            print(f"  → {title[:60]}...")
-            print(f"    Link: {link[:80]}...")
+    response = requests.get(url, headers=headers, timeout=10)
+    print(f"Status: {response.status_code}")
     
-    if not test_links:
-        print("❌ Keine Google News Links gefunden!")
-        exit(1)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Speichere HTML für Analyse
+    with open('google_news_debug.html', 'w', encoding='utf-8') as f:
+        f.write(response.text)
+    print("✅ HTML gespeichert in: google_news_debug.html")
+    
+    # Suche nach verschiedenen Mustern
+    print("\nSuche nach URL-Mustern...")
+    
+    # 1. data-* Attribute
+    data_urls = soup.find_all(attrs={'data-url': True})
+    if data_urls:
+        print(f"✅ Gefunden: {len(data_urls)} data-url Attribute")
+        for i, elem in enumerate(data_urls[:3], 1):
+            print(f"  {i}. {elem.get('data-url')[:100]}")
+    
+    # 2. Direkte <a> Links (nicht news.google.com)
+    all_links = soup.find_all('a', href=True)
+    external_links = [a['href'] for a in all_links if 'http' in a['href'] and 'google.com' not in a['href']]
+    if external_links:
+        print(f"✅ Gefunden: {len(external_links)} externe Links")
+        for i, link in enumerate(external_links[:3], 1):
+            print(f"  {i}. {link[:100]}")
+    
+    # 3. JSON-LD oder JavaScript Daten
+    scripts = soup.find_all('script')
+    print(f"\nAnalysiere {len(scripts)} Script-Tags...")
+    
+    for script in scripts:
+        if script.string:
+            # Suche nach URL-ähnlichen Strings
+            urls = re.findall(r'https?://[^\s"\'<>]+', script.string)
+            if urls:
+                # Filter nur nicht-Google URLs
+                non_google = [u for u in urls if 'google.com' not in u and len(u) > 30]
+                if non_google:
+                    print(f"✅ Gefunden in Script: {len(non_google)} URLs")
+                    for i, u in enumerate(non_google[:3], 1):
+                        print(f"  {i}. {u[:100]}")
+                    break
+    
+    # 4. Spezielle Klassen/IDs die Google verwendet
+    article_elements = soup.find_all(['article', 'div'], class_=re.compile(r'article|story|item', re.I))
+    print(f"\nGefunden: {len(article_elements)} Artikel-Elemente")
+    
+    if article_elements:
+        print("Analysiere erstes Artikel-Element:")
+        first = article_elements[0]
+        print(f"  Tag: {first.name}")
+        print(f"  Classes: {first.get('class')}")
+        print(f"  Attributes: {list(first.attrs.keys())}")
         
+        # Suche nach Links im Artikel
+        article_links = first.find_all('a', href=True)
+        if article_links:
+            print(f"  Links im Artikel: {len(article_links)}")
+            for i, link in enumerate(article_links[:3], 1):
+                href = link['href']
+                text = link.get_text(strip=True)[:50]
+                print(f"    {i}. {text}")
+                print(f"       → {href[:100]}")
+
 except Exception as e:
-    print(f"❌ Fehler beim Laden des Feeds: {str(e)}")
-    exit(1)
+    print(f"❌ Fehler: {str(e)}")
 
 # ============================================================================
-# SCHRITT 3: Teste URL-Auflösung mit verschiedenen Methoden
+# METHODE 2: RSS Feed Item einzeln abrufen und HTML parsen
 # ============================================================================
+print("\n" + "="*80)
+print("[METHODE 2] RSS-Link als Webseite laden und HTML parsen...")
+print("="*80)
 
-def method1_head_request(url, timeout=5):
-    """Methode 1: HEAD Request"""
-    try:
-        response = requests.head(
-            url,
-            allow_redirects=True,
-            timeout=timeout,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        )
-        if "news.google.com" not in response.url:
-            return response.url
-    except:
-        pass
-    return None
+# Nutze einen der Links aus deinem Test
+test_rss_url = "https://news.google.com/rss/articles/CBMirgFBVV95cUxPTWZsUzJMWTRCVkdRNWVtQ0lpdEhheHNmdFRoX0JqMXQ4akFiTmVzbGhvS0ZRd3pCbm1fM2F4azljcGlDc0pJUU1CMTNlQkNlNjlEV0xPdTlVTlk0bUFXdG5SdnRPeDNkb2VLRkhlcURRSG4wQmdWVGdPZHpfcVVYTGcycEkybnlDOW9YbGhDQ05YaDl6azk5T0lsQzA2WF9SN3NZeE5NMQ?oc=5"
 
-def method2_get_request(url, timeout=5):
-    """Methode 2: GET Request"""
-    try:
-        response = requests.get(
-            url,
-            allow_redirects=True,
-            timeout=timeout,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        )
-        if "news.google.com" not in response.url:
-            return response.url
-    except:
-        pass
-    return None
+try:
+    response = requests.get(test_rss_url, headers=headers, timeout=10, allow_redirects=False)
+    print(f"Status (ohne Redirects): {response.status_code}")
+    
+    if response.status_code in [301, 302, 303, 307, 308]:
+        location = response.headers.get('Location')
+        print(f"✅ Redirect Location Header: {location}")
+    
+    # Versuche mit Redirects
+    response = requests.get(test_rss_url, headers=headers, timeout=10, allow_redirects=True)
+    print(f"Status (mit Redirects): {response.status_code}")
+    print(f"Final URL: {response.url}")
+    
+    if "news.google.com" not in response.url:
+        print(f"✅ ERFOLG! Aufgelöst zu: {response.url}")
+    else:
+        # Parse HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Suche nach Canonical URL
+        canonical = soup.find('link', rel='canonical')
+        if canonical:
+            print(f"✅ Canonical URL: {canonical.get('href')}")
+        
+        # Suche nach Meta Refresh
+        meta_refresh = soup.find('meta', attrs={'http-equiv': 'refresh'})
+        if meta_refresh:
+            content = meta_refresh.get('content', '')
+            url_match = re.search(r'url=(.+)', content, re.I)
+            if url_match:
+                print(f"✅ Meta Refresh URL: {url_match.group(1)}")
+        
+        # Suche nach JavaScript Redirect
+        js_redirect = re.search(r'window\.location\s*=\s*["\']([^"\']+)["\']', response.text)
+        if js_redirect:
+            print(f"✅ JS Redirect: {js_redirect.group(1)}")
+        
+        # Suche nach data-n-a-sg Attribut (Google News spezifisch)
+        data_links = soup.find_all(attrs={'data-n-a-sg': True})
+        if data_links:
+            print(f"✅ Gefunden: data-n-a-sg Attribute")
+            for elem in data_links[:3]:
+                print(f"  → {elem.get('data-n-a-sg')[:100]}")
 
-def method3_session(url, timeout=5):
-    """Methode 3: Session mit Cookies"""
-    try:
-        session = requests.Session()
-        session.headers.update({'User-Agent': 'Mozilla/5.0'})
-        response = session.get(url, allow_redirects=True, timeout=timeout)
-        if "news.google.com" not in response.url:
-            return response.url
-    except:
-        pass
-    return None
+except Exception as e:
+    print(f"❌ Fehler: {str(e)}")
 
-print("\n[3] Teste URL-Auflösung mit verschiedenen Methoden...")
+# ============================================================================
+# METHODE 3: Google News RSS als JSON API
+# ============================================================================
+print("\n" + "="*80)
+print("[METHODE 3] Prüfe ob Google News eine versteckte JSON API hat...")
+print("="*80)
 
-methods = [
-    ("HEAD Request", method1_head_request),
-    ("GET Request", method2_get_request),
-    ("Session", method3_session)
+# Manchmal haben Webseiten JSON Endpoints
+json_urls = [
+    "https://news.google.com/rss/search?q=china&hl=en&gl=US&ceid=US:en&output=json",
+    "https://news.google.com/api/search?q=china",
 ]
 
-results = {}
-
-for title, link in test_links[:1]:  # Teste nur den ersten Link
-    print(f"\n{'='*80}")
-    print(f"Teste: {title[:60]}...")
-    print(f"Original: {link[:80]}...")
-    print(f"{'='*80}")
-    
-    for method_name, method_func in methods:
-        print(f"\n  Teste {method_name}...", end=" ")
-        resolved = method_func(link)
-        
-        if resolved:
-            print(f"✅ ERFOLG!")
-            print(f"  Aufgelöst zu: {resolved[:100]}...")
-            results[method_name] = resolved
-        else:
-            print(f"❌ Fehlgeschlagen")
-
-# ============================================================================
-# SCHRITT 4: Teste parallele Verarbeitung (wie im Hauptscript)
-# ============================================================================
-print(f"\n{'='*80}")
-print("[4] Teste parallele Verarbeitung (wie im echten Script)...")
-print(f"{'='*80}")
-
-def resolve_url_parallel(url, timeout=3):
-    """Die Funktion die im Hauptscript verwendet wird"""
-    if "news.google.com" not in url:
-        return url
-    
+for test_url in json_urls:
     try:
-        response = requests.get(
-            url,
-            allow_redirects=True,
-            timeout=timeout,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-        if "news.google.com" not in response.url:
-            return response.url
+        response = requests.get(test_url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                print(f"✅ JSON Response von: {test_url}")
+                print(f"   Keys: {list(data.keys())}")
+            except:
+                print(f"❌ Keine JSON-Antwort von: {test_url}")
     except:
         pass
-    return url
-
-# Teste mit allen 3 Links parallel
-all_links = [link for title, link in test_links]
-
-print(f"\nAuflösen von {len(all_links)} Links parallel...")
-
-with ThreadPoolExecutor(max_workers=10) as executor:
-    future_to_url = {executor.submit(resolve_url_parallel, url): url for url in all_links}
-    
-    resolved_results = {}
-    for future in as_completed(future_to_url):
-        original = future_to_url[future]
-        try:
-            resolved = future.result()
-            resolved_results[original] = resolved
-        except Exception as e:
-            resolved_results[original] = original
-
-successful = 0
-for i, ((title, original), resolved) in enumerate(zip(test_links, [resolved_results[link] for title, link in test_links]), 1):
-    if original != resolved and "news.google.com" not in resolved:
-        successful += 1
-        status = "✅"
-    else:
-        status = "❌"
-    
-    print(f"\n{status} Link {i}:")
-    print(f"  Titel: {title[:80]}")
-    print(f"  Original: {original[:80]}...")
-    print(f"  Resolved: {resolved[:80]}...")
 
 # ============================================================================
 # FAZIT
 # ============================================================================
-print(f"\n{'='*80}")
+print("\n" + "="*80)
 print("FAZIT")
-print(f"{'='*80}")
+print("="*80)
+print("""
+Prüfe die Ausgaben oben:
 
-if successful > 0:
-    print(f"✅ ERFOLG! {successful}/{len(test_links)} URLs wurden aufgelöst!")
-    print("\nDie URL-Auflösung FUNKTIONIERT in deiner GitHub Actions Umgebung!")
-    print("→ Du kannst jetzt dein briefing.py Script anpassen")
-    print("→ Verwende die GET-Request Methode aus diesem Test")
-else:
-    print("❌ FEHLGESCHLAGEN! Keine URLs konnten aufgelöst werden")
-    print("\nMögliche Gründe:")
-    print("1. Google blockiert programmatischen Zugriff")
-    print("2. Netzwerk-Einschränkungen in GitHub Actions")
-    print("3. Google News URLs funktionieren anders als erwartet")
-    print("\n→ Wir brauchen eine alternative Lösung!")
+Wenn ✅ irgendwo auftaucht:
+→ Wir haben einen Weg gefunden Original-URLs zu extrahieren!
+→ Das kann ins Hauptscript integriert werden
 
-print(f"\n{'='*80}")
+Wenn nur ❌:
+→ Google News blockiert ALLE programmatischen Zugriffe
+→ Wir brauchen Plan F (siehe unten)
+
+PLAN F (falls alles fehlschlägt):
+1. Paid Service nutzen (z.B. ScraperAPI, Bright Data)
+2. Eigenen Headless Browser hosten (Selenium/Playwright in Docker)
+3. Newsletter komplett umbauen auf andere Quellen
+""")
+
+print("\n📁 Prüfe auch: google_news_debug.html (gespeichert)")
+print("   Dort siehst du das rohe HTML von Google News")
