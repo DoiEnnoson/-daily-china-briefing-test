@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Globale Zeitfenster-Einstellung für ALLE Think Tanks
-GLOBAL_THINKTANK_DAYS = 60  # Test: 1 Tag für schnelle Iteration
+GLOBAL_THINKTANK_DAYS = 1  # Test: 1 Tag für schnelle Iteration
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
@@ -2813,6 +2813,146 @@ def parse_lowy_interpreter(msg):
     return articles
 
 
+def parse_hinrich_foundation(msg):
+    """
+    Parser für Hinrich Foundation Newsletter.
+    Extrahiert China-relevante Artikel aus thematischen Newsletters.
+    """
+    articles = []
+    seen_titles = set()
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"Hinrich Foundation - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in Hinrich Foundation E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # Hinrich nutzt <h1> für Haupttitel von Artikeln
+    for h1 in soup.find_all('h1'):
+        title = h1.get_text(strip=True)
+        
+        # Skip zu kurze oder leere Titel
+        if not title or len(title) < 10:
+            continue
+        
+        # Skip Duplikate
+        if title in seen_titles:
+            continue
+        
+        # Finde den zugehörigen "READ MORE" oder "REGISTER NOW" Link
+        link_tag = None
+        current = h1
+        
+        # Suche in den nächsten 10 Elementen nach einem Link
+        for _ in range(10):
+            current = current.find_next(['a', 'h1'])
+            if not current:
+                break
+            
+            # Stoppe bei nächstem h1 (neuer Artikel beginnt)
+            if current.name == 'h1':
+                break
+            
+            # Prüfe ob es ein relevanter Link ist
+            if current.name == 'a':
+                link_text = current.get_text(strip=True).upper()
+                if any(keyword in link_text for keyword in ['READ MORE', 'REGISTER', 'ACCESS', 'WATCH']):
+                    link_tag = current
+                    break
+        
+        if link_tag and link_tag.get('href'):
+            href = link_tag['href']
+            
+            # Überspringe interne Links (preferences, unsubscribe, etc.)
+            if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', '#']):
+                continue
+            
+            # Score-Check
+            score = score_thinktank_article(title, href)
+            logger.debug(f"Hinrich - '{title[:60]}...' (Score: {score})")
+            
+            if score >= 3:  # Nur China-relevante Artikel
+                articles.append(f"• [{title}]({href})")
+                seen_titles.add(title)
+                logger.info(f"Hinrich - Artikel hinzugefügt: {title[:60]}... (Score: {score})")
+    
+    logger.info(f"Hinrich Foundation Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_hinrich_foundation(mail, email_user, email_password, days=None):
+    """Holt Hinrich Foundation Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        sender_email = "hinrich.thought.leadership@hinrichfoundation.com"
+        
+        logger.info(f"Hinrich Foundation - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für Hinrich Foundation: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine Hinrich Foundation E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"Hinrich Foundation - {len(email_ids)} E-Mails gefunden")
+        
+        # Deduplizierung nach TITEL
+        seen_titles = set()
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            parsed_articles = parse_hinrich_foundation(msg)
+            
+            # Deduplizierung: Nur neue Artikel hinzufügen
+            for article in parsed_articles:
+                # Extrahiere Titel aus Markdown-Link
+                title_match = article.split('[')[1].split(']')[0] if '[' in article and ']' in article else article
+                if title_match not in seen_titles:
+                    all_articles.append(article)
+                    seen_titles.add(title_match)
+        
+        logger.info(f"Hinrich Foundation - FINAL: {len(all_articles)} Artikel (nach Dedup)")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_hinrich_foundation: {str(e)}")
+        return [], 0
+
+
 def fetch_lowy_interpreter(mail, email_user, email_password, days=None):
     """Holt Lowy Institute Newsletter aus E-Mails."""
     if days is None:
@@ -3065,10 +3205,10 @@ def build_dynamic_briefing(think_tank_data_dict):
     
     return briefing
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute, Hinrich Foundation und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -3079,10 +3219,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         aspi_china5_articles: ASPI China 5 Artikel-Liste
         chatham_articles: Chatham House Artikel-Liste
         lowy_articles: Lowy Institute Artikel-Liste
+        hinrich_articles: Hinrich Foundation Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -3275,6 +3416,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"Lowy Institute: {len(lowy_articles)} → {len(lowy_dedup)} ({len(lowy_articles)-len(lowy_dedup)} Duplikate)")
     
+    # Hinrich Foundation deduplizieren
+    hinrich_dedup = []
+    for article in hinrich_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                hinrich_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - Hinrich Foundation: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            hinrich_dedup.append(article)
+    
+    logger.info(f"Hinrich Foundation: {len(hinrich_articles)} → {len(hinrich_dedup)} ({len(hinrich_articles)-len(hinrich_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -3305,7 +3469,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
@@ -3383,9 +3547,12 @@ def main():
         # Lowy Institute (nutzt GLOBAL_THINKTANK_DAYS)
         lowy_articles, lowy_count = fetch_lowy_interpreter(mail, email_user, email_password)
         
+        # Hinrich Foundation (nutzt GLOBAL_THINKTANK_DAYS)
+        hinrich_articles, hinrich_count = fetch_hinrich_foundation(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
@@ -3394,6 +3561,7 @@ def main():
             aspi_china5_articles,
             chatham_articles,
             lowy_articles,
+            hinrich_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3417,7 +3585,7 @@ def main():
         "PIIE": piie_articles,
         "MERICS": merics_articles,
         "Brookings": brookings_articles,
-        "Hinrich": [],  # Noch kein Parser
+        "Hinrich": hinrich_articles,
         "ASPI Policy": [],  # Noch kein Parser
         "Lowy": lowy_articles,
         "Chatham House": chatham_articles,
