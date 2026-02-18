@@ -3546,6 +3546,43 @@ def build_dynamic_briefing(think_tank_data_dict):
     
     return briefing
 
+def normalize_url(url):
+    """
+    Normalisiert URLs für Deduplizierung.
+    
+    Spezialbehandlung für Mailchimp/list-manage Tracking-Links:
+    - Behält den 'id' Parameter (identifiziert den Artikel)
+    - Entfernt 'u' und 'e' Parameter (User-IDs, nicht relevant)
+    
+    Für alle anderen URLs:
+    - Entfernt alle Query-Parameter
+    
+    Beispiele:
+    - Mailchimp: https://...list-manage.com/track/click?u=XXX&id=abc123&e=YYY
+      → https://...list-manage.com/track/click?id=abc123
+    - Normal: https://example.com/article?utm_source=newsletter
+      → https://example.com/article
+    """
+    # Spezialbehandlung für list-manage (Mailchimp) Links
+    if 'list-manage' in url.lower():
+        import urllib.parse
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query)
+        
+        # Behalte NUR den 'id' Parameter (identifiziert den Artikel)
+        if 'id' in params:
+            article_id = params['id'][0]
+            # Baue URL mit nur dem id Parameter
+            base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+            return f"{base_url}?id={article_id}"
+        else:
+            # Kein id Parameter? Dann komplette URL behalten
+            return url
+    
+    # Für alle anderen URLs: Entferne Query-Parameter
+    return url.split('?')[0]
+
+
 def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, crea_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
@@ -3584,7 +3621,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]  # Normalisiere
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             # DEBUG: Tracke energyandcleanair.org URLs
@@ -3611,7 +3648,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]  # Normalisiere
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             # Prüfe SOWOHL URL als AUCH Titel
@@ -3635,7 +3672,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3658,7 +3695,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3681,7 +3718,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3704,7 +3741,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3727,7 +3764,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3750,7 +3787,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3773,7 +3810,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             if url not in seen_urls and title not in seen_titles:
@@ -3832,7 +3869,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         title_match = re.search(r'\[([^\]]+)\]', article)
         
         if url_match:
-            url = url_match.group(1).split('?')[0]
+            url = normalize_url(url_match.group(1))
             title = title_match.group(1).lower().strip() if title_match else ""
             
             logger.info(f"DEBUG CREA - Prüfe Artikel: {title[:60]}...")
@@ -3878,7 +3915,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         for article in csis_list:
             url_match = re.search(r'\((https?://[^\)]+)\)', article)
             if url_match:
-                url = url_match.group(1).split('?')[0]  # Normalisiere
+                url = normalize_url(url_match.group(1))
                 if url not in seen_urls:
                     dedup.append(article)
                     seen_urls.add(url)
