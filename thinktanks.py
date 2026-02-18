@@ -2904,11 +2904,29 @@ def fetch_hinrich_foundation(mail, email_user, email_password, days=None):
         days = GLOBAL_THINKTANK_DAYS
         
     try:
+        # Lade thinktanks.json um die richtige E-Mail-Adresse zu bekommen
+        thinktanks_path = os.path.join(os.path.dirname(__file__), "thinktanks.json")
+        with open(thinktanks_path, "r", encoding="utf-8") as f:
+            thinktanks = json.load(f)
+        
+        # Finde Hinrich Foundation
+        hinrich = next((tt for tt in thinktanks if tt["abbreviation"] == "Hinrich"), None)
+        if not hinrich or not hinrich["email_senders"]:
+            logger.warning("Hinrich Foundation nicht in thinktanks.json gefunden oder keine Sender angegeben")
+            return [], 0
+        
+        # Extrahiere E-Mail-Adresse (mit oder ohne "Name <email>" Format)
+        sender_raw = hinrich["email_senders"][0]
+        # Extrahiere aus "Name <email@domain.com>" Format
+        email_match = re.search(r'<(.+?)>', sender_raw)
+        sender_email = email_match.group(1) if email_match else sender_raw
+        
+        logger.info(f"Hinrich Foundation - Extrahierte E-Mail: {sender_email}")
+        
         mail.select("inbox")
         all_articles = []
         
         since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
-        sender_email = "hinrich.thought.leadership@hinrichfoundation.com"
         
         logger.info(f"Hinrich Foundation - Suche nach E-Mails von {sender_email} seit {since_date}")
         
