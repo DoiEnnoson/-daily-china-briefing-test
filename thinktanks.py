@@ -3030,6 +3030,141 @@ def fetch_hinrich_foundation(mail, email_user, email_password, days=None):
         return [], 0
 
 
+def parse_crea_energy(msg):
+    """
+    Parser für CREA (Centre for Research on Energy and Clean Air).
+    Extrahiert monatliche China Energy & Emissions Reports.
+    ALLE Artikel sind China-relevant (100% China-fokussiert).
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"CREA - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CREA E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    # CREA nutzt Button-Links mit spezifischem Text
+    # Beispiel: "China energy and emissions trends: February 2026 snapshot"
+    # Zwei Haupttypen: Monatlicher Snapshot + Monthly Roundup mit mehreren Sektionen
+    
+    for link in soup.find_all('a', href=True):
+        href = link.get('href')
+        title = link.get_text(strip=True)
+        
+        # Skip interne Links
+        if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile']):
+            continue
+        
+        # Skip kurze/leere Titel
+        if not title or len(title) < 15:
+            continue
+        
+        # Nur Links zu energyandcleanair.org Reports
+        if 'energyandcleanair.org' in href and ('china' in href.lower() or 'china' in title.lower()):
+            # Skip chinesische Version (Duplikat)
+            if '🇨🇳' in title or '/zh/' in href:
+                logger.debug(f"CREA - Skip chinesische Version: {title[:40]}...")
+                continue
+            
+            articles.append(f"• [{title}]({href})")
+            logger.info(f"CREA - Artikel hinzugefügt: {title[:60]}...")
+    
+    logger.info(f"CREA Parser - {len(articles)} Artikel extrahiert")
+    return articles
+
+
+def fetch_crea_energy(mail, email_user, email_password, days=None):
+    """Holt CREA Newsletter aus E-Mails."""
+    if days is None:
+        days = GLOBAL_THINKTANK_DAYS
+        
+    try:
+        # Lade thinktanks.json um die richtige E-Mail-Adresse zu bekommen
+        thinktanks_path = os.path.join(os.path.dirname(__file__), "thinktanks.json")
+        with open(thinktanks_path, "r", encoding="utf-8") as f:
+            thinktanks = json.load(f)
+        
+        # Finde CREA
+        crea = next((tt for tt in thinktanks if tt["abbreviation"] == "CREA"), None)
+        if not crea or not crea["email_senders"]:
+            logger.warning("CREA nicht in thinktanks.json gefunden oder keine Sender angegeben")
+            return [], 0
+        
+        # Extrahiere E-Mail-Adresse (mit oder ohne "Name <email>" Format)
+        sender_raw = crea["email_senders"][0]
+        # Extrahiere aus "Name <email@domain.com>" Format
+        email_match = re.search(r'<(.+?)>', sender_raw)
+        sender_email = email_match.group(1) if email_match else sender_raw
+        
+        logger.info(f"CREA - Extrahierte E-Mail: {sender_email}")
+        
+        mail.select("inbox")
+        all_articles = []
+        
+        since_date = (datetime.now() - timedelta(days=days)).strftime("%d-%b-%Y")
+        
+        logger.info(f"CREA - Suche nach E-Mails von {sender_email} seit {since_date}")
+        
+        result, data = mail.search(None, f'FROM "{sender_email}" SINCE {since_date}')
+        
+        if result != "OK":
+            logger.warning(f"IMAP-Suche fehlgeschlagen für CREA: {result}")
+            return [], 0
+        
+        email_ids = data[0].split()
+        
+        if not email_ids:
+            logger.warning(f"Keine CREA E-Mails von {sender_email} in den letzten {days} Tagen gefunden")
+            return [], 0
+        
+        logger.info(f"CREA - {len(email_ids)} E-Mails gefunden")
+        
+        # Deduplizierung nach TITEL
+        seen_titles = set()
+        
+        for email_id in email_ids:
+            result, msg_data = mail.fetch(email_id, "(RFC822)")
+            if result != "OK":
+                continue
+            
+            msg = email.message_from_bytes(msg_data[0][1])
+            parsed_articles = parse_crea_energy(msg)
+            
+            # Deduplizierung: Nur neue Artikel hinzufügen
+            for article in parsed_articles:
+                # Extrahiere Titel aus Markdown-Link
+                title_match = article.split('[')[1].split(']')[0] if '[' in article and ']' in article else article
+                if title_match not in seen_titles:
+                    all_articles.append(article)
+                    seen_titles.add(title_match)
+        
+        logger.info(f"CREA - FINAL: {len(all_articles)} Artikel (nach Dedup)")
+        return all_articles, len(email_ids)
+        
+    except Exception as e:
+        logger.error(f"Fehler in fetch_crea_energy: {str(e)}")
+        return [], 0
+
+
 def fetch_lowy_interpreter(mail, email_user, email_password, days=None):
     """Holt Lowy Institute Newsletter aus E-Mails."""
     if days is None:
@@ -3627,9 +3762,12 @@ def main():
         # Hinrich Foundation (nutzt GLOBAL_THINKTANK_DAYS)
         hinrich_articles, hinrich_count = fetch_hinrich_foundation(mail, email_user, email_password)
         
+        # CREA (nutzt GLOBAL_THINKTANK_DAYS)
+        crea_articles, crea_count = fetch_crea_energy(mail, email_user, email_password)
+        
         # GLOBALE Deduplizierung über ALLE Think Tanks
         logger.info("Starte GLOBALE Think Tank Deduplizierung...")
-        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
+        merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, crea_articles, csis_geo_articles, csis_freeman_articles, csis_trustee_articles, csis_japan_articles, chinapower_articles, korea_chair_articles, ghpc_articles, aerospace_articles = deduplicate_all_thinktanks(
             merics_articles,
             brookings_articles,
             piie_articles,
@@ -3639,6 +3777,7 @@ def main():
             chatham_articles,
             lowy_articles,
             hinrich_articles,
+            crea_articles,
             csis_geo_articles,
             csis_freeman_articles,
             csis_trustee_articles,
@@ -3658,7 +3797,7 @@ def main():
     briefing = []
     # Build Think Tank Data Dict für Dynamic Briefing
     think_tank_data = {
-        "CREA": [],  # Noch keine Daten
+        "CREA": crea_articles,
         "PIIE": piie_articles,
         "MERICS": merics_articles,
         "Brookings": brookings_articles,
