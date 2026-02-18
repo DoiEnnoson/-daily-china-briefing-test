@@ -2928,14 +2928,22 @@ def parse_hinrich_foundation(msg):
             if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', '#']):
                 continue
             
-            # Score-Check
-            score = score_thinktank_article(title, href)
-            logger.debug(f"Hinrich - '{title[:60]}...' (Score: {score})")
+            # China-Check (einfach: enthält Titel China-Keywords?)
+            china_keywords = [
+                "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
+                "taiwan", "hong kong", "prc", "ccp", "communist party",
+                "sino-", "u.s.-china", "us-china"
+            ]
             
-            if score >= 3:  # Nur China-relevante Artikel
+            title_lower = title.lower()
+            has_china = any(kw in title_lower for kw in china_keywords)
+            
+            if has_china:
                 articles.append(f"• [{title}]({href})")
                 seen_titles.add(title)
-                logger.info(f"Hinrich - Artikel hinzugefügt: {title[:60]}... (Score: {score})")
+                logger.info(f"Hinrich - Artikel hinzugefügt: {title[:60]}...")
+            else:
+                logger.info(f"Hinrich - Kein China-Bezug, übersprungen: {title[:60]}...")
             else:
                 logger.debug(f"Hinrich - Score zu niedrig ({score}): {title[:60]}...")
     
