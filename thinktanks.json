@@ -1,9 +1,10 @@
 [
   {
-    "order": 1,
+  "order": 1,
     "think_tank": "CREA (Energy & Clean Air)",
     "abbreviation": "CREA",
-    "email_senders": []
+    "email_senders": [
+      "CREA <getintouch@energyandcleanair.org>"
   },
   {
     "order": 2,
