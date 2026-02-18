@@ -3062,32 +3062,69 @@ def parse_crea_energy(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
+    # DEBUG: Zähle alle Links
+    all_links = soup.find_all('a', href=True)
+    logger.info(f"CREA DEBUG - Gefundene Links insgesamt: {len(all_links)}")
+    
     # CREA nutzt Button-Links mit spezifischem Text
     # Beispiel: "China energy and emissions trends: February 2026 snapshot"
     # Zwei Haupttypen: Monatlicher Snapshot + Monthly Roundup mit mehreren Sektionen
     
-    for link in soup.find_all('a', href=True):
+    links_processed = 0
+    links_skipped_internal = 0
+    links_skipped_short = 0
+    links_skipped_no_energyandcleanair = 0
+    links_skipped_no_china = 0
+    links_skipped_chinese = 0
+    
+    for link in all_links:
         href = link.get('href')
         title = link.get_text(strip=True)
         
+        links_processed += 1
+        
+        # DEBUG: Zeige jeden Link
+        logger.debug(f"CREA DEBUG Link {links_processed}: '{title[:50]}...' -> {href[:60]}...")
+        
         # Skip interne Links
         if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile']):
+            links_skipped_internal += 1
+            logger.debug(f"CREA DEBUG - Skip internal: {href[:40]}")
             continue
         
         # Skip kurze/leere Titel
         if not title or len(title) < 15:
+            links_skipped_short += 1
+            logger.debug(f"CREA DEBUG - Skip short title: '{title}'")
             continue
         
         # Nur Links zu energyandcleanair.org Reports
-        if 'energyandcleanair.org' in href and ('china' in href.lower() or 'china' in title.lower()):
-            # Skip chinesische Version (Duplikat)
-            if '🇨🇳' in title or '/zh/' in href:
-                logger.debug(f"CREA - Skip chinesische Version: {title[:40]}...")
-                continue
+        if 'energyandcleanair.org' not in href:
+            links_skipped_no_energyandcleanair += 1
+            logger.debug(f"CREA DEBUG - Skip nicht energyandcleanair.org: {href[:40]}")
+            continue
             
-            articles.append(f"• [{title}]({href})")
-            logger.info(f"CREA - Artikel hinzugefügt: {title[:60]}...")
+        # Check für "china" im URL oder Titel
+        if 'china' not in href.lower() and 'china' not in title.lower():
+            links_skipped_no_china += 1
+            logger.debug(f"CREA DEBUG - Skip kein 'china': '{title}' | {href}")
+            continue
+        
+        # Skip chinesische Version (Duplikat)
+        if '🇨🇳' in title or '/zh/' in href:
+            links_skipped_chinese += 1
+            logger.debug(f"CREA DEBUG - Skip chinesische Version: {title[:40]}...")
+            continue
+        
+        articles.append(f"• [{title}]({href})")
+        logger.info(f"CREA - Artikel hinzugefügt: {title[:60]}...")
     
+    logger.info(f"CREA DEBUG - Links verarbeitet: {links_processed}")
+    logger.info(f"CREA DEBUG - Skip internal: {links_skipped_internal}")
+    logger.info(f"CREA DEBUG - Skip short: {links_skipped_short}")
+    logger.info(f"CREA DEBUG - Skip no energyandcleanair.org: {links_skipped_no_energyandcleanair}")
+    logger.info(f"CREA DEBUG - Skip no china: {links_skipped_no_china}")
+    logger.info(f"CREA DEBUG - Skip chinese: {links_skipped_chinese}")
     logger.info(f"CREA Parser - {len(articles)} Artikel extrahiert")
     return articles
 
