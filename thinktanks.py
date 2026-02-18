@@ -3034,7 +3034,9 @@ def parse_crea_energy(msg):
     """
     Parser für CREA (Centre for Research on Energy and Clean Air).
     Extrahiert China Energy & Emissions Reports.
-    China-Check über TITEL, nicht URL!
+    
+    WICHTIG: CREA publiziert zu vielen Ländern (India, Indonesia, Europe, Russia).
+    Wir nehmen NUR Artikel die explizit CHINA betreffen!
     """
     articles = []
     
@@ -3062,12 +3064,18 @@ def parse_crea_energy(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
+    # Nicht-China-Keywords (andere Länder/Regionen)
+    non_china_keywords = [
+        'india', 'indian', 'indonesia', 'indonesian', 'europe', 'european', 'eu ', 
+        'russia', 'russian', 'south africa', 'brazil', 'turkish', 'turkey'
+    ]
+    
     for link in soup.find_all('a', href=True):
         href = link.get('href')
         title = link.get_text(strip=True)
         
         # Skip interne Links
-        if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile']):
+        if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile', 'list-manage']):
             continue
         
         # Skip kurze/leere Titel
@@ -3078,13 +3086,31 @@ def parse_crea_energy(msg):
         if 'energyandcleanair.org' not in href:
             continue
         
-        # China-Check: Titel muss "China" enthalten (case-insensitive)
-        if 'china' not in title.lower():
+        title_lower = title.lower()
+        
+        # China-Check: Titel MUSS "China" enthalten (case-insensitive)
+        if 'china' not in title_lower:
             continue
         
         # Skip chinesische Version (🇨🇳 ohne englisches "China" im selben Titel)
-        if '🇨🇳' in title and 'china' not in title.lower().replace('🇨🇳', ''):
+        if '🇨🇳' in title and 'china' not in title_lower.replace('🇨🇳', ''):
             continue
+        
+        # WICHTIG: Filtere Artikel die HAUPTSÄCHLICH über andere Länder sind
+        # z.B. "India power sector review" → Skip, auch wenn "China" irgendwo erwähnt wird
+        # z.B. "Indonesia coal" → Skip
+        # ABER: "China and India coal power" → OK (China ist gleichwertig)
+        
+        # Wenn Titel mit einem Nicht-China-Land BEGINNT → Skip
+        # z.B. "India power sector..." → Skip
+        # z.B. "Indonesia coal..." → Skip
+        first_words = ' '.join(title_lower.split()[:3])  # Erste 3 Wörter
+        if any(keyword in first_words for keyword in non_china_keywords):
+            # Prüfe ob China auch prominent ist (in ersten 5 Wörtern)
+            first_five = ' '.join(title_lower.split()[:5])
+            if 'china' not in first_five:
+                logger.info(f"CREA - Übersprungen (hauptsächlich {keyword}): {title[:60]}...")
+                continue
         
         articles.append(f"• [{title}]({href})")
         logger.info(f"CREA - Artikel hinzugefügt: {title[:60]}...")
