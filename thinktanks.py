@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Globale Zeitfenster-Einstellung für ALLE Think Tanks
-GLOBAL_THINKTANK_DAYS = 60  # Test: 1 Tag für schnelle Iteration
+GLOBAL_THINKTANK_DAYS = 1  # Test: 1 Tag für schnelle Iteration
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
@@ -2811,6 +2811,41 @@ def parse_lowy_interpreter(msg):
     
     logger.info(f"Lowy Institute Parser - {len(articles)} Artikel extrahiert")
     return articles
+
+
+def score_thinktank_article(title, content=""):
+    """
+    Bewertet einen Think Tank-Artikel auf China-Relevanz.
+    Generische Version für alle Think Tanks.
+    """
+    title_lower = title.lower()
+    content_lower = content.lower()
+    full_text = f"{title_lower} {content_lower}"
+    
+    # MUSS China-Bezug haben
+    china_keywords = [
+        "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
+        "taiwan", "hong kong", "prc", "ccp", "communist party",
+        "sino-", "u.s.-china", "us-china", "asia-pacific", "indo-pacific"
+    ]
+    
+    if not any(kw in full_text for kw in china_keywords):
+        return 0
+    
+    score = 5  # Basis-Score für China-Erwähnung
+    
+    # Wichtige Themen
+    important_topics = [
+        "technology", "trade", "security", "military", "defense",
+        "economy", "tariff", "semiconductor", "ai", "geopolitics",
+        "south china sea", "strait", "policy", "investment", "fdi"
+    ]
+    
+    for topic in important_topics:
+        if topic in full_text:
+            score += 2
+    
+    return max(score, 0)
 
 
 def parse_hinrich_foundation(msg):
