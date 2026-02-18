@@ -3574,6 +3574,9 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     seen_urls = set()
     seen_titles = set()  # NEU: Deduplizierung nach Titeln für Brookings
     
+    # DEBUG: Tracking für energyandcleanair.org URLs
+    energyandcleanair_urls = {}  # URL -> Think Tank Name
+    
     # MERICS deduplizieren (kommt zuerst, hat Priorität)
     merics_dedup = []
     for article in merics_articles:
@@ -3583,6 +3586,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         if url_match:
             url = url_match.group(1).split('?')[0]  # Normalisiere
             title = title_match.group(1).lower().strip() if title_match else ""
+            
+            # DEBUG: Tracke energyandcleanair.org URLs
+            if 'energyandcleanair.org' in url:
+                energyandcleanair_urls[url] = "MERICS"
+                logger.info(f"DEBUG - MERICS hat energyandcleanair.org URL: {url}")
             
             if url not in seen_urls and title not in seen_titles:
                 merics_dedup.append(article)
@@ -3781,7 +3789,43 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"Hinrich Foundation: {len(hinrich_articles)} → {len(hinrich_dedup)} ({len(hinrich_articles)-len(hinrich_dedup)} Duplikate)")
     
-    # CREA deduplizieren
+    # CREA deduplizieren MIT DETAILLIERTEM DEBUG
+    logger.info("=" * 60)
+    logger.info("DEBUG: CREA DEDUPLIZIERUNG STARTET")
+    logger.info(f"DEBUG: CREA hat {len(crea_articles)} Artikel")
+    logger.info(f"DEBUG: seen_urls enthält aktuell {len(seen_urls)} URLs")
+    logger.info(f"DEBUG: seen_titles enthält aktuell {len(seen_titles)} Titel")
+    
+    # DEBUG: Zeige ALLE energyandcleanair.org URLs die bereits in seen_urls sind
+    energyandcleanair_in_seen = [url for url in seen_urls if 'energyandcleanair.org' in url]
+    if energyandcleanair_in_seen:
+        logger.info("=" * 60)
+        logger.info(f"⚠️  WARNUNG: {len(energyandcleanair_in_seen)} energyandcleanair.org URLs bereits in seen_urls!")
+        logger.info("Diese URLs wurden von Think Tanks VOR CREA hinzugefügt:")
+        for url in energyandcleanair_in_seen:
+            # Tracke welcher Think Tank diese URL hat
+            found_in = []
+            for tt_name, tt_articles in [
+                ("MERICS", merics_dedup), ("Brookings", brookings_dedup), 
+                ("PIIE", piie_dedup), ("CFR Daily", cfr_daily_dedup), 
+                ("CFR Asia", cfr_asia_dedup), ("ASPI", aspi_china5_dedup),
+                ("Chatham", chatham_dedup), ("Lowy", lowy_dedup), 
+                ("Hinrich", hinrich_dedup)
+            ]:
+                for article in tt_articles:
+                    if url in article:
+                        found_in.append(tt_name)
+                        break
+            logger.info(f"  - {url}")
+            if found_in:
+                logger.info(f"    └─ Gefunden in: {', '.join(found_in)}")
+            else:
+                logger.info(f"    └─ Herkunft unbekannt (CSIS?)")
+        logger.info("=" * 60)
+    else:
+        logger.info("✅ Keine energyandcleanair.org URLs in seen_urls (gut!)")
+    logger.info("=" * 60)
+    
     crea_dedup = []
     for article in crea_articles:
         url_match = re.search(r'\((https?://[^\)]+)\)', article)
@@ -3791,18 +3835,34 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
             url = url_match.group(1).split('?')[0]
             title = title_match.group(1).lower().strip() if title_match else ""
             
+            logger.info(f"DEBUG CREA - Prüfe Artikel: {title[:60]}...")
+            logger.info(f"DEBUG CREA - URL: {url}")
+            logger.info(f"DEBUG CREA - URL in seen_urls? {url in seen_urls}")
+            logger.info(f"DEBUG CREA - Title in seen_titles? {title in seen_titles}")
+            
             if url not in seen_urls and title not in seen_titles:
                 crea_dedup.append(article)
                 seen_urls.add(url)
                 if title:
                     seen_titles.add(title)
+                logger.info(f"DEBUG CREA - ✅ AKZEPTIERT")
             else:
                 reason = "URL" if url in seen_urls else "Titel"
+                # WICHTIG: Zeige WELCHER Think Tank diese URL/Titel bereits hat!
+                if url in seen_urls:
+                    logger.info(f"DEBUG CREA - ❌ URL BLOCKIERT: {url}")
+                    logger.info(f"DEBUG CREA - Diese URL wurde bereits von einem Think Tank VOR CREA hinzugefügt!")
+                if title in seen_titles:
+                    logger.info(f"DEBUG CREA - ❌ TITEL BLOCKIERT: {title}")
                 logger.info(f"Global Dedup - CREA: ❌ Duplikat ({reason}): {article[:60]}...")
         else:
             crea_dedup.append(article)
+            logger.info(f"DEBUG CREA - ✅ AKZEPTIERT (keine URL extrahiert): {article[:60]}...")
     
+    logger.info("=" * 60)
+    logger.info(f"DEBUG: CREA DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info(f"CREA: {len(crea_articles)} → {len(crea_dedup)} ({len(crea_articles)-len(crea_dedup)} Duplikate)")
+    logger.info("=" * 60)
     
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
