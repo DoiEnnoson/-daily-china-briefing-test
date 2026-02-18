@@ -3074,16 +3074,22 @@ def parse_crea_energy(msg):
         href = link.get('href')
         title = link.get_text(strip=True)
         
-        # Skip interne Links
-        if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile', 'list-manage']):
-            continue
-        
         # Skip kurze/leere Titel
         if not title or len(title) < 15:
             continue
         
-        # Nur energyandcleanair.org Links
-        if 'energyandcleanair.org' not in href:
+        # Skip echte interne Links (NICHT list-manage Tracking-Links!)
+        href_lower = href.lower()
+        if any(skip in href_lower for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile']):
+            continue
+        
+        # Akzeptiere entweder:
+        # 1. Direkte energyandcleanair.org Links ODER
+        # 2. list-manage Tracking-Links die zu energyandcleanair.org führen
+        is_direct_link = 'energyandcleanair.org' in href_lower
+        is_tracking_link = 'list-manage' in href_lower and 'energyandcleanair' in href_lower
+        
+        if not (is_direct_link or is_tracking_link):
             continue
         
         title_lower = title.lower()
