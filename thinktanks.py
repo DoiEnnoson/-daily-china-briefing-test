@@ -3546,10 +3546,10 @@ def build_dynamic_briefing(think_tank_data_dict):
     
     return briefing
 
-def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, *csis_articles):
+def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_articles, cfr_daily_articles, cfr_asia_articles, aspi_china5_articles, chatham_articles, lowy_articles, hinrich_articles, crea_articles, *csis_articles):
     """
     Globale Deduplizierung über ALLE Think Tanks hinweg.
-    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute, Hinrich Foundation und CSIS.
+    Entfernt Duplikate zwischen MERICS, Brookings, PIIE, CFR (Daily + Eyes on Asia), ASPI (China 5), Chatham House, Lowy Institute, Hinrich Foundation, CREA und CSIS.
     
     Args:
         merics_articles: MERICS Artikel-Liste
@@ -3561,10 +3561,11 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
         chatham_articles: Chatham House Artikel-Liste
         lowy_articles: Lowy Institute Artikel-Liste
         hinrich_articles: Hinrich Foundation Artikel-Liste
+        crea_articles: CREA (Energy & Clean Air) Artikel-Liste
         *csis_articles: Variable Anzahl CSIS Newsletter-Listen
     
     Returns:
-        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, *csis_dedup)
+        Tuple: (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, crea_dedup, *csis_dedup)
     """
     logger.info("=" * 60)
     logger.info("STARTE GLOBALE THINK TANK DEDUPLIZIERUNG")
@@ -3780,6 +3781,29 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     
     logger.info(f"Hinrich Foundation: {len(hinrich_articles)} → {len(hinrich_dedup)} ({len(hinrich_articles)-len(hinrich_dedup)} Duplikate)")
     
+    # CREA deduplizieren
+    crea_dedup = []
+    for article in crea_articles:
+        url_match = re.search(r'\((https?://[^\)]+)\)', article)
+        title_match = re.search(r'\[([^\]]+)\]', article)
+        
+        if url_match:
+            url = url_match.group(1).split('?')[0]
+            title = title_match.group(1).lower().strip() if title_match else ""
+            
+            if url not in seen_urls and title not in seen_titles:
+                crea_dedup.append(article)
+                seen_urls.add(url)
+                if title:
+                    seen_titles.add(title)
+            else:
+                reason = "URL" if url in seen_urls else "Titel"
+                logger.info(f"Global Dedup - CREA: ❌ Duplikat ({reason}): {article[:60]}...")
+        else:
+            crea_dedup.append(article)
+    
+    logger.info(f"CREA: {len(crea_articles)} → {len(crea_dedup)} ({len(crea_articles)-len(crea_dedup)} Duplikate)")
+    
     # CSIS deduplizieren (alle Newsletter)
     csis_names = [
         "CSIS Geopolitics", "CSIS Freeman", "CSIS Trustee", "CSIS Japan",
@@ -3810,7 +3834,7 @@ def deduplicate_all_thinktanks(merics_articles, brookings_articles, piie_article
     logger.info("GLOBALE DEDUPLIZIERUNG ABGESCHLOSSEN")
     logger.info("=" * 60)
     
-    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, *csis_dedup_lists)
+    return (merics_dedup, brookings_dedup, piie_dedup, cfr_daily_dedup, cfr_asia_dedup, aspi_china5_dedup, chatham_dedup, lowy_dedup, hinrich_dedup, crea_dedup, *csis_dedup_lists)
 
 def main():
     logger.info("Starte Think Tanks Skript (MERICS + CSIS + Brookings)")
