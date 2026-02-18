@@ -2892,6 +2892,12 @@ def parse_hinrich_foundation(msg):
         if title in seen_titles:
             continue
         
+        # Sammle Beschreibungstext nach dem Heading (für besseren China-Check)
+        description = ""
+        next_elem = heading.find_next(['p', 'h1', 'h2', 'h3'])
+        if next_elem and next_elem.name == 'p':
+            description = next_elem.get_text(strip=True)[:300]  # Max 300 Zeichen
+        
         # Finde den zugehörigen Link
         link_tag = None
         current = heading
@@ -2928,7 +2934,7 @@ def parse_hinrich_foundation(msg):
             if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', '#']):
                 continue
             
-            # China-Check (einfach: enthält Titel China-Keywords?)
+            # China-Check (Titel ODER Beschreibung)
             china_keywords = [
                 "china", "chinese", "xi jinping", "xi", "beijing", "shanghai",
                 "taiwan", "hong kong", "prc", "ccp", "communist party",
@@ -2936,7 +2942,9 @@ def parse_hinrich_foundation(msg):
             ]
             
             title_lower = title.lower()
-            has_china = any(kw in title_lower for kw in china_keywords)
+            desc_lower = description.lower()
+            content = f"{title_lower} {desc_lower}"
+            has_china = any(kw in content for kw in china_keywords)
             
             if has_china:
                 articles.append(f"• [{title}]({href})")
