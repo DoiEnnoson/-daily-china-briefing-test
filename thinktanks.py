@@ -3033,6 +3033,66 @@ def fetch_hinrich_foundation(mail, email_user, email_password, days=None):
 def parse_crea_energy(msg):
     """
     Parser für CREA (Centre for Research on Energy and Clean Air).
+    Extrahiert China Energy & Emissions Reports.
+    China-Check über TITEL, nicht URL!
+    """
+    articles = []
+    
+    # Betreff extrahieren
+    subject = decode_header(msg.get("Subject", "Kein Betreff"))[0][0]
+    if isinstance(subject, bytes):
+        subject = subject.decode()
+    
+    logger.info(f"CREA - Betreff: {subject}")
+    
+    # HTML-Inhalt finden
+    html_content = None
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                html_content = part.get_payload(decode=True).decode(charset)
+            except UnicodeDecodeError:
+                html_content = part.get_payload(decode=True).decode("windows-1252", errors="replace")
+            break
+    
+    if not html_content:
+        logger.warning("Keine HTML-Inhalte in CREA E-Mail gefunden")
+        return articles
+    
+    soup = BeautifulSoup(html_content, "lxml")
+    
+    for link in soup.find_all('a', href=True):
+        href = link.get('href')
+        title = link.get_text(strip=True)
+        
+        # Skip interne Links
+        if any(skip in href.lower() for skip in ['unsubscribe', 'preferences', 'mailto:', 'track/open', 'vcard', 'profile']):
+            continue
+        
+        # Skip kurze/leere Titel
+        if not title or len(title) < 15:
+            continue
+        
+        # Nur energyandcleanair.org Links
+        if 'energyandcleanair.org' not in href:
+            continue
+        
+        # China-Check: Titel muss "China" enthalten (case-insensitive)
+        if 'china' not in title.lower():
+            continue
+        
+        # Skip chinesische Version (🇨🇳 ohne englisches "China" im selben Titel)
+        if '🇨🇳' in title and 'china' not in title.lower().replace('🇨🇳', ''):
+            continue
+        
+        articles.append(f"• [{title}]({href})")
+        logger.info(f"CREA - Artikel hinzugefügt: {title[:60]}...")
+    
+    logger.info(f"CREA Parser - {len(articles)} Artikel extrahiert")
+    return articles
+    """
+    Parser für CREA (Centre for Research on Energy and Clean Air).
     Extrahiert monatliche China Energy & Emissions Reports.
     ALLE Artikel sind China-relevant (100% China-fokussiert).
     """
