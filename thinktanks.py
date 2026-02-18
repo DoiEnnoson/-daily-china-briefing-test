@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Globale Zeitfenster-Einstellung für ALLE Think Tanks
-GLOBAL_THINKTANK_DAYS = 1  # Test: 1 Tag für schnelle Iteration
+GLOBAL_THINKTANK_DAYS = 60  # Test: 1 Tag für schnelle Iteration
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
