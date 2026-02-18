@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Globale Zeitfenster-Einstellung für ALLE Think Tanks
-GLOBAL_THINKTANK_DAYS = 1  # Test: 1 Tag für schnelle Iteration
+GLOBAL_THINKTANK_DAYS = 60  # Test: 60 Tage
 
 def send_email(subject, body, email_user, email_password, to_email="hadobrockmeyer@gmail.com"):
     """Sendet eine E-Mail."""
@@ -2880,9 +2880,9 @@ def parse_hinrich_foundation(msg):
     
     soup = BeautifulSoup(html_content, "lxml")
     
-    # Hinrich nutzt <h1> für Haupttitel von Artikeln
-    for h1 in soup.find_all('h1'):
-        title = h1.get_text(strip=True)
+    # STRATEGIE 1: Finde alle <h1>, <h2>, <h3> Tags (Hinrich nutzt verschiedene)
+    for heading in soup.find_all(['h1', 'h2', 'h3']):
+        title = heading.get_text(strip=True)
         
         # Skip zu kurze oder leere Titel
         if not title or len(title) < 10:
@@ -2892,24 +2892,32 @@ def parse_hinrich_foundation(msg):
         if title in seen_titles:
             continue
         
-        # Finde den zugehörigen "READ MORE" oder "REGISTER NOW" Link
+        # Finde den zugehörigen Link
         link_tag = None
-        current = h1
+        current = heading
         
-        # Suche in den nächsten 10 Elementen nach einem Link
-        for _ in range(10):
-            current = current.find_next(['a', 'h1'])
+        # Suche in den nächsten 15 Elementen nach einem relevanten Link
+        for _ in range(15):
+            current = current.find_next(['a', 'h1', 'h2', 'h3'])
             if not current:
                 break
             
-            # Stoppe bei nächstem h1 (neuer Artikel beginnt)
-            if current.name == 'h1':
+            # Stoppe bei nächstem Heading (neuer Artikel beginnt)
+            if current.name in ['h1', 'h2', 'h3']:
                 break
             
             # Prüfe ob es ein relevanter Link ist
-            if current.name == 'a':
+            if current.name == 'a' and current.get('href'):
+                href = current.get('href')
                 link_text = current.get_text(strip=True).upper()
-                if any(keyword in link_text for keyword in ['READ MORE', 'REGISTER', 'ACCESS', 'WATCH']):
+                
+                # Akzeptiere verschiedene Link-Texte
+                if any(keyword in link_text for keyword in ['READ', 'REGISTER', 'ACCESS', 'WATCH', 'VIEW', 'LEARN']):
+                    link_tag = current
+                    break
+                
+                # ODER: Akzeptiere Links zu hinrichfoundation.com (auch ohne Button-Text)
+                if 'hinrichfoundation.com' in href and 'unsubscribe' not in href.lower():
                     link_tag = current
                     break
         
@@ -2928,6 +2936,8 @@ def parse_hinrich_foundation(msg):
                 articles.append(f"• [{title}]({href})")
                 seen_titles.add(title)
                 logger.info(f"Hinrich - Artikel hinzugefügt: {title[:60]}... (Score: {score})")
+            else:
+                logger.debug(f"Hinrich - Score zu niedrig ({score}): {title[:60]}...")
     
     logger.info(f"Hinrich Foundation Parser - {len(articles)} Artikel extrahiert")
     return articles
