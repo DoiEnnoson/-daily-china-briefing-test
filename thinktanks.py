@@ -2944,8 +2944,6 @@ def parse_hinrich_foundation(msg):
                 logger.info(f"Hinrich - Artikel hinzugefügt: {title[:60]}...")
             else:
                 logger.info(f"Hinrich - Kein China-Bezug, übersprungen: {title[:60]}...")
-            else:
-                logger.debug(f"Hinrich - Score zu niedrig ({score}): {title[:60]}...")
     
     logger.info(f"Hinrich Foundation Parser - {len(articles)} Artikel extrahiert")
     return articles
